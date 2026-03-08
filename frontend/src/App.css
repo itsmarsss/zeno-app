@@ -211,6 +211,32 @@
   max-width: 560px;
 }
 
+.posture-preview {
+  margin-top: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border-subtle);
+  background: #0d1013;
+  aspect-ratio: 16 / 9;
+  max-width: 720px;
+}
+
+.posture-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.posture-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
 .popover {
   width: 100%;
   height: 100%;

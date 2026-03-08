@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -193,6 +193,10 @@ function MainWindowShell({
   clearAllData: () => Promise<void>
 }) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
+  const postureVideoRef = useRef<HTMLVideoElement | null>(null)
+  const postureStreamRef = useRef<MediaStream | null>(null)
+  const [postureCameraOn, setPostureCameraOn] = useState(false)
+  const [postureCameraError, setPostureCameraError] = useState<string | null>(null)
   const todayKey = new Date().toISOString().slice(0, 10)
   const todaySessions = useMemo(
     () =>
@@ -221,6 +225,45 @@ function MainWindowShell({
   }, [focusSessions])
   const weeklyValues = useMemo(() => weeklyFocusTotals.map((item) => item.minutes), [weeklyFocusTotals])
   const weeklyMax = Math.max(...weeklyValues, 1)
+
+  useEffect(() => {
+    async function startCamera() {
+      if (tab !== 'posture') return
+      if (postureStreamRef.current) return
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 960 },
+            height: { ideal: 540 },
+            frameRate: { ideal: 24, max: 30 },
+          },
+          audio: false,
+        })
+        postureStreamRef.current = stream
+        if (postureVideoRef.current) {
+          postureVideoRef.current.srcObject = stream
+          await postureVideoRef.current.play()
+        }
+        setPostureCameraOn(true)
+        setPostureCameraError(null)
+      } catch (err) {
+        setPostureCameraOn(false)
+        setPostureCameraError(err instanceof Error ? err.message : 'Unable to access camera.')
+      }
+    }
+
+    function stopCamera() {
+      postureStreamRef.current?.getTracks().forEach((track) => track.stop())
+      postureStreamRef.current = null
+      if (postureVideoRef.current) {
+        postureVideoRef.current.srcObject = null
+      }
+      setPostureCameraOn(false)
+    }
+
+    void startCamera()
+    return stopCamera
+  }, [tab])
 
   return (
     <main className="main-shell">
@@ -336,7 +379,26 @@ function MainWindowShell({
           </>
         )}
 
-        {tab === 'posture' && <h1>Posture tab coming next phase.</h1>}
+        {tab === 'posture' && (
+          <>
+            <h1>Posture</h1>
+            <div className="main-panel">
+              <div className="main-panel-head">
+                <h3>Live camera</h3>
+                <span>{postureCameraOn ? 'Camera on' : 'Camera off'}</span>
+              </div>
+              <div className="posture-preview">
+                <video ref={postureVideoRef} autoPlay muted playsInline className="posture-video" />
+                <div className="posture-overlay" />
+              </div>
+              {postureCameraError ? (
+                <p className="main-empty">{postureCameraError}</p>
+              ) : (
+                <p className="main-empty">Camera preview runs locally. Landmark overlay is next.</p>
+              )}
+            </div>
+          </>
+        )}
         {tab === 'exercises' && <h1>Exercises tab coming next phase.</h1>}
 
         {tab === 'settings' && (
