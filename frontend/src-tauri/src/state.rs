@@ -20,18 +20,22 @@ pub struct ReportState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub monitoring_paused: bool,
+    pub focus_mode_active: bool,
     pub session_frequency_minutes: u32,
     pub daily_report_hour: u32,
     pub daily_report_minute: u32,
+    pub onboarding_completed: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             monitoring_paused: false,
+            focus_mode_active: false,
             session_frequency_minutes: 10,
             daily_report_hour: 21,
             daily_report_minute: 0,
+            onboarding_completed: false,
         }
     }
 }

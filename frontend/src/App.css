@@ -302,6 +302,24 @@
   color: var(--text-secondary);
 }
 
+.focus-toggle {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.focus-toggle.is-on {
+  color: var(--accent);
+  border-color: #bdd8ca;
+  background: var(--accent-light);
+}
+
 .toggle {
   width: 40px;
   height: 22px;

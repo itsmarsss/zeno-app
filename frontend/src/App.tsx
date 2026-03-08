@@ -47,6 +47,7 @@ type CalibrationStatus = {
 
 type AppSettings = {
   monitoring_paused: boolean
+  focus_mode_active: boolean
   session_frequency_minutes: number
   daily_report_hour: number
   daily_report_minute: number
@@ -235,6 +236,10 @@ function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
+  }
+
+  async function toggleFocusMode() {
+    await updateSettings({ focus_mode_active: !settings?.focus_mode_active })
   }
 
   async function completeOnboarding() {
@@ -547,6 +552,12 @@ function App() {
           <button className="report-link" onClick={() => setActivePage('home')}>Home</button>
         )}
         <div className="toggle-wrap">
+          <button
+            className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
+            onClick={toggleFocusMode}
+          >
+            {settings?.focus_mode_active ? 'Focus on' : 'Focus off'}
+          </button>
           <span>Pause</span>
           <button
             className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}

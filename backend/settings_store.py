@@ -7,6 +7,7 @@ from pathlib import Path
 DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parent / "data" / "settings.json"
 DEFAULT_SETTINGS = {
     "monitoring_paused": False,
+    "focus_mode_active": False,
     "session_frequency_minutes": 10,
     "daily_report_hour": 21,
     "daily_report_minute": 0,
@@ -19,6 +20,7 @@ def _sanitize(settings: dict) -> dict:
     cleaned.update(settings or {})
 
     cleaned["monitoring_paused"] = bool(cleaned.get("monitoring_paused", False))
+    cleaned["focus_mode_active"] = bool(cleaned.get("focus_mode_active", False))
     cleaned["session_frequency_minutes"] = int(cleaned.get("session_frequency_minutes", 10))
     cleaned["session_frequency_minutes"] = min(30, max(5, cleaned["session_frequency_minutes"]))
 
