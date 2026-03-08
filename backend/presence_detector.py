@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlretrieve
@@ -23,6 +24,25 @@ def _ensure_task_model() -> Path:
     TASK_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     urlretrieve(TASK_MODEL_URL, TASK_MODEL_PATH)
     return TASK_MODEL_PATH
+
+
+def _show_preview(cap: cv2.VideoCapture, seconds: float) -> None:
+    if seconds <= 0:
+        return
+
+    window_name = "Zeno Presence Preview"
+    cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+    end_ticks = cv2.getTickCount() + int(seconds * cv2.getTickFrequency())
+    try:
+        while cv2.getTickCount() < end_ticks:
+            ok, preview_frame = cap.read()
+            if not ok:
+                break
+            cv2.imshow(window_name, preview_frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+    finally:
+        cv2.destroyWindow(window_name)
 
 
 def _detect_with_tasks(rgb_frame, min_detection_confidence: float) -> bool:
@@ -71,12 +91,14 @@ def detect_presence(
     camera_index: int = 0,
     min_detection_confidence: float = 0.5,
     warmup_seconds: float = 0.6,
+    preview_seconds: float = 0.0,
 ) -> bool:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return False
 
     try:
+        _show_preview(cap, preview_seconds)
         if warmup_seconds > 0:
             end_ticks = cv2.getTickCount() + int(warmup_seconds * cv2.getTickFrequency())
             while cv2.getTickCount() < end_ticks:
@@ -105,7 +127,15 @@ def detect_presence(
 
 
 def main() -> None:
-    presence = detect_presence()
+    parser = argparse.ArgumentParser(description="One-shot face presence detection.")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Show a 1-second camera preview before detection.",
+    )
+    args = parser.parse_args()
+
+    presence = detect_presence(preview_seconds=1.0 if args.preview else 0.0)
     timestamp = datetime.now().isoformat(timespec="seconds")
     print(f"[{timestamp}] presence_detected={str(presence).lower()}")
 
