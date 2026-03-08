@@ -1,4 +1,5 @@
 import type { BreathingPatternId } from '../shared/types'
+import './QuickActionsPopover.css'
 
 export function QuickActionsPopover({
   quickActionStep,
