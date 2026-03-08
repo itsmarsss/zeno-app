@@ -25,9 +25,11 @@ def _build_face_detector(min_detection_confidence: float):
     except Exception:
         pass
 
+    version = getattr(mp, "__version__", "unknown")
     raise RuntimeError(
-        "MediaPipe FaceDetection is unavailable. "
-        "Install a compatible mediapipe version."
+        "MediaPipe FaceDetection is unavailable in this install "
+        f"(detected mediapipe=={version}). "
+        "Use mediapipe==0.10.14 for Week 1 Day 1."
     )
 
 
