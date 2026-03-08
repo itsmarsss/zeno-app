@@ -61,7 +61,10 @@ def _estimate_bpm(signal: list[float], timestamps: list[float]) -> float:
     if np.std(detrended) < 1e-6:
         return 0.0
 
-    fft = np.fft.rfft(detrended)
+    window_fn = np.hanning(len(detrended))
+    spectrum_signal = detrended * window_fn
+
+    fft = np.fft.rfft(spectrum_signal)
     freqs = np.fft.rfftfreq(len(detrended), d=1.0 / sample_rate)
 
     min_hz = MIN_BPM / 60.0
@@ -77,9 +80,9 @@ def _estimate_bpm(signal: list[float], timestamps: list[float]) -> float:
     peak_idx = int(np.argmax(band_power))
     peak_freq = freqs[band_mask][peak_idx]
 
-    # Basic quality gate: dominant peak must have at least 12% of band power.
+    # Basic quality gate: dominant peak should have a meaningful band share.
     peak_ratio = float(band_power[peak_idx] / np.sum(band_power))
-    if peak_ratio < 0.12:
+    if peak_ratio < 0.06:
         return 0.0
 
     return round(float(peak_freq * 60.0), 1)
@@ -142,8 +145,12 @@ def estimate_heart_rate(
             roi = _forehead_roi(frame, last_face)
             if roi.size > 0:
                 green_mean = float(np.mean(roi[:, :, 1]))
+                red_mean = float(np.mean(roi[:, :, 2]))
+                blue_mean = float(np.mean(roi[:, :, 0]))
+                # Chrominance-like signal is more robust to overall brightness changes.
+                pulse_signal = green_mean - 0.5 * red_mean - 0.5 * blue_mean
                 timestamp = (cv2.getTickCount() - start) / cv2.getTickFrequency()
-                signal.append(green_mean)
+                signal.append(pulse_signal)
                 timestamps.append(timestamp)
 
             if preview:
