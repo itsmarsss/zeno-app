@@ -51,17 +51,30 @@ fn parse_json_line(stdout: &str) -> Result<Value, String> {
     ))
 }
 
+fn extract_session_from_logger_payload(payload: Value) -> Result<Value, String> {
+    if let Some(session) = payload.get("session") {
+        return Ok(session.clone());
+    }
+    if payload.get("timestamp").is_some() {
+        return Ok(payload);
+    }
+    Err(format!(
+        "Unexpected sidecar payload shape. Expected {{session: ...}} or session object. Got: {}",
+        payload
+    ))
+}
+
 fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let session_script = root.join("backend").join("session_runner.py");
-    if !session_script.is_file() {
-        return Err(format!("Missing script: {}", session_script.display()));
+    let logger_script = root.join("backend").join("sqlite_logger.py");
+    if !logger_script.is_file() {
+        return Err(format!("Missing script: {}", logger_script.display()));
     }
 
     let backend = emotion_backend.unwrap_or_else(|| "hsemotion".to_string());
     let mut cmd = Command::new(python_bin);
-    cmd.arg(session_script)
+    cmd.arg(logger_script)
         .arg("--emotion-backend")
         .arg(backend);
 
@@ -89,7 +102,8 @@ fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value,
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    parse_json_line(&stdout)
+    let payload = parse_json_line(&stdout)?;
+    extract_session_from_logger_payload(payload)
 }
 
 fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
