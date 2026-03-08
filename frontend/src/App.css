@@ -381,6 +381,29 @@
   color: var(--text-secondary);
 }
 
+.pattern-picker {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.pattern-chip {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.pattern-chip.is-active {
+  color: var(--accent);
+  border-color: #bdd8ca;
+  background: var(--accent-light);
+}
+
 .focus-toggle {
   border: 1px solid var(--border-default);
   background: var(--bg-surface);

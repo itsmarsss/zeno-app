@@ -55,12 +55,32 @@ type AppSettings = {
   onboarding_completed: boolean
 }
 
-const BOX_PATTERN = [
-  { label: 'Inhale', seconds: 4 },
-  { label: 'Hold', seconds: 4 },
-  { label: 'Exhale', seconds: 4 },
-  { label: 'Hold', seconds: 4 },
-] as const
+type BreathingPatternId = 'box' | 'four-seven-eight'
+
+const BREATHING_PATTERNS: Record<
+  BreathingPatternId,
+  { name: string; phases: { label: 'Inhale' | 'Hold' | 'Exhale'; seconds: number }[]; cycles: number }
+> = {
+  box: {
+    name: 'Box breathing',
+    phases: [
+      { label: 'Inhale', seconds: 4 },
+      { label: 'Hold', seconds: 4 },
+      { label: 'Exhale', seconds: 4 },
+      { label: 'Hold', seconds: 4 },
+    ],
+    cycles: 4,
+  },
+  'four-seven-eight': {
+    name: '4-7-8 breathing',
+    phases: [
+      { label: 'Inhale', seconds: 4 },
+      { label: 'Hold', seconds: 7 },
+      { label: 'Exhale', seconds: 8 },
+    ],
+    cycles: 4,
+  },
+}
 
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
@@ -161,8 +181,9 @@ function App() {
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(null)
   const [displayedStress, setDisplayedStress] = useState(0)
   const [breathingActive, setBreathingActive] = useState(false)
+  const [breathingPattern, setBreathingPattern] = useState<BreathingPatternId>('box')
   const [breathingPhaseIndex, setBreathingPhaseIndex] = useState(0)
-  const [breathingRemainingMs, setBreathingRemainingMs] = useState(BOX_PATTERN[0].seconds * 1000)
+  const [breathingRemainingMs, setBreathingRemainingMs] = useState(BREATHING_PATTERNS.box.phases[0].seconds * 1000)
   const [breathingCycle, setBreathingCycle] = useState(1)
 
   const canRun = status !== 'Running'
@@ -195,7 +216,8 @@ function App() {
   const stressTrend = useMemo(() => stressTrendPoints.map((item) => item.value), [stressTrendPoints])
   const postureStats = useMemo(() => trendStats(postureTrend), [postureTrend])
   const stressStats = useMemo(() => trendStats(stressTrend), [stressTrend])
-  const breathingPhase = BOX_PATTERN[breathingPhaseIndex]
+  const activePattern = BREATHING_PATTERNS[breathingPattern]
+  const breathingPhase = activePattern.phases[breathingPhaseIndex] ?? activePattern.phases[0]
   const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
 
   useEffect(() => {
@@ -220,19 +242,19 @@ function App() {
         return
       }
 
-      const nextPhase = (breathingPhaseIndex + 1) % BOX_PATTERN.length
+      const nextPhase = (breathingPhaseIndex + 1) % activePattern.phases.length
       const wrapped = nextPhase === 0
       const nextCycle = wrapped ? breathingCycle + 1 : breathingCycle
-      if (nextCycle > 4) {
+      if (nextCycle > activePattern.cycles) {
         setBreathingActive(false)
         return
       }
       setBreathingPhaseIndex(nextPhase)
-      setBreathingRemainingMs(BOX_PATTERN[nextPhase].seconds * 1000)
+      setBreathingRemainingMs(activePattern.phases[nextPhase].seconds * 1000)
       if (wrapped) setBreathingCycle(nextCycle)
     }, 100)
     return () => window.clearTimeout(timeout)
-  }, [breathingActive, breathingCycle, breathingPhaseIndex, breathingRemainingMs])
+  }, [activePattern, breathingActive, breathingCycle, breathingPhaseIndex, breathingRemainingMs])
 
   async function loadHistory() {
     try {
@@ -296,7 +318,7 @@ function App() {
   function startBreathing() {
     setBreathingActive(true)
     setBreathingPhaseIndex(0)
-    setBreathingRemainingMs(BOX_PATTERN[0].seconds * 1000)
+    setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
     setBreathingCycle(1)
   }
 
@@ -457,7 +479,7 @@ function App() {
         {breathingActive && activePage === 'home' && (
           <section className="breathing-panel">
             <div className="breathing-head">
-              <p className="label">Box breathing</p>
+              <p className="label">{activePattern.name}</p>
               <button className="icon-btn" onClick={stopBreathing}>Stop</button>
             </div>
             <p className="breathing-hr">
@@ -467,7 +489,7 @@ function App() {
               <span>{breathingPhase.label}</span>
             </div>
             <p className="breathing-countdown">{breathingRemainingSeconds}s</p>
-            <p className="breathing-cycle">Cycle {breathingCycle} of 4</p>
+            <p className="breathing-cycle">Cycle {breathingCycle} of {activePattern.cycles}</p>
           </section>
         )}
 
@@ -636,7 +658,23 @@ function App() {
         )}
         <div className="toggle-wrap">
           {activePage === 'home' && settings?.focus_mode_active && !breathingActive && (
-            <button className="report-link" onClick={startBreathing}>Breathe</button>
+            <>
+              <div className="pattern-picker">
+                <button
+                  className={`pattern-chip ${breathingPattern === 'box' ? 'is-active' : ''}`}
+                  onClick={() => setBreathingPattern('box')}
+                >
+                  Box
+                </button>
+                <button
+                  className={`pattern-chip ${breathingPattern === 'four-seven-eight' ? 'is-active' : ''}`}
+                  onClick={() => setBreathingPattern('four-seven-eight')}
+                >
+                  4-7-8
+                </button>
+              </div>
+              <button className="report-link" onClick={startBreathing}>Breathe</button>
+            </>
           )}
           {activePage === 'home' && breathingActive && (
             <button className="report-link" onClick={stopBreathing}>Stop</button>
