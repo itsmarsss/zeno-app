@@ -98,6 +98,19 @@ function stressIndexFromHistory(item: SessionHistoryItem): number {
   })
 }
 
+function sessionFromHistory(item: SessionHistoryItem): SessionResult {
+  return {
+    timestamp: item.created_at,
+    presence_detected: Boolean(item.presence_detected),
+    posture_score: item.posture_score,
+    dominant_emotion: item.dominant_emotion,
+    emotion_score: item.emotion_score,
+    heart_rate_bpm: item.heart_rate_bpm,
+    emotion_backend: item.emotion_backend,
+    session_duration_seconds: item.session_duration_seconds,
+  }
+}
+
 function sparklinePath(values: number[], width = 260, height = 74): string {
   if (!values.length) return ''
   const min = 0
@@ -172,9 +185,18 @@ function App() {
   async function loadHistory() {
     try {
       const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history', { limit: 20 })
-      setHistory(payload.items ?? [])
+      const items = payload.items ?? []
+      setHistory(items)
+      if (items.length > 0) {
+        const latest = sessionFromHistory(items[0])
+        setResult(latest)
+        updateNudgeFromResult(latest)
+      } else {
+        setResult(null)
+      }
     } catch {
       setHistory([])
+      setResult(null)
     }
   }
 
@@ -232,6 +254,12 @@ function App() {
     const target = event.target as HTMLElement
     if (target.closest('button, a, input, select, textarea')) return
     void getCurrentWindow().startDragging()
+  }
+
+  function closeWindow(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    void getCurrentWindow().hide()
   }
 
   function updateNudgeFromResult(session: SessionResult) {
@@ -340,16 +368,19 @@ function App() {
         </div>
       )}
 
-      <header className="headerbar" data-tauri-drag-region onMouseDown={handleHeaderMouseDown}>
-        <div className="brand" data-tauri-drag-region>
+      <header className="headerbar" onMouseDown={handleHeaderMouseDown}>
+        <div className="brand">
           <span className={`dot dot--${settings?.monitoring_paused ? 'paused' : status === 'Running' ? 'capturing' : 'active'}`} />
           <h1>zeno</h1>
         </div>
-        {activePage === 'home' ? (
-          <button className="icon-btn" onClick={() => setActivePage('settings')}>Settings</button>
-        ) : (
-          <button className="icon-btn" onClick={() => setActivePage('home')}>Back</button>
-        )}
+        <div className="header-actions">
+          {activePage === 'home' ? (
+            <button className="icon-btn" onClick={() => setActivePage('settings')}>Settings</button>
+          ) : (
+            <button className="icon-btn" onClick={() => setActivePage('home')}>Back</button>
+          )}
+          <button className="icon-btn icon-btn-close" aria-label="Close window" title="Close" onClick={closeWindow}>×</button>
+        </div>
       </header>
       <div className="content-scroll">
         {activePage === 'home' && (

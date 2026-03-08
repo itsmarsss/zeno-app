@@ -18,6 +18,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -75,6 +76,10 @@ fn main() {
             run_clear_data,
             run_calibration_status
         ])
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -89,6 +94,9 @@ fn main() {
                     *guard = settings;
                 }
             }
+
+            // Enable launch at login; silently ignore unsupported/error cases.
+            let _ = app.autolaunch().enable();
 
             let open_item = MenuItemBuilder::with_id("open", "Open Zeno").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
