@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::Duration;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -111,9 +112,9 @@ async fn run_python_session(
 
 fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
+    thread::spawn(move || {
         loop {
-            tauri::async_runtime::sleep(Duration::from_secs(600)).await;
+            thread::sleep(Duration::from_secs(600));
 
             let state = app_handle.state::<SessionState>();
             if state.running.swap(true, Ordering::SeqCst) {
@@ -124,13 +125,11 @@ fn start_scheduler(app: &tauri::AppHandle) {
                 continue;
             }
 
-            let session_result =
-                tauri::async_runtime::spawn_blocking(|| run_python_session_blocking(None))
-                    .await;
+            let session_result = run_python_session_blocking(None);
             state.running.store(false, Ordering::SeqCst);
 
             match session_result {
-                Ok(Ok(payload)) => {
+                Ok(payload) => {
                     let _ = app_handle.emit(
                         "session-result",
                         serde_json::json!({
@@ -139,21 +138,12 @@ fn start_scheduler(app: &tauri::AppHandle) {
                         }),
                     );
                 }
-                Ok(Err(err_msg)) => {
+                Err(err_msg) => {
                     let _ = app_handle.emit(
                         "session-error",
                         serde_json::json!({
                             "source": "scheduler",
                             "error": err_msg
-                        }),
-                    );
-                }
-                Err(join_err) => {
-                    let _ = app_handle.emit(
-                        "session-error",
-                        serde_json::json!({
-                            "source": "scheduler",
-                            "error": format!("Scheduler task join error: {join_err}")
                         }),
                     );
                 }
