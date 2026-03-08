@@ -11,7 +11,9 @@ use commands::{
     run_session_history, run_update_settings,
 };
 use python_sidecar::run_settings_blocking;
-use schedulers::{start_daily_report_trigger, start_focus_mode_timer, start_scheduler};
+use schedulers::{
+    start_daily_report_trigger, start_focus_mode_sampler, start_focus_mode_timer, start_scheduler,
+};
 use state::{FocusTimerState, NotificationState, ReportState, SessionState, SettingsState};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -144,6 +146,7 @@ fn main() {
             start_scheduler(&app.app_handle());
             start_daily_report_trigger(&app.app_handle());
             start_focus_mode_timer(&app.app_handle());
+            start_focus_mode_sampler(&app.app_handle());
             check_for_updates_on_launch(&app.app_handle());
 
             Ok(())

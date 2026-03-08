@@ -162,3 +162,52 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
         }
     });
 }
+
+pub fn start_focus_mode_sampler(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(8));
+
+            let settings_state = app_handle.state::<SettingsState>();
+            let settings = settings_state
+                .inner
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+
+            if settings.monitoring_paused || !settings.focus_mode_active {
+                continue;
+            }
+
+            let state = app_handle.state::<SessionState>();
+            if state.running.swap(true, Ordering::SeqCst) {
+                continue;
+            }
+
+            let session_result = run_python_session_blocking(None);
+            state.running.store(false, Ordering::SeqCst);
+
+            match session_result {
+                Ok(payload) => {
+                    let _ = app_handle.emit(
+                        "session-result",
+                        serde_json::json!({
+                            "source": "focus-mode",
+                            "result": payload
+                        }),
+                    );
+                }
+                Err(err_msg) => {
+                    let _ = app_handle.emit(
+                        "session-error",
+                        serde_json::json!({
+                            "source": "focus-mode",
+                            "error": err_msg
+                        }),
+                    );
+                }
+            }
+        }
+    });
+}

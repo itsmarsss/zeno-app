@@ -150,12 +150,13 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [activePage, setActivePage] = useState<'home' | 'report' | 'settings'>('home')
   const [lastNudge, setLastNudge] = useState('No nudges yet.')
-  const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
+  const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(null)
+  const [displayedStress, setDisplayedStress] = useState(0)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
-  const stressLabel = stressState(stress)
-  const stressFill = `${stress}%`
+  const stressLabel = stressState(displayedStress)
+  const stressFill = `${displayedStress}%`
 
   const sessionCountToday = useMemo(() => {
     const today = new Date().toDateString()
@@ -182,6 +183,20 @@ function App() {
   const stressTrend = useMemo(() => stressTrendPoints.map((item) => item.value), [stressTrendPoints])
   const postureStats = useMemo(() => trendStats(postureTrend), [postureTrend])
   const stressStats = useMemo(() => trendStats(stressTrend), [stressTrend])
+
+  useEffect(() => {
+    let rafId = 0
+    const animate = () => {
+      setDisplayedStress((prev) => {
+        const delta = stress - prev
+        if (Math.abs(delta) < 0.4) return stress
+        return prev + delta * 0.18
+      })
+      rafId = window.requestAnimationFrame(animate)
+    }
+    rafId = window.requestAnimationFrame(animate)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [stress])
 
   async function loadHistory() {
     try {
@@ -322,7 +337,11 @@ function App() {
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
         setResult(event.payload.result)
         updateNudgeFromResult(event.payload.result)
-        setLastRunSource('scheduler')
+        if (event.payload.source === 'focus-mode') {
+          setLastRunSource('focus-mode')
+        } else {
+          setLastRunSource('scheduler')
+        }
         setStatus('Done')
         setError(null)
         void loadHistory()
@@ -392,7 +411,7 @@ function App() {
           <>
             <section className="stress-card">
               <p className="label">stress index</p>
-              <div className={`stress-value stress-value--${stressLabel}`}>{stress}</div>
+              <div className={`stress-value stress-value--${stressLabel}`}>{Math.round(displayedStress)}</div>
               <p className="stress-sub">{stressLabel}</p>
               <div className="stress-bar"><div className={`stress-fill stress-fill--${stressLabel}`} style={{ width: stressFill }} /></div>
             </section>
