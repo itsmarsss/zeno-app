@@ -1,6 +1,6 @@
 use crate::notifications::{notify_for_session, start_gesture_dismiss_listener};
 use crate::python_sidecar::{now_unix_secs, run_daily_report_blocking, run_python_session_blocking};
-use crate::state::{NotificationState, ReportState, SessionState, SettingsState};
+use crate::state::{FocusTimerState, NotificationState, ReportState, SessionState, SettingsState};
 use chrono::{Datelike, Local, Timelike};
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -115,6 +115,49 @@ pub fn start_daily_report_trigger(app: &tauri::AppHandle) {
                         serde_json::json!({ "error": err_msg }),
                     );
                 }
+            }
+        }
+    });
+}
+
+pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        let mut last_title = String::new();
+        loop {
+            thread::sleep(Duration::from_secs(5));
+
+            let settings_state = app_handle.state::<SettingsState>();
+            let settings = settings_state
+                .inner
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+
+            let timer_state = app_handle.state::<FocusTimerState>();
+            let title = if settings.focus_mode_active {
+                let now = now_unix_secs();
+                let current = timer_state.started_at_unix.load(Ordering::SeqCst);
+                let started_at = if current == 0 {
+                    timer_state.started_at_unix.store(now, Ordering::SeqCst);
+                    now
+                } else {
+                    current
+                };
+                let elapsed_minutes = now.saturating_sub(started_at) / 60;
+                format!("zeno · {}m", elapsed_minutes)
+            } else {
+                timer_state.started_at_unix.store(0, Ordering::SeqCst);
+                "zeno".to_string()
+            };
+
+            if title == last_title {
+                continue;
+            }
+
+            if let Some(tray) = app_handle.tray_by_id("zeno-tray") {
+                let _ = tray.set_title(Some(title.clone()));
+                last_title = title;
             }
         }
     });

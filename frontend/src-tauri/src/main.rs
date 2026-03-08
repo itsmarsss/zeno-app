@@ -11,8 +11,8 @@ use commands::{
     run_session_history, run_update_settings,
 };
 use python_sidecar::run_settings_blocking;
-use schedulers::{start_daily_report_trigger, start_scheduler};
-use state::{NotificationState, ReportState, SessionState, SettingsState};
+use schedulers::{start_daily_report_trigger, start_focus_mode_timer, start_scheduler};
+use state::{FocusTimerState, NotificationState, ReportState, SessionState, SettingsState};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -67,6 +67,7 @@ fn main() {
         .manage(NotificationState::default())
         .manage(ReportState::default())
         .manage(SettingsState::default())
+        .manage(FocusTimerState::default())
         .invoke_handler(tauri::generate_handler![
             run_python_session,
             run_session_history,
@@ -105,7 +106,8 @@ fn main() {
                 .item(&quit_item)
                 .build()?;
 
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("zeno-tray")
+                .title("zeno")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
                 .icon(app.default_window_icon().unwrap().clone())
@@ -141,6 +143,7 @@ fn main() {
 
             start_scheduler(&app.app_handle());
             start_daily_report_trigger(&app.app_handle());
+            start_focus_mode_timer(&app.app_handle());
             check_for_updates_on_launch(&app.app_handle());
 
             Ok(())

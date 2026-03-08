@@ -44,3 +44,8 @@ impl Default for AppSettings {
 pub struct SettingsState {
     pub inner: Mutex<AppSettings>,
 }
+
+#[derive(Default)]
+pub struct FocusTimerState {
+    pub started_at_unix: AtomicU64,
+}
