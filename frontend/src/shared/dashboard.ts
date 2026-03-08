@@ -130,13 +130,16 @@ export function startDateForPeriod(period: FocusPeriod): Date {
   const result = new Date(now)
   if (period === 'week') {
     result.setDate(now.getDate() - 6)
+    result.setHours(0, 0, 0, 0)
     return result
   }
   if (period === 'month') {
     result.setDate(now.getDate() - 29)
+    result.setHours(0, 0, 0, 0)
     return result
   }
   result.setDate(now.getDate() - 89)
+  result.setHours(0, 0, 0, 0)
   return result
 }
 

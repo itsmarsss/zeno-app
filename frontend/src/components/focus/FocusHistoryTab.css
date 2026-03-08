@@ -5,6 +5,12 @@
   margin-bottom: 24px;
 }
 
+.focus-period-range {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .period-toggle {
   background: var(--bg-subtle);
   border-radius: 999px;
@@ -90,6 +96,14 @@
 
 .heatmap {
   margin-bottom: 32px;
+}
+
+.focus-pattern-empty {
+  margin-top: 14px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--bg-subtle);
 }
 
 .heatmap-legend {
@@ -194,6 +208,8 @@
   border-radius: 12px;
   background: var(--bg-surface);
   padding: 14px 12px;
+  position: relative;
+  overflow: hidden;
 }
 
 .rhythm-canvas svg {
@@ -213,6 +229,57 @@
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.rhythm-cursor {
+  position: absolute;
+  top: 14px;
+  bottom: 34px;
+  width: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(45, 106, 79, 0), rgba(45, 106, 79, 0.75), rgba(45, 106, 79, 0));
+  pointer-events: none;
+}
+
+.rhythm-tooltip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  width: 170px;
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, #ffffff 8%);
+  box-shadow: 0 10px 22px rgba(13, 26, 18, 0.14);
+  padding: 8px 10px;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.rhythm-tooltip p {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.rhythm-tooltip div {
+  margin-top: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rhythm-tooltip strong {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.rhythm-tooltip span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .rhythm-labels {

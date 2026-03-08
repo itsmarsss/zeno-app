@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Activity, TrendingUp, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
@@ -87,23 +87,27 @@ export function OverviewTab({
   onViewFocusHistory: () => void
 }) {
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday)}`
+  const svgRef = useRef<SVGSVGElement | null>(null)
   const [hoverPercent, setHoverPercent] = useState<number | null>(null)
   const [hoverXPx, setHoverXPx] = useState<number | null>(null)
   const [chartWidthPx, setChartWidthPx] = useState<number>(0)
+  const [chartLeftPx, setChartLeftPx] = useState<number>(0)
   const hoveredPoint = chartHoverIndex != null ? timelineData[chartHoverIndex] : null
   const fallbackRatio = chartHoverIndex == null ? 0 : chartHoverIndex / Math.max(timelineData.length - 1, 1)
   const hoverXPercent = hoverPercent ?? (fallbackRatio * 100)
   const chartStartMs = timelineData[0] ? new Date(timelineData[0].slotStartIso).getTime() : 0
   const chartEndMs = timelineData[timelineData.length - 1] ? new Date(timelineData[timelineData.length - 1].slotEndIso).getTime() : 0
   const chartSpanMs = Math.max(chartEndMs - chartStartMs, 1)
-  const fallbackXPx = chartWidthPx > 0 ? (hoverXPercent / 100) * chartWidthPx : 0
+  const fallbackXPx = chartWidthPx > 0 ? chartLeftPx + (hoverXPercent / 100) * chartWidthPx : 0
   const cursorXPx = hoverXPx ?? fallbackXPx
   const tooltipWidthPx = 196
   const tooltipPaddingPx = 8
+  const tooltipMinLeft = chartLeftPx + tooltipPaddingPx
+  const tooltipMaxLeft = chartLeftPx + Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx)
   const tooltipLeftPx = clamp(
     cursorXPx - tooltipWidthPx / 2,
-    tooltipPaddingPx,
-    Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx),
+    tooltipMinLeft,
+    tooltipMaxLeft,
   )
 
   return (
@@ -180,17 +184,21 @@ export function OverviewTab({
               setHoverXPx(null)
             }}
             onPointerMove={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect()
-              const xPx = clamp(event.clientX - rect.left, 0, Math.max(rect.width, 1))
-              const ratio = clamp(xPx / Math.max(rect.width, 1), 0, 1)
+              const canvasRect = event.currentTarget.getBoundingClientRect()
+              const svgRect = svgRef.current?.getBoundingClientRect() ?? canvasRect
+              const localLeft = Math.max(0, svgRect.left - canvasRect.left)
+              const localWidth = Math.max(svgRect.width, 1)
+              const xWithinSvg = clamp(event.clientX - svgRect.left, 0, localWidth)
+              const ratio = clamp(xWithinSvg / localWidth, 0, 1)
               const nextIndex = Math.round(ratio * (timelineData.length - 1))
-              setChartWidthPx(rect.width)
-              setHoverXPx(xPx)
+              setChartLeftPx(localLeft)
+              setChartWidthPx(localWidth)
+              setHoverXPx(localLeft + xWithinSvg)
               setHoverPercent(ratio * 100)
               setChartHoverIndex(nextIndex)
             }}
           >
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+            <svg ref={svgRef} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
               <defs>
                 <linearGradient id="stressGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={stressColor(avgStressToday || 20)} stopOpacity="0.18" />

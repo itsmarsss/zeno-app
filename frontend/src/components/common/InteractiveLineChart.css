@@ -1,0 +1,120 @@
+.interactive-chart-canvas {
+  margin-top: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  padding: 14px 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.interactive-chart-canvas svg {
+  width: 100%;
+  height: 130px;
+  display: block;
+}
+
+.interactive-chart-threshold {
+  stroke: var(--border-default);
+  stroke-dasharray: 4 4;
+}
+
+.interactive-chart-area {
+  fill: rgba(45, 106, 79, 0.16);
+}
+
+.interactive-chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.interactive-chart-cursor {
+  position: absolute;
+  top: 14px;
+  bottom: 40px;
+  width: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(45, 106, 79, 0), rgba(45, 106, 79, 0.75), rgba(45, 106, 79, 0));
+  pointer-events: none;
+  will-change: left;
+}
+
+.interactive-chart-tooltip {
+  position: absolute;
+  top: 8px;
+  width: 188px;
+  max-width: calc(100% - 16px);
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, #ffffff 8%);
+  box-shadow: 0 10px 22px rgba(13, 26, 18, 0.14);
+  padding: 8px 10px;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.interactive-chart-tooltip p {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.interactive-chart-tooltip-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.interactive-chart-tooltip-row strong {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.interactive-chart-tooltip-row span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.interactive-chart-threshold-label {
+  position: absolute;
+  right: 12px;
+  top: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.interactive-chart-hover-hint {
+  margin-top: 4px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.interactive-chart-hover-hint span {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.interactive-chart-axis {
+  margin-top: 4px;
+  display: grid;
+  gap: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.interactive-chart-axis span {
+  justify-self: center;
+  white-space: nowrap;
+}

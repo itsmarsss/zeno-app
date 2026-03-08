@@ -4,6 +4,7 @@ import { CameraOff, Check, CheckCircle, ChevronRight } from 'lucide-react'
 import { EXERCISE_LIBRARY } from '../../shared/constants'
 import type { PostureLandmarks, SessionHistoryItem } from '../../shared/types'
 import { PostureFrame } from '../common/PostureFrame'
+import { InteractiveLineChart } from '../common/InteractiveLineChart'
 import './PostureTab.css'
 import { staggerItem } from '../../shared/motion'
 
@@ -14,17 +15,6 @@ type PeriodKey = 'today' | 'week' | 'month'
 function percent(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0
   return Math.round((numerator / denominator) * 100)
-}
-
-function makePath(values: number[]): string {
-  if (!values.length) return ''
-  return values
-    .map((value, index) => {
-      const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100
-      const y = 100 - Math.max(0, Math.min(100, value))
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
-    })
-    .join(' ')
 }
 
 function daysForPeriod(period: PeriodKey): number {
@@ -68,15 +58,26 @@ export function PostureTab({
     [history, cutoff],
   )
 
-  const postureSeries = useMemo(
-    () => postureHistory.slice(0, 24).reverse().map((item) => Math.round(item.posture_score * 100)),
+  const postureChartPoints = useMemo(
+    () =>
+      postureHistory.slice(0, 24).reverse().map((item, index) => {
+        const at = new Date(item.created_at)
+        return {
+          id: `${item.id}-${index}`,
+          label: at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+          value: Math.round(item.posture_score * 100),
+        }
+      }),
     [postureHistory],
   )
 
   const latestHistoryScore = postureHistory[0] ? Math.round(postureHistory[0].posture_score * 100) : 0
-  const liveScore = postureScoreLive == null ? latestHistoryScore : Math.round(postureScoreLive * 100)
+  const isStarting = postureStreamState === 'connecting'
+  const liveScore = isStarting ? null : postureScoreLive == null ? latestHistoryScore : Math.round(postureScoreLive * 100)
 
-  const status =
+  const status = liveScore == null
+    ? null
+    :
     liveScore >= 75
       ? { title: 'Good alignment', detail: 'Your shoulders are level and spine neutral.', tone: 'good' as const }
       : liveScore >= 58
@@ -86,7 +87,7 @@ export function PostureTab({
   const shoulderDelta = postureLandmarks?.left_shoulder && postureLandmarks?.right_shoulder
     ? Math.round((postureLandmarks.left_shoulder.y - postureLandmarks.right_shoulder.y) * 40)
     : 0
-  const spineAngle = Math.max(6, Math.round((100 - liveScore) * 0.22 + 8))
+  const spineAngle = liveScore == null ? 0 : Math.max(6, Math.round((100 - liveScore) * 0.22 + 8))
 
   const issueCounts = useMemo(() => {
     const total = postureHistory.length
@@ -147,55 +148,65 @@ export function PostureTab({
           <div>
             <p className="posture-eyebrow">right now</p>
             <AnimatePresence mode="wait" initial={false}>
-              <motion.h2
-                key={status.title}
-                className={`posture-status is-${status.tone}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {status.title}
-              </motion.h2>
+              {isStarting ? (
+                <motion.div key="loading-title" className="posture-status-loader posture-status-loader--title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+              ) : (
+                <motion.h2
+                  key={status?.title ?? 'ready'}
+                  className={`posture-status is-${status?.tone ?? 'good'}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {status?.title ?? 'Ready'}
+                </motion.h2>
+              )}
             </AnimatePresence>
             <AnimatePresence mode="wait" initial={false}>
-              <motion.p
-                key={status.detail}
-                className="posture-status-sub"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {status.detail}
-              </motion.p>
+              {isStarting ? (
+                <motion.div key="loading-sub" className="posture-status-loader posture-status-loader--sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+              ) : (
+                <motion.p
+                  key={status?.detail ?? 'ready-sub'}
+                  className="posture-status-sub"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {status?.detail ?? 'Camera ready.'}
+                </motion.p>
+              )}
             </AnimatePresence>
 
             <hr />
 
             <div className="posture-metric-row">
               <span>Head position</span>
-              <div className="posture-bar"><i style={{ width: `${Math.max(12, liveScore)}%` }} /></div>
-              <em>{liveScore >= 75 ? 'Good' : 'Adjust'}</em>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(12, liveScore ?? 0)}%` }} /></div>
+              <em>{isStarting ? '...' : (liveScore ?? 0) >= 75 ? 'Good' : 'Adjust'}</em>
             </div>
             <div className="posture-metric-row">
               <span>Shoulder level</span>
-              <div className="posture-bar"><i style={{ width: `${Math.max(8, 100 - Math.min(40, Math.abs(shoulderDelta) * 2))}%` }} /></div>
-              <em>{shoulderDelta >= 0 ? '+' : ''}{shoulderDelta}°</em>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(8, 100 - Math.min(40, Math.abs(shoulderDelta) * 2))}%` }} /></div>
+              <em>{isStarting ? '...' : `${shoulderDelta >= 0 ? '+' : ''}${shoulderDelta}°`}</em>
             </div>
             <div className="posture-metric-row">
               <span>Spine angle</span>
-              <div className="posture-bar"><i style={{ width: `${Math.max(8, 100 - spineAngle)}%` }} /></div>
-              <em>{spineAngle}°</em>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(8, 100 - spineAngle)}%` }} /></div>
+              <em>{isStarting ? '...' : `${spineAngle}°`}</em>
             </div>
           </div>
 
-          {liveScore < 75 ? (
+          {!isStarting && (liveScore ?? 0) < 75 ? (
             <button className="btn-solid posture-cta" onClick={() => onStartExercise(recommended[0]?.id ?? 'chin-tuck')}>
               {topIssue?.key === 'chin-forward' ? 'Fix chin position' : topIssue?.key === 'rounded-shoulders' ? 'Open your chest' : 'Relax shoulders'}
             </button>
-          ) : (
+          ) : !isStarting ? (
             <p className="posture-all-good"><Check size={16} /> Looking good</p>
+          ) : (
+            <p className="posture-all-good posture-all-good--muted">Starting camera...</p>
           )}
         </div>
       </motion.section>
@@ -211,20 +222,24 @@ export function PostureTab({
             ))}
           </div>
         </div>
-        <div className="posture-history-chart">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="postureGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--state-calm)" stopOpacity="0.2" />
-                <stop offset="100%" stopColor="var(--state-calm)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <line x1="0" x2="100" y1="30" y2="30" className="posture-threshold" />
-            <path d={`${makePath(postureSeries)} L 100 100 L 0 100 Z`} className="posture-area" />
-            <path d={makePath(postureSeries)} className="posture-line" />
-          </svg>
-          <span className="posture-threshold-label">Good threshold</span>
-        </div>
+        {postureChartPoints.length === 0 ? (
+          <p className="posture-empty"><CheckCircle size={16} /> Not enough posture history yet</p>
+        ) : (
+          <InteractiveLineChart
+            className="posture-history-chart"
+            points={postureChartPoints}
+            yMin={0}
+            yMax={100}
+            thresholdValue={70}
+            thresholdLabel="Good threshold"
+            valueLabel="Posture"
+            valueSuffix="/100"
+            hoverHint="Move cursor to inspect"
+            lineClassName="posture-line"
+            areaClassName="posture-area"
+            thresholdClassName="posture-threshold"
+          />
+        )}
       </motion.section>
 
       <motion.section className="posture-card" variants={staggerItem(0.08)} initial="hidden" animate="visible">

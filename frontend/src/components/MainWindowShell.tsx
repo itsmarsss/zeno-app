@@ -33,6 +33,7 @@ const HOUR_END = 21
 const DEFAULT_TIMELINE_BUCKET_MINUTES = 15
 const HEATMAP_START = 8
 const HEATMAP_END = 19
+const PATTERN_MIN_SESSIONS = 10
 
 export function MainWindowShell({
   history,
@@ -182,6 +183,16 @@ export function MainWindowShell({
   }
 
   const periodStart = useMemo(() => startDateForPeriod(focusPeriod), [focusPeriod])
+  const periodEnd = useMemo(() => {
+    const end = new Date()
+    end.setHours(23, 59, 59, 999)
+    return end
+  }, [])
+  const periodRangeLabel = useMemo(
+    () =>
+      `${periodStart.toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString([], { month: 'short', day: 'numeric' })}`,
+    [periodEnd, periodStart],
+  )
   const currentPeriodFocus = useMemo(() => focusSessions.filter((item) => new Date(item.created_at) >= periodStart), [focusSessions, periodStart])
 
   const previousPeriodFocus = useMemo(() => {
@@ -199,6 +210,8 @@ export function MainWindowShell({
   const periodFocusedMinutes = Math.round(currentPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
   const periodAvgStress = Math.round(mean(currentPeriodFocus.map((item) => stressIndexFromHistory(item))))
   const periodSessionCount = currentPeriodFocus.length
+  const hasEnoughPatternData = periodSessionCount >= PATTERN_MIN_SESSIONS
+  const patternSessionsNeeded = Math.max(0, PATTERN_MIN_SESSIONS - periodSessionCount)
   const previousFocusedMinutes = Math.round(previousPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
   const previousAvgStress = Math.round(mean(previousPeriodFocus.map((item) => stressIndexFromHistory(item))))
   const previousSessionCount = previousPeriodFocus.length
@@ -248,14 +261,75 @@ export function MainWindowShell({
   }, [heatmapData])
 
   const rhythmData = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    return days.map((label, index) => {
-      const items = currentPeriodFocus.filter((item) => ((new Date(item.created_at).getDay() + 6) % 7) === index)
+    if (focusPeriod === 'week') {
+      const points: Array<{ label: string; focusedMinutes: number; avgStress: number | null }> = []
+      for (let i = 0; i < 7; i += 1) {
+        const dayStart = new Date(periodStart)
+        dayStart.setDate(periodStart.getDate() + i)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(dayStart)
+        dayEnd.setHours(23, 59, 59, 999)
+        const items = currentPeriodFocus.filter((item) => {
+          const at = new Date(item.created_at)
+          return at >= dayStart && at <= dayEnd
+        })
+        const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
+        const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
+        points.push({
+          label: dayStart.toLocaleDateString([], { weekday: 'short' }),
+          focusedMinutes,
+          avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+        })
+      }
+      return points
+    }
+
+    if (focusPeriod === 'month') {
+      const points: Array<{ label: string; focusedMinutes: number; avgStress: number | null }> = []
+      for (let i = 0; i < 6; i += 1) {
+        const bucketStart = new Date(periodStart)
+        bucketStart.setDate(periodStart.getDate() + i * 5)
+        bucketStart.setHours(0, 0, 0, 0)
+        const bucketEnd = new Date(bucketStart)
+        bucketEnd.setDate(bucketStart.getDate() + 4)
+        bucketEnd.setHours(23, 59, 59, 999)
+        const items = currentPeriodFocus.filter((item) => {
+          const at = new Date(item.created_at)
+          return at >= bucketStart && at <= bucketEnd
+        })
+        const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
+        const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
+        points.push({
+          label: `W${i + 1}`,
+          focusedMinutes,
+          avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+        })
+      }
+      return points
+    }
+
+    const monthPoints: Array<{ label: string; focusedMinutes: number; avgStress: number | null }> = []
+    for (let i = 2; i >= 0; i -= 1) {
+      const monthStart = new Date()
+      monthStart.setMonth(monthStart.getMonth() - i, 1)
+      monthStart.setHours(0, 0, 0, 0)
+      const monthEnd = new Date(monthStart)
+      monthEnd.setMonth(monthStart.getMonth() + 1, 0)
+      monthEnd.setHours(23, 59, 59, 999)
+      const items = currentPeriodFocus.filter((item) => {
+        const at = new Date(item.created_at)
+        return at >= monthStart && at <= monthEnd
+      })
       const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
       const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
-      return { label, focusedMinutes, avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null }
-    })
-  }, [currentPeriodFocus])
+      monthPoints.push({
+        label: monthStart.toLocaleDateString([], { month: 'short' }),
+        focusedMinutes,
+        avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+      })
+    }
+    return monthPoints
+  }, [currentPeriodFocus, focusPeriod, periodStart])
 
   const rhythmMaxMinutes = Math.max(60, ...rhythmData.map((item) => item.focusedMinutes))
   const rhythmStressPath = buildPath(rhythmData.map((item) => item.avgStress), 0, 100, 100, 100)
@@ -386,6 +460,9 @@ export function MainWindowShell({
                 focusHeroDeltaTime={focusHeroDeltaTime}
                 focusHeroDeltaStress={focusHeroDeltaStress}
                 focusHeroDeltaSessions={focusHeroDeltaSessions}
+                periodRangeLabel={periodRangeLabel}
+                hasEnoughPatternData={hasEnoughPatternData}
+                patternSessionsNeeded={patternSessionsNeeded}
                 heatmapData={heatmapData}
                 focusPatternCallout={focusPatternCallout}
                 rhythmData={rhythmData}

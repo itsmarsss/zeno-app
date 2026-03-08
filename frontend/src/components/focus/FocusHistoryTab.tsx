@@ -1,5 +1,6 @@
 import { ChevronRight, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useState } from 'react'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
@@ -27,6 +28,9 @@ export function FocusHistoryTab({
   focusHeroDeltaTime,
   focusHeroDeltaStress,
   focusHeroDeltaSessions,
+  periodRangeLabel,
+  hasEnoughPatternData,
+  patternSessionsNeeded,
   heatmapData,
   focusPatternCallout,
   rhythmData,
@@ -47,6 +51,9 @@ export function FocusHistoryTab({
   focusHeroDeltaTime: number
   focusHeroDeltaStress: number
   focusHeroDeltaSessions: number
+  periodRangeLabel: string
+  hasEnoughPatternData: boolean
+  patternSessionsNeeded: number
   heatmapData: HeatmapCell[][]
   focusPatternCallout: string | null
   rhythmData: Array<{ label: string; focusedMinutes: number; avgStress: number | null }>
@@ -59,11 +66,18 @@ export function FocusHistoryTab({
   sortNewestFirst: boolean
   setSortNewestFirst: (value: boolean | ((prev: boolean) => boolean)) => void
 }) {
+  const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
+  const hoveredRhythm = rhythmHoverIndex == null ? null : rhythmData[rhythmHoverIndex] ?? null
+  const hoverRatio = rhythmHoverIndex == null ? 0 : rhythmHoverIndex / Math.max(rhythmData.length - 1, 1)
+  const cursorLeft = `${hoverRatio * 100}%`
+  const tooltipLeft = `${Math.max(8, Math.min(84, hoverRatio * 100))}%`
+
   return (
     <>
       <motion.section className="focus-header overview-section" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div>
           <h1>{periodTitle(focusPeriod)}</h1>
+          <p className="focus-period-range">{periodRangeLabel}</p>
         </div>
         <div className="period-toggle" role="tablist" aria-label="Select period">
           {(['week', 'month', 'quarter'] as FocusPeriod[]).map((period) => (
@@ -100,62 +114,115 @@ export function FocusHistoryTab({
           <h3>When you focus best</h3>
           <span className="heatmap-legend"><i className="calm" />Low stress <i className="high" />High stress</span>
         </div>
-        <div className="heatmap-grid-wrap">
-          <div className="heatmap-hours">
-            {Array.from({ length: 12 }).map((_, index) => {
-              const hour = 8 + index
-              return <span key={hour}>{index % 2 === 0 ? formatHourLabel(hour) : ''}</span>
-            })}
-          </div>
-          <div className="heatmap-body">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, rowIndex) => (
-              <div key={day} className="heatmap-row">
-                <span>{day}</span>
-                <div className="heatmap-cells">
-                  {heatmapData[rowIndex].map((cell, colIndex) => {
-                    let toneClass = 'no-data'
-                    if (cell.avgStress != null) {
-                      if (cell.avgStress <= 30) toneClass = 'calm'
-                      else if (cell.avgStress <= 60) toneClass = 'mild'
-                      else toneClass = 'high'
-                    }
-                    const label = `${day} ${formatHourLabel(8 + colIndex)} · Avg stress ${cell.avgStress == null ? '--' : Math.round(cell.avgStress)} · ${cell.count} sessions`
-                    return <button key={`${day}-${colIndex}`} className={`heatmap-cell is-${toneClass}`} title={label} aria-label={label} />
-                  })}
-                </div>
+        {hasEnoughPatternData ? (
+          <>
+            <div className="heatmap-grid-wrap">
+              <div className="heatmap-hours">
+                {Array.from({ length: 12 }).map((_, index) => {
+                  const hour = 8 + index
+                  return <span key={hour}>{index % 2 === 0 ? formatHourLabel(hour) : ''}</span>
+                })}
               </div>
-            ))}
-          </div>
-        </div>
-        {focusPatternCallout && (
-          <p className="heatmap-callout"><Zap size={13} /> {focusPatternCallout}</p>
+              <div className="heatmap-body">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, rowIndex) => (
+                  <div key={day} className="heatmap-row">
+                    <span>{day}</span>
+                    <div className="heatmap-cells">
+                      {heatmapData[rowIndex].map((cell, colIndex) => {
+                        let toneClass = 'no-data'
+                        if (cell.avgStress != null) {
+                          if (cell.avgStress <= 30) toneClass = 'calm'
+                          else if (cell.avgStress <= 60) toneClass = 'mild'
+                          else toneClass = 'high'
+                        }
+                        const label = `${day} ${formatHourLabel(8 + colIndex)} · Avg stress ${cell.avgStress == null ? '--' : Math.round(cell.avgStress)} · ${cell.count} sessions`
+                        return <button key={`${day}-${colIndex}`} className={`heatmap-cell is-${toneClass}`} title={label} aria-label={label} />
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {focusPatternCallout && (
+              <p className="heatmap-callout"><Zap size={13} /> {focusPatternCallout}</p>
+            )}
+          </>
+        ) : (
+          <p className="main-empty focus-pattern-empty">
+            Need {patternSessionsNeeded} more focus {patternSessionsNeeded === 1 ? 'session' : 'sessions'} for reliable heatmap patterns.
+          </p>
         )}
       </motion.section>
 
       <motion.section className="overview-section rhythm-chart" variants={staggerItem(0.12)} initial="hidden" animate="visible">
-        <h3>Daily rhythm</h3>
-        <div className="rhythm-canvas">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-            {rhythmData.map((item, index) => {
-              const barWidth = 100 / rhythmData.length
-              const x = index * barWidth + barWidth * 0.2
-              const width = barWidth * 0.6
-              const h = (item.focusedMinutes / rhythmMaxMinutes) * 75
-              const y = 90 - h
-              return <rect key={`${item.label}-bar`} x={x} y={y} width={width} height={h} rx="2" className="rhythm-bar" />
-            })}
-            <path d={rhythmStressPath} className="rhythm-line" transform="translate(0, 5)" />
-          </svg>
-          <div className="rhythm-labels">
-            {rhythmData.map((item, index) => (
-              <span key={item.label} className={index === rhythmBestIndex ? 'is-best' : ''}>{item.label}</span>
-            ))}
-          </div>
-        </div>
-        <div className="rhythm-legend">
-          <span><i className="focus" />Focused time</span>
-          <span><i className="stress" />Avg stress</span>
-        </div>
+        <h3>{focusPeriod === 'week' ? 'Daily rhythm' : focusPeriod === 'month' ? 'Weekly rhythm' : 'Monthly rhythm'}</h3>
+        {hasEnoughPatternData ? (
+          <>
+            <div className="rhythm-canvas">
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden
+                onMouseLeave={() => setRhythmHoverIndex(null)}
+                onPointerMove={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)))
+                  const index = Math.round(ratio * (rhythmData.length - 1))
+                  setRhythmHoverIndex(index)
+                }}
+              >
+                {rhythmData.map((item, index) => {
+                  const barWidth = 100 / rhythmData.length
+                  const x = index * barWidth + barWidth * 0.2
+                  const width = barWidth * 0.6
+                  const h = (item.focusedMinutes / rhythmMaxMinutes) * 75
+                  const y = 90 - h
+                  return <rect key={`${item.label}-bar`} x={x} y={y} width={width} height={h} rx="2" className="rhythm-bar" />
+                })}
+                <path d={rhythmStressPath} className="rhythm-line" transform="translate(0, 5)" />
+              </svg>
+              {hoveredRhythm && (
+                <>
+                  <motion.div
+                    className="rhythm-cursor"
+                    initial={false}
+                    animate={{ left: cursorLeft, opacity: 1 }}
+                    transition={{ type: 'tween', duration: 0.06, ease: 'linear' }}
+                  />
+                  <motion.div
+                    className="rhythm-tooltip"
+                    initial={false}
+                    animate={{ left: tooltipLeft, opacity: 1, y: 0 }}
+                    transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
+                  >
+                    <p>{hoveredRhythm.label}</p>
+                    <div>
+                      <strong>{hoveredRhythm.focusedMinutes}m</strong>
+                      <span>Focus time</span>
+                    </div>
+                    <div>
+                      <strong>{hoveredRhythm.avgStress ?? '--'}</strong>
+                      <span>Avg stress</span>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+              <div className="rhythm-labels" style={{ gridTemplateColumns: `repeat(${rhythmData.length}, minmax(0, 1fr))` }}>
+                {rhythmData.map((item, index) => (
+                  <span key={item.label} className={index === rhythmBestIndex ? 'is-best' : ''}>{item.label}</span>
+                ))}
+              </div>
+            </div>
+            <div className="rhythm-legend">
+              <span><i className="focus" />Focused time</span>
+              <span><i className="stress" />Avg stress</span>
+            </div>
+          </>
+        ) : (
+          <p className="main-empty focus-pattern-empty">
+            Rhythm chart unlocks after {patternSessionsNeeded} more focus {patternSessionsNeeded === 1 ? 'session' : 'sessions'}.
+          </p>
+        )}
       </motion.section>
 
       <motion.section className="overview-section focus-log session-log" variants={staggerItem(0.16)} initial="hidden" animate="visible">
