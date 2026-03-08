@@ -6,15 +6,37 @@ import cv2
 import mediapipe as mp
 
 
+def _build_face_detector(min_detection_confidence: float):
+    try:
+        return mp.solutions.face_detection.FaceDetection(
+            model_selection=0,
+            min_detection_confidence=min_detection_confidence,
+        )
+    except AttributeError:
+        pass
+
+    try:
+        from mediapipe.python.solutions import face_detection
+
+        return face_detection.FaceDetection(
+            model_selection=0,
+            min_detection_confidence=min_detection_confidence,
+        )
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        "MediaPipe FaceDetection is unavailable. "
+        "Install a compatible mediapipe version."
+    )
+
+
 def detect_presence(camera_index: int = 0, min_detection_confidence: float = 0.5) -> bool:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return False
 
-    face_detector = mp.solutions.face_detection.FaceDetection(
-        model_selection=0,
-        min_detection_confidence=min_detection_confidence,
-    )
+    face_detector = _build_face_detector(min_detection_confidence)
 
     try:
         ok, frame = cap.read()
