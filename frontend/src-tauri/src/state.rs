@@ -26,6 +26,8 @@ pub struct AppSettings {
     pub daily_report_hour: u32,
     pub daily_report_minute: u32,
     pub onboarding_completed: bool,
+    pub plan_tier: String,
+    pub license_key: String,
 }
 
 impl Default for AppSettings {
@@ -37,6 +39,8 @@ impl Default for AppSettings {
             daily_report_hour: 21,
             daily_report_minute: 0,
             onboarding_completed: false,
+            plan_tier: "free".to_string(),
+            license_key: String::new(),
         }
     }
 }

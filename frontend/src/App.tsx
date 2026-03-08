@@ -54,6 +54,8 @@ type AppSettings = {
   daily_report_hour: number
   daily_report_minute: number
   onboarding_completed: boolean
+  plan_tier: 'free' | 'pro'
+  license_key: string
 }
 
 type BreathingPatternId = 'box' | 'four-seven-eight'
@@ -169,6 +171,7 @@ const EXERCISE_LIBRARY: Exercise[] = [
     steps: ['Sit with both feet grounded.', 'Reach one arm overhead and lean to opposite side.', 'Hold 15 seconds per side for 4 rounds.'],
   },
 ]
+const FREE_EXERCISE_IDS = new Set(['chin-tuck', 'scap-squeeze'])
 
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
@@ -289,6 +292,8 @@ function MainWindowShell({
   const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
   const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
   const [exerciseMetrics, setExerciseMetrics] = useState<PostureStreamFrame['exercise_metrics']>(null)
+  const [licenseInput, setLicenseInput] = useState('')
+  const [paywallMessage, setPaywallMessage] = useState<string | null>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
@@ -338,6 +343,8 @@ function MainWindowShell({
     [spaceFilter, difficultyFilter, durationFilter, targetFilter],
   )
   const selectedExercise = filteredExercises.find((exercise) => exercise.id === selectedExerciseId) ?? filteredExercises[0] ?? null
+  const isPro = settings?.plan_tier === 'pro'
+  const selectedExerciseProOnly = Boolean(selectedExercise && !FREE_EXERCISE_IDS.has(selectedExercise.id))
 
   useEffect(() => {
     const shouldStream = tab === 'posture' || (tab === 'exercises' && exerciseGuidedActive)
@@ -587,6 +594,7 @@ function MainWindowShell({
                       setSelectedExerciseId(exercise.id)
                       setExerciseFeedback(null)
                       setExerciseMetrics(null)
+                      setPaywallMessage(null)
                     }}
                   >
                     <p className="exercise-name">{exercise.name}</p>
@@ -595,9 +603,10 @@ function MainWindowShell({
                       <span>{exercise.duration_minutes} min</span>
                       <span>{exercise.difficulty}</span>
                       <span>{exercise.space === 'desk' ? 'on spot' : 'needs room'}</span>
+                      {!FREE_EXERCISE_IDS.has(exercise.id) && <span>pro</span>}
                     </div>
                   </button>
-                  ))
+                ))
                 )}
               </section>
               <section className="exercise-detail">
@@ -617,7 +626,15 @@ function MainWindowShell({
                       <button
                         className="btn-solid"
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          if (!isPro) {
+                            setPaywallMessage('Guided sets are a Pro feature. Add your license key in Settings.')
+                            return
+                          }
+                          if (selectedExerciseProOnly) {
+                            setPaywallMessage('This exercise requires Pro.')
+                            return
+                          }
                           setExerciseGuidedActive((v) => {
                             const next = !v
                             if (!next) {
@@ -626,7 +643,7 @@ function MainWindowShell({
                             }
                             return next
                           })
-                        }
+                        }}
                       >
                         {exerciseGuidedActive ? 'Stop guided set' : 'Start guided set'}
                       </button>
@@ -673,7 +690,9 @@ function MainWindowShell({
                         ) : null}
                       </div>
                     )}
-                    <p className="exercise-note">{exerciseFeedback ?? 'Live form feedback will appear here while guided mode runs.'}</p>
+                    <p className="exercise-note">
+                      {paywallMessage ?? exerciseFeedback ?? 'Live form feedback will appear here while guided mode runs.'}
+                    </p>
                   </>
                 ) : (
                   <p className="main-empty">Adjust filters to pick an exercise.</p>
@@ -687,6 +706,38 @@ function MainWindowShell({
           <>
             <h1>Settings</h1>
             <section className="prefs-panel main-settings">
+              <div className="prefs-row">
+                <label>Plan</label>
+                <strong>{isPro ? 'Pro' : 'Free'}</strong>
+              </div>
+              <div className="prefs-row">
+                <label>License key</label>
+                <input
+                  type="text"
+                  value={licenseInput}
+                  placeholder={settings?.license_key ? `Current: ${settings.license_key.slice(0, 8)}...` : 'Enter Lemon Squeezy key'}
+                  onChange={(e) => setLicenseInput(e.target.value)}
+                />
+              </div>
+              <div className="prefs-actions">
+                <button
+                  className="btn-solid"
+                  onClick={() =>
+                    void updateSettings({
+                      license_key: licenseInput.trim(),
+                      plan_tier: licenseInput.trim().length > 10 ? 'pro' : 'free',
+                    })
+                  }
+                >
+                  Activate
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => void updateSettings({ license_key: '', plan_tier: 'free' })}
+                >
+                  Remove key
+                </button>
+              </div>
               {!calibration?.calibrated && (
                 <p className="prefs-note">Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.</p>
               )}
