@@ -1,9 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use chrono::{Datelike, Local, Timelike};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{
@@ -21,6 +22,11 @@ struct SessionState {
 #[derive(Default)]
 struct NotificationState {
     suppress_until_unix: AtomicU64,
+}
+
+#[derive(Default)]
+struct ReportState {
+    last_notified_ymd: AtomicU32,
 }
 
 fn project_root() -> PathBuf {
@@ -183,6 +189,38 @@ fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
     parse_json_line(&stdout)
 }
 
+fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let report_script = root.join("backend").join("report_aggregator.py");
+    if !report_script.is_file() {
+        return Err(format!("Missing script: {}", report_script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(report_script);
+    if let Some(date) = date_iso {
+        cmd.arg("--date").arg(date);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run daily report: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Daily report failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 fn stress_index_from_result(result: &Value) -> Option<u8> {
     let emotion = result
         .get("dominant_emotion")
@@ -317,6 +355,13 @@ async fn run_session_history(limit: Option<u32>) -> Result<Value, String> {
         .map_err(|e| format!("History task join error: {e}"))?
 }
 
+#[tauri::command]
+async fn run_daily_report(date_iso: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_daily_report_blocking(date_iso))
+        .await
+        .map_err(|e| format!("Report task join error: {e}"))?
+}
+
 fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
     thread::spawn(move || {
@@ -363,11 +408,54 @@ fn start_scheduler(app: &tauri::AppHandle) {
     });
 }
 
+fn start_daily_report_trigger(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(30));
+
+            let now = Local::now();
+            if now.hour() != 21 || now.minute() != 0 {
+                continue;
+            }
+
+            let ymd = (now.year() as u32) * 10_000 + now.month() * 100 + now.day();
+            let report_state = app_handle.state::<ReportState>();
+            let already = report_state.last_notified_ymd.load(Ordering::SeqCst);
+            if already == ymd {
+                continue;
+            }
+            report_state.last_notified_ymd.store(ymd, Ordering::SeqCst);
+
+            match run_daily_report_blocking(None) {
+                Ok(report) => {
+                    let _ = app_handle.notification().builder()
+                        .title("Zeno Daily Report")
+                        .body("Your daily report is ready.")
+                        .show();
+                    let _ = app_handle.emit("report-ready", report);
+                }
+                Err(err_msg) => {
+                    let _ = app_handle.emit(
+                        "report-error",
+                        serde_json::json!({ "error": err_msg }),
+                    );
+                }
+            }
+        }
+    });
+}
+
 fn main() {
     let app_builder = tauri::Builder::default()
         .manage(SessionState::default())
         .manage(NotificationState::default())
-        .invoke_handler(tauri::generate_handler![run_python_session, run_session_history])
+        .manage(ReportState::default())
+        .invoke_handler(tauri::generate_handler![
+            run_python_session,
+            run_session_history,
+            run_daily_report
+        ])
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -415,6 +503,7 @@ fn main() {
                 .build(app)?;
 
             start_scheduler(&app.app_handle());
+            start_daily_report_trigger(&app.app_handle());
 
             Ok(())
         });
