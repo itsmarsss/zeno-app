@@ -1,0 +1,63 @@
+.panel {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 16px;
+  background: linear-gradient(180deg, #f2f8ff 0%, #eaf5f2 100%);
+  color: #0f172a;
+  font-family: "SF Pro Text", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panel__header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.panel__section {
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid #d8e7e3;
+  margin-bottom: 12px;
+}
+
+.panel__section h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.panel__section p {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.panel__section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.muted {
+  color: #475569;
+}
+
+.panel__footer {
+  color: #64748b;
+  font-size: 12px;
+}
