@@ -224,6 +224,9 @@
   fill: none;
   stroke: var(--state-calm);
   stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .posture-threshold-label {

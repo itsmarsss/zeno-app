@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Check, CheckCircle2, ChevronRight, Download, ExternalLink, Loader2, Trash2 } from 'lucide-react'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
 import './SettingsTab.css'
+import { easeOut } from '../../shared/motion'
 
 type SelectKey = 'frequency' | 'focus_warning' | 'nudge_gap' | 'report_time' | 'start_mode'
 
@@ -234,39 +236,55 @@ export function SettingsTab({
             <span className={isPro ? 'settings-license-ok' : ''}>{isPro ? 'Pro · Active' : 'Not activated'} {isPro ? <CheckCircle2 size={14} /> : <ChevronRight size={14} />}</span>
           </button>
 
-          {licenseExpanded && (
-            <div className="settings-inline-block">
-              <label>Enter your license key</label>
-              {!isPro ? (
-                <>
-                  <input
-                    value={licenseInput}
-                    onChange={(event) => setLicenseInput(event.target.value)}
-                    placeholder="ZENO-XXXX-XXXX-XXXX"
-                  />
-                  {licenseError ? <p className="settings-inline-error">{licenseError}</p> : null}
-                  <button className="btn-solid" disabled={licenseInput.trim().length === 0} onClick={() => void activateLicense()}>Activate</button>
-                </>
-              ) : (
-                <p className="settings-license-success"><CheckCircle2 size={16} /> Zeno Pro activated</p>
-              )}
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {licenseExpanded && (
+              <motion.div
+                className="settings-inline-block"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={easeOut}
+              >
+                <label>Enter your license key</label>
+                {!isPro ? (
+                  <>
+                    <input
+                      value={licenseInput}
+                      onChange={(event) => setLicenseInput(event.target.value)}
+                      placeholder="ZENO-XXXX-XXXX-XXXX"
+                    />
+                    {licenseError ? <p className="settings-inline-error">{licenseError}</p> : null}
+                    <button className="btn-solid" disabled={licenseInput.trim().length === 0} onClick={() => void activateLicense()}>Activate</button>
+                  </>
+                ) : (
+                  <p className="settings-license-success"><CheckCircle2 size={16} /> Zeno Pro activated</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <button className="settings-row settings-row--danger" onClick={() => setClearExpanded((value) => !value)}>
             <div><strong>Clear all data</strong><p>Permanently delete your history and baseline</p></div>
             <span><Trash2 size={14} /></span>
           </button>
 
-          {clearExpanded && (
-            <div className="settings-inline-block settings-inline-block--danger">
-              <p>This will delete all session history, posture data, and your personal baseline. This cannot be undone.</p>
-              <div className="settings-inline-actions">
-                <button className="btn-ghost" onClick={() => setClearExpanded(false)}>Cancel</button>
-                <button className="btn-danger" onClick={() => void clearAllData()}>Delete everything</button>
-              </div>
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {clearExpanded && (
+              <motion.div
+                className="settings-inline-block settings-inline-block--danger"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={easeOut}
+              >
+                <p>This will delete all session history, posture data, and your personal baseline. This cannot be undone.</p>
+                <div className="settings-inline-actions">
+                  <button className="btn-ghost" onClick={() => setClearExpanded(false)}>Cancel</button>
+                  <button className="btn-danger" onClick={() => void clearAllData()}>Delete everything</button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </section>
 
@@ -305,26 +323,42 @@ export function SettingsTab({
       <p className="settings-footer-note">Last run: {lastRunSource ?? 'none'}</p>
       {error && <p className="settings-footer-error">{error}</p>}
 
-      {activeSheet && (
-        <div className="settings-sheet-wrap" onClick={() => setActiveSheet(null)}>
-          <div className="settings-sheet" onClick={(event) => event.stopPropagation()}>
-            <div className="settings-sheet-handle" />
-            <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
-            <div className="settings-sheet-list">
-              {SELECT_OPTIONS[activeSheet].map((option) => {
-                const selected = option.value === selectValues[activeSheet]
-                return (
-                  <button key={option.value} onClick={() => void applySelect(activeSheet, option.value)}>
-                    <span className={selected ? 'is-selected' : ''}>{option.label}</span>
-                    {selected ? <Check size={14} /> : null}
-                  </button>
-                )
-              })}
-            </div>
-            <button className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {activeSheet && (
+          <motion.div
+            className="settings-sheet-wrap"
+            onClick={() => setActiveSheet(null)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.div
+              className="settings-sheet"
+              onClick={(event) => event.stopPropagation()}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={easeOut}
+            >
+              <div className="settings-sheet-handle" />
+              <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
+              <div className="settings-sheet-list">
+                {SELECT_OPTIONS[activeSheet].map((option) => {
+                  const selected = option.value === selectValues[activeSheet]
+                  return (
+                    <button key={option.value} onClick={() => void applySelect(activeSheet, option.value)}>
+                      <span className={selected ? 'is-selected' : ''}>{option.label}</span>
+                      {selected ? <Check size={14} /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+              <button className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>Cancel</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   )
 }

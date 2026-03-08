@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { CameraOff, Check, CheckCircle, ChevronRight } from 'lucide-react'
 import { EXERCISE_LIBRARY } from '../../shared/constants'
 import type { PostureLandmarks, SessionHistoryItem } from '../../shared/types'
 import { PostureFrame } from '../common/PostureFrame'
 import './PostureTab.css'
+import { staggerItem } from '../../shared/motion'
 
 type IssueKey = 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
 
@@ -120,7 +122,7 @@ export function PostureTab({
     <>
       <h1>Posture</h1>
 
-      <section className="posture-live-grid">
+      <motion.section className="posture-live-grid" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div className="posture-feed-wrap">
           <PostureFrame frame={postureFrame} landmarks={postureLandmarks} alt="Posture stream" className="posture-preview posture-preview--live" />
           {!postureFrame && (
@@ -129,10 +131,10 @@ export function PostureTab({
               <p>Camera inactive</p>
             </div>
           )}
-          <div className="posture-live-badge">
+          <motion.div className="posture-live-badge" layout>
             <span />
             {postureStreamState === 'running' ? 'Live' : postureStreamState === 'connecting' ? 'Starting' : 'Ready'}
-          </div>
+          </motion.div>
           <div className="posture-feed-gradient">
             <div className="posture-score-badge">
               <strong>{liveScore}</strong>
@@ -144,8 +146,30 @@ export function PostureTab({
         <div className="posture-coaching">
           <div>
             <p className="posture-eyebrow">right now</p>
-            <h2 className={`posture-status is-${status.tone}`}>{status.title}</h2>
-            <p className="posture-status-sub">{status.detail}</p>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.h2
+                key={status.title}
+                className={`posture-status is-${status.tone}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {status.title}
+              </motion.h2>
+            </AnimatePresence>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.p
+                key={status.detail}
+                className="posture-status-sub"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {status.detail}
+              </motion.p>
+            </AnimatePresence>
 
             <hr />
 
@@ -174,9 +198,9 @@ export function PostureTab({
             <p className="posture-all-good"><Check size={16} /> Looking good</p>
           )}
         </div>
-      </section>
+      </motion.section>
 
-      <section className="posture-card">
+      <motion.section className="posture-card" variants={staggerItem(0.04)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>Posture over time</h3>
           <div className="period-toggle posture-period-toggle">
@@ -201,9 +225,9 @@ export function PostureTab({
           </svg>
           <span className="posture-threshold-label">Good threshold</span>
         </div>
-      </section>
+      </motion.section>
 
-      <section className="posture-card">
+      <motion.section className="posture-card" variants={staggerItem(0.08)} initial="hidden" animate="visible">
         <h3>Common issues</h3>
         {issueCounts.total === 0 ? (
           <p className="posture-empty"><CheckCircle size={16} /> No recurring issues detected</p>
@@ -219,9 +243,9 @@ export function PostureTab({
             ))}
           </div>
         )}
-      </section>
+      </motion.section>
 
-      <section className="posture-card posture-reco-card">
+      <motion.section className="posture-card posture-reco-card" variants={staggerItem(0.12)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>Recommended for you</h3>
           <button className="posture-see-all" onClick={onSeeAllExercises}>See all <ChevronRight size={12} /></button>
@@ -236,7 +260,7 @@ export function PostureTab({
             </article>
           ))}
         </div>
-      </section>
+      </motion.section>
 
       {postureStreamError ? <p className="main-empty">{postureStreamError}</p> : null}
     </>

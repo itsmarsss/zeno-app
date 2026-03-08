@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Clock3, Play, Search } from 'lucide-react'
 import { PostureFrame } from '../common/PostureFrame'
 import type { Exercise, PostureLandmarks, PostureStreamFrame } from '../../shared/types'
 import './ExercisesTab.css'
+import { easeOut, springToggle } from '../../shared/motion'
 
 type ExerciseCategory = 'all' | 'neck' | 'shoulders' | 'upper-back' | 'eyes' | 'breathing'
 
@@ -91,9 +93,17 @@ export function ExercisesTab({
   const phaseSeconds = Math.max(0, 10 - Math.min(10, exerciseMetrics?.hold_seconds ?? 0))
   const progressPct = Math.max(0, Math.min(100, Math.round(exerciseMetrics?.progress_pct ?? 0)))
 
-  if (exerciseGuidedActive && selectedExercise) {
-    return (
-      <section className="exercise-active">
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      {exerciseGuidedActive && selectedExercise ? (
+        <motion.section
+          key="exercise-active"
+          className="exercise-active"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={easeOut}
+        >
         <div className="exercise-active-feed">
           <PostureFrame frame={postureFrame} landmarks={postureLandmarks} alt="Active exercise stream" className="exercise-active-video" />
 
@@ -101,8 +111,21 @@ export function ExercisesTab({
           <div className="exercise-rep-badge">Rep {repCount} of {repTarget}</div>
 
           <div className="exercise-overlay-bottom">
-            <p className="exercise-overlay-msg">{activeInstruction}</p>
-            <div className="exercise-overlay-progress"><i style={{ width: `${progressPct}%` }} /></div>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.p
+                key={activeInstruction}
+                className="exercise-overlay-msg"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeInstruction}
+              </motion.p>
+            </AnimatePresence>
+            <div className="exercise-overlay-progress">
+              <motion.i style={{ width: `${progressPct}%` }} transition={springToggle} />
+            </div>
           </div>
         </div>
 
@@ -114,7 +137,18 @@ export function ExercisesTab({
 
           <div className="exercise-phase-hero">
             <p className="exercise-phase-label">Current phase</p>
-            <p className="exercise-phase-text">{activeInstruction}</p>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.p
+                key={`phase-${activeInstruction}`}
+                className="exercise-phase-text"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeInstruction}
+              </motion.p>
+            </AnimatePresence>
 
             <div className="exercise-timer-row">
               <p className="exercise-timer">{phaseSeconds}</p>
@@ -131,7 +165,12 @@ export function ExercisesTab({
             <p>Exercise progress</p>
             <div className="exercise-phase-dots">
               {selectedExercise.steps.map((step, index) => (
-                <i key={step} className={index <= Math.floor((progressPct / 100) * (selectedExercise.steps.length - 1)) ? 'is-done' : ''} />
+                <motion.i
+                  key={step}
+                  className={index <= Math.floor((progressPct / 100) * (selectedExercise.steps.length - 1)) ? 'is-done' : ''}
+                  layout
+                  transition={springToggle}
+                />
               ))}
             </div>
           </div>
@@ -144,12 +183,15 @@ export function ExercisesTab({
                 : paywallMessage ?? 'Waiting for camera feed...'}
           </p>
         </aside>
-      </section>
-    )
-  }
-
-  return (
-    <>
+        </motion.section>
+      ) : (
+        <motion.div
+          key="exercise-grid"
+          initial={{ opacity: 0, scale: 0.99 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={easeOut}
+        >
       <header className="exercise-header">
         <h1>Exercises</h1>
         <p>Simple movements for desk workers</p>
@@ -210,6 +252,8 @@ export function ExercisesTab({
           )
         })}
       </section>
-    </>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

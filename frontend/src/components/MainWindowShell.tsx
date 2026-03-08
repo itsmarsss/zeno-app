@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { AnimatePresence, motion } from 'framer-motion'
 import { FocusHistoryTab } from './focus/FocusHistoryTab'
 import { OverviewTab } from './overview/OverviewTab'
 import { PostureTab } from './posture/PostureTab'
@@ -24,6 +25,7 @@ import {
   type FocusPeriod,
 } from '../shared/dashboard'
 import { useAppSettings } from '../context/AppSettingsContext'
+import { fadeSlide } from '../shared/motion'
 import './MainWindowShell.css'
 
 const HOUR_START = 6
@@ -320,98 +322,110 @@ export function MainWindowShell({
       <SidebarNav tab={tab} setTab={setTab} />
 
       <section className="main-content">
-        {tab === 'overview' && (
-          <OverviewTab
-            now={now}
-            heroHeadline={heroHeadline}
-            heroSubline={heroSubline}
-            avgStressToday={avgStressToday}
-            stressDeltaVsYesterday={stressDeltaVsYesterday}
-            heroTrendTone={heroTrendTone}
-            todayFocusedMinutes={todayFocusedMinutes}
-            avgHrToday={avgHrToday}
-            hrDeltaBaseline={hrDeltaBaseline}
-            todayBreakCount={todayBreakCount}
-            todaySessions={todaySessions}
-            timelineData={timelineData}
-            chartHoverIndex={chartHoverIndex}
-            setChartHoverIndex={setChartHoverIndex}
-            timelineAreaPath={timelineAreaPath}
-            timelineStressPath={timelineStressPath}
-            timelineHeartPath={timelineHeartPath}
-            insights={insights}
-            secondaryMetricSeries={secondaryMetricSeries}
-            dailyReport={dailyReport}
-          />
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          {tab === 'overview' && (
+            <motion.div key="tab-overview" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <OverviewTab
+                now={now}
+                heroHeadline={heroHeadline}
+                heroSubline={heroSubline}
+                avgStressToday={avgStressToday}
+                stressDeltaVsYesterday={stressDeltaVsYesterday}
+                heroTrendTone={heroTrendTone}
+                todayFocusedMinutes={todayFocusedMinutes}
+                avgHrToday={avgHrToday}
+                hrDeltaBaseline={hrDeltaBaseline}
+                todayBreakCount={todayBreakCount}
+                todaySessions={todaySessions}
+                timelineData={timelineData}
+                chartHoverIndex={chartHoverIndex}
+                setChartHoverIndex={setChartHoverIndex}
+                timelineAreaPath={timelineAreaPath}
+                timelineStressPath={timelineStressPath}
+                timelineHeartPath={timelineHeartPath}
+                insights={insights}
+                secondaryMetricSeries={secondaryMetricSeries}
+                dailyReport={dailyReport}
+              />
+            </motion.div>
+          )}
 
-        {tab === 'focus' && (
-          <FocusHistoryTab
-            focusPeriod={focusPeriod}
-            setFocusPeriod={setFocusPeriod}
-            periodSessionCount={periodSessionCount}
-            periodFocusedMinutes={periodFocusedMinutes}
-            periodAvgStress={periodAvgStress}
-            focusHeroDeltaTime={focusHeroDeltaTime}
-            focusHeroDeltaStress={focusHeroDeltaStress}
-            focusHeroDeltaSessions={focusHeroDeltaSessions}
-            heatmapData={heatmapData}
-            focusPatternCallout={focusPatternCallout}
-            rhythmData={rhythmData}
-            rhythmMaxMinutes={rhythmMaxMinutes}
-            rhythmStressPath={rhythmStressPath}
-            rhythmBestIndex={rhythmBestIndex}
-            focusSessionsSorted={focusSessionsSorted}
-            expandedSessionId={expandedSessionId}
-            setExpandedSessionId={setExpandedSessionId}
-            sortNewestFirst={sortNewestFirst}
-            setSortNewestFirst={setSortNewestFirst}
-          />
-        )}
+          {tab === 'focus' && (
+            <motion.div key="tab-focus" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <FocusHistoryTab
+                focusPeriod={focusPeriod}
+                setFocusPeriod={setFocusPeriod}
+                periodSessionCount={periodSessionCount}
+                periodFocusedMinutes={periodFocusedMinutes}
+                periodAvgStress={periodAvgStress}
+                focusHeroDeltaTime={focusHeroDeltaTime}
+                focusHeroDeltaStress={focusHeroDeltaStress}
+                focusHeroDeltaSessions={focusHeroDeltaSessions}
+                heatmapData={heatmapData}
+                focusPatternCallout={focusPatternCallout}
+                rhythmData={rhythmData}
+                rhythmMaxMinutes={rhythmMaxMinutes}
+                rhythmStressPath={rhythmStressPath}
+                rhythmBestIndex={rhythmBestIndex}
+                focusSessionsSorted={focusSessionsSorted}
+                expandedSessionId={expandedSessionId}
+                setExpandedSessionId={setExpandedSessionId}
+                sortNewestFirst={sortNewestFirst}
+                setSortNewestFirst={setSortNewestFirst}
+              />
+            </motion.div>
+          )}
 
-        {tab === 'posture' && (
-          <PostureTab
-            postureStreamState={postureStreamState}
-            postureScoreLive={postureScoreLive}
-            postureFrame={postureFrame}
-            postureLandmarks={postureLandmarks}
-            postureStreamError={postureStreamError}
-            history={history}
-            onSeeAllExercises={openExercisesTab}
-            onStartExercise={startExerciseFromPosture}
-          />
-        )}
+          {tab === 'posture' && (
+            <motion.div key="tab-posture" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <PostureTab
+                postureStreamState={postureStreamState}
+                postureScoreLive={postureScoreLive}
+                postureFrame={postureFrame}
+                postureLandmarks={postureLandmarks}
+                postureStreamError={postureStreamError}
+                history={history}
+                onSeeAllExercises={openExercisesTab}
+                onStartExercise={startExerciseFromPosture}
+              />
+            </motion.div>
+          )}
 
-        {tab === 'exercises' && (
-          <ExercisesTab
-            exercises={EXERCISE_LIBRARY}
-            selectedExerciseId={selectedExerciseId}
-            setSelectedExerciseId={setSelectedExerciseId}
-            exerciseGuidedActive={exerciseGuidedActive}
-            toggleGuided={toggleGuidedExercise}
-            postureStreamState={postureStreamState}
-            exerciseMetrics={exerciseMetrics}
-            postureFrame={postureFrame}
-            postureLandmarks={postureLandmarks}
-            exerciseFeedback={exerciseFeedback}
-            paywallMessage={paywallMessage}
-          />
-        )}
+          {tab === 'exercises' && (
+            <motion.div key="tab-exercises" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <ExercisesTab
+                exercises={EXERCISE_LIBRARY}
+                selectedExerciseId={selectedExerciseId}
+                setSelectedExerciseId={setSelectedExerciseId}
+                exerciseGuidedActive={exerciseGuidedActive}
+                toggleGuided={toggleGuidedExercise}
+                postureStreamState={postureStreamState}
+                exerciseMetrics={exerciseMetrics}
+                postureFrame={postureFrame}
+                postureLandmarks={postureLandmarks}
+                exerciseFeedback={exerciseFeedback}
+                paywallMessage={paywallMessage}
+              />
+            </motion.div>
+          )}
 
-        {tab === 'settings' && (
-          <SettingsTab
-            settings={settings}
-            updateSettings={updateSettings}
-            isPro={isPro}
-            licenseInput={licenseInput}
-            setLicenseInput={setLicenseInput}
-            calibration={calibration}
-            replayOnboarding={replayOnboarding}
-            clearAllData={clearAllData}
-            lastRunSource={lastRunSource}
-            error={error}
-          />
-        )}
+          {tab === 'settings' && (
+            <motion.div key="tab-settings" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <SettingsTab
+                settings={settings}
+                updateSettings={updateSettings}
+                isPro={isPro}
+                licenseInput={licenseInput}
+                setLicenseInput={setLicenseInput}
+                calibration={calibration}
+                replayOnboarding={replayOnboarding}
+                clearAllData={clearAllData}
+                lastRunSource={lastRunSource}
+                error={error}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
     </main>
   )

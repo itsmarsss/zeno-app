@@ -1,25 +1,3 @@
-.overview-section {
-  opacity: 0;
-  transform: translateY(10px);
-  animation: sectionReveal 400ms ease forwards;
-}
-
-@keyframes sectionReveal {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.hero-band { animation-delay: 0ms; }
-.narrative-strip { animation-delay: 60ms; }
-.primary-chart { animation-delay: 120ms; }
-.insight-cards { animation-delay: 180ms; }
-.secondary-metrics { animation-delay: 240ms; }
-.session-log { animation-delay: 300ms; }
-.period-summary { animation-delay: 0ms; }
-.heatmap { animation-delay: 80ms; }
-.rhythm-chart { animation-delay: 160ms; }
-.focus-log { animation-delay: 240ms; }
-
 .hero-band {
   margin-top: 4px;
   margin-bottom: 24px;
@@ -181,6 +159,9 @@
   fill: none;
   stroke: var(--accent);
   stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .timeline-heart {
@@ -188,6 +169,9 @@
   stroke: var(--border-default);
   stroke-dasharray: 3 3;
   stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .timeline-breath {

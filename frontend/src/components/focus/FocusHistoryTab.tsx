@@ -1,7 +1,9 @@
 import { ChevronRight, Zap } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
+import { staggerItem } from '../../shared/motion'
 import {
   type FocusPeriod,
   buildAreaPath,
@@ -59,7 +61,7 @@ export function FocusHistoryTab({
 }) {
   return (
     <>
-      <section className="focus-header overview-section">
+      <motion.section className="focus-header overview-section" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div>
           <h1>{periodTitle(focusPeriod)}</h1>
         </div>
@@ -70,9 +72,9 @@ export function FocusHistoryTab({
             </button>
           ))}
         </div>
-      </section>
+      </motion.section>
 
-      <section className="overview-section period-summary">
+      <motion.section className="overview-section period-summary" variants={staggerItem(0.04)} initial="hidden" animate="visible">
         <article>
           <p>Total focused time</p>
           <strong>{formatMinutes(periodFocusedMinutes)}</strong>
@@ -91,9 +93,9 @@ export function FocusHistoryTab({
           <span>Focus sessions</span>
           <em className={focusHeroDeltaSessions >= 0 ? 'delta-positive' : 'delta-negative'}>{focusHeroDeltaSessions >= 0 ? '↑' : '↓'} {Math.abs(focusHeroDeltaSessions)}% from previous period</em>
         </article>
-      </section>
+      </motion.section>
 
-      <section className="overview-section heatmap">
+      <motion.section className="overview-section heatmap" variants={staggerItem(0.08)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>When you focus best</h3>
           <span className="heatmap-legend"><i className="calm" />Low stress <i className="high" />High stress</span>
@@ -128,9 +130,9 @@ export function FocusHistoryTab({
         {focusPatternCallout && (
           <p className="heatmap-callout"><Zap size={13} /> {focusPatternCallout}</p>
         )}
-      </section>
+      </motion.section>
 
-      <section className="overview-section rhythm-chart">
+      <motion.section className="overview-section rhythm-chart" variants={staggerItem(0.12)} initial="hidden" animate="visible">
         <h3>Daily rhythm</h3>
         <div className="rhythm-canvas">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
@@ -154,9 +156,9 @@ export function FocusHistoryTab({
           <span><i className="focus" />Focused time</span>
           <span><i className="stress" />Avg stress</span>
         </div>
-      </section>
+      </motion.section>
 
-      <section className="overview-section focus-log session-log">
+      <motion.section className="overview-section focus-log session-log" variants={staggerItem(0.16)} initial="hidden" animate="visible">
         <div className="focus-log-head">
           <h3>Sessions</h3>
           <span>{periodSessionCount} this period</span>
@@ -190,27 +192,37 @@ export function FocusHistoryTab({
                     </span>
                     <ChevronRight size={14} className="focus-chevron" />
                   </button>
-                  <div className="focus-row-expand">
-                    <div className="focus-mini-chart"><svg viewBox="0 0 100 32" preserveAspectRatio="none"><path d={buildAreaPath([stress - 8, stress - 3, stress + 6, stress - 2, stress], 0, 100, 100, 32)} /></svg></div>
-                    <div className="focus-stats-list">
-                      <p><span>Duration</span><strong>{formatDurationSeconds(item.session_duration_seconds)}</strong></p>
-                      <p><span>Avg heart rate</span><strong>{item.heart_rate_bpm == null ? '--' : `${Math.round(item.heart_rate_bpm)} bpm`}</strong></p>
-                      <p><span>Posture score</span><strong>{Math.round(item.posture_score * 100)} / 100</strong></p>
-                      <p><span>Emotion</span><strong>{item.dominant_emotion}</strong></p>
-                    </div>
-                    <div className="focus-events">
-                      <p>Events</p>
-                      <span className="event-breath">Breathing check · {item.heart_rate_bpm == null ? '--' : Math.round(item.heart_rate_bpm)} bpm</span>
-                      <span className="event-break">Break marker · {Math.max(1, Math.round(item.session_duration_seconds / 300))} checks</span>
-                      <span className="event-posture">Posture alert · {friendlyPosture(item.posture_score)}</span>
-                    </div>
-                  </div>
+                  <AnimatePresence initial={false}>
+                    {expanded && (
+                      <motion.div
+                        className="focus-row-expand"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                      >
+                        <div className="focus-mini-chart"><svg viewBox="0 0 100 32" preserveAspectRatio="none"><path d={buildAreaPath([stress - 8, stress - 3, stress + 6, stress - 2, stress], 0, 100, 100, 32)} /></svg></div>
+                        <div className="focus-stats-list">
+                          <p><span>Duration</span><strong>{formatDurationSeconds(item.session_duration_seconds)}</strong></p>
+                          <p><span>Avg heart rate</span><strong>{item.heart_rate_bpm == null ? '--' : `${Math.round(item.heart_rate_bpm)} bpm`}</strong></p>
+                          <p><span>Posture score</span><strong>{Math.round(item.posture_score * 100)} / 100</strong></p>
+                          <p><span>Emotion</span><strong>{item.dominant_emotion}</strong></p>
+                        </div>
+                        <div className="focus-events">
+                          <p>Events</p>
+                          <span className="event-breath">Breathing check · {item.heart_rate_bpm == null ? '--' : Math.round(item.heart_rate_bpm)} bpm</span>
+                          <span className="event-break">Break marker · {Math.max(1, Math.round(item.session_duration_seconds / 300))} checks</span>
+                          <span className="event-posture">Posture alert · {friendlyPosture(item.posture_score)}</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </article>
               )
             })}
           </div>
         )}
-      </section>
+      </motion.section>
     </>
   )
 }

@@ -1,7 +1,9 @@
 import { Activity, TrendingUp, User } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
 import './OverviewTab.css'
+import { staggerItem } from '../../shared/motion'
 import {
   type DeltaTone,
   type InsightCard,
@@ -80,7 +82,7 @@ export function OverviewTab({
 
   return (
     <>
-      <section className="overview-section hero-band">
+      <motion.section className="overview-section hero-band" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div className="hero-left">
           <p className="hero-date">{now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}</p>
           <h1>{heroHeadline}</h1>
@@ -92,9 +94,9 @@ export function OverviewTab({
           <p className="hero-stress-label">stress index</p>
           <p className={`hero-stress-trend is-${heroTrendTone}`}>{formatDelta(stressDeltaVsYesterday)}</p>
         </div>
-      </section>
+      </motion.section>
 
-      <section className="overview-section narrative-strip">
+      <motion.section className="overview-section narrative-strip" variants={staggerItem(0.04)} initial="hidden" animate="visible">
         <article className="narrative-tile">
           <p className="narrative-value">{formatMinutes(todayFocusedMinutes)}</p>
           <p className="narrative-label">Focused Time</p>
@@ -116,9 +118,9 @@ export function OverviewTab({
             {todayBreakCount >= 2 ? 'All genuine' : 'Could use one more break'}
           </p>
         </article>
-      </section>
+      </motion.section>
 
-      <section className="overview-section primary-chart">
+      <motion.section className="overview-section primary-chart" variants={staggerItem(0.08)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>Today</h3>
           <span>{`${formatHourLabel(6)} - now`}</span>
@@ -170,9 +172,9 @@ export function OverviewTab({
             </div>
           </div>
         )}
-      </section>
+      </motion.section>
 
-      <section className="overview-section insight-cards">
+      <motion.section className="overview-section insight-cards" variants={staggerItem(0.12)} initial="hidden" animate="visible">
         {insights.map((card) => {
           const Icon = card.icon === 'trending' ? TrendingUp : card.icon === 'activity' ? Activity : User
           return (
@@ -184,9 +186,9 @@ export function OverviewTab({
             </article>
           )
         })}
-      </section>
+      </motion.section>
 
-      <section className="overview-section secondary-metrics">
+      <motion.section className="overview-section secondary-metrics" variants={staggerItem(0.16)} initial="hidden" animate="visible">
         <article className="secondary-cell">
           <svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d={`M ${secondaryMetricSeries.peakStress.map((v, i) => `${(i / Math.max(secondaryMetricSeries.peakStress.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`} /></svg>
           <strong>{dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}</strong>
@@ -207,9 +209,9 @@ export function OverviewTab({
           <strong>{todayBreakCount}</strong>
           <span>Total break time</span>
         </article>
-      </section>
+      </motion.section>
 
-      <section className="overview-section session-log">
+      <motion.section className="overview-section session-log" variants={staggerItem(0.2)} initial="hidden" animate="visible">
         <h3>Today's sessions</h3>
         {todaySessions.length === 0 ? (
           <p className="main-empty">No sessions yet today.</p>
@@ -240,7 +242,7 @@ export function OverviewTab({
             })}
           </div>
         )}
-      </section>
+      </motion.section>
     </>
   )
 }

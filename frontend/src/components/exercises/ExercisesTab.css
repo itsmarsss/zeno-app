@@ -232,12 +232,6 @@
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
-  animation: exerciseEnter 300ms ease forwards;
-}
-
-@keyframes exerciseEnter {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .exercise-active-feed {

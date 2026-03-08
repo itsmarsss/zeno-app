@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, ChartNoAxesCombined, Ellipsis, House } from 'lucide-react'
 import { MainWindowShell } from './components/MainWindowShell'
 import { QuickActionsPopover } from './components/QuickActionsPopover'
@@ -17,6 +18,7 @@ import type {
   SessionHistoryItem,
   SessionResult,
 } from './shared/types'
+import { fadeSlide } from './shared/motion'
 import './App.css'
 
 function App() {
@@ -51,6 +53,7 @@ function App() {
   const [breathingLiveHr, setBreathingLiveHr] = useState<number | null>(null)
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
+  const breakActiveRef = useRef(false)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -96,7 +99,7 @@ function App() {
     }
   }
 
-  async function stopBreathing() {
+  const stopBreathing = useCallback(async () => {
     const hrEnd = breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm ?? null
     const hrStart = breathingStartHr
     const hrDelta = hrStart == null || hrEnd == null ? null : Math.round((hrEnd - hrStart) * 10) / 10
@@ -124,11 +127,11 @@ function App() {
             : 'Heart rate unchanged'
       setBreathingSummary(summary)
     } else {
-      setBreathingSummary('Session complete')
+    setBreathingSummary('Session complete')
     }
     setBreathingActive(false)
     setBreathingLiveHr(null)
-  }
+  }, [breathingCycle, breathingLiveHr, breathingPattern, breathingStartHr, breathingUseHrSensing, result?.heart_rate_bpm])
 
   useEffect(() => {
     let rafId = 0
@@ -143,6 +146,10 @@ function App() {
     rafId = window.requestAnimationFrame(animate)
     return () => window.cancelAnimationFrame(rafId)
   }, [stress])
+
+  useEffect(() => {
+    breakActiveRef.current = breakActive
+  }, [breakActive])
 
   useEffect(() => {
     if (!breathingActive) return
@@ -211,7 +218,7 @@ function App() {
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [breakActive])
+  }, [breakActive, finishBreak])
 
   useEffect(() => {
     if (!breakActive || !breakUseGenuinityChecks) return
@@ -234,7 +241,24 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [breakSummary])
 
-  async function loadHistory() {
+  const updateNudgeFromResult = useCallback((session: SessionResult) => {
+    if (session.posture_score < 0.45) {
+      setLastNudge('Straighten up and roll your shoulders back.')
+      return
+    }
+    const stressScore = stressIndex(session)
+    if (stressScore >= 61) {
+      setLastNudge('Take a 5 minute break. Step away for a reset.')
+      return
+    }
+    if (stressScore >= 31) {
+      setLastNudge('You have been focused for a while. Grab some water.')
+      return
+    }
+    setLastNudge('No nudge needed. You are in a good range.')
+  }, [])
+
+  const loadHistory = useCallback(async () => {
     try {
       const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history', { limit: 20 })
       const items = payload.items ?? []
@@ -250,27 +274,27 @@ function App() {
       setHistory([])
       setResult(null)
     }
-  }
+  }, [updateNudgeFromResult])
 
-  async function loadDailyReport() {
+  const loadDailyReport = useCallback(async () => {
     try {
       const payload = await invoke<DailyReport>('run_daily_report')
       setDailyReport(payload)
     } catch {
       setDailyReport(null)
     }
-  }
+  }, [])
 
-  async function loadCalibrationStatus() {
+  const loadCalibrationStatus = useCallback(async () => {
     try {
       const payload = await invoke<CalibrationStatus>('run_calibration_status')
       setCalibration(payload)
     } catch {
       setCalibration(null)
     }
-  }
+  }, [])
 
-  async function loadSettings() {
+  const loadSettings = useCallback(async () => {
     try {
       const payload = await invoke<AppSettings>('run_get_settings')
       setSettings(payload)
@@ -278,7 +302,7 @@ function App() {
     } catch {
       setSettings(null)
     }
-  }
+  }, [])
 
   async function updateSettings(patch: Partial<AppSettings>) {
     try {
@@ -308,14 +332,14 @@ function App() {
     setShowOnboarding(false)
   }
 
-  function startBreak(durationSec = 5 * 60) {
+  const startBreak = useCallback((durationSec = 5 * 60) => {
     const target = Math.max(60, durationSec)
     setBreakActive(true)
     setBreakTargetSec(target)
     setBreakRemainingSec(target)
     setBreakAwaySeconds(0)
     setBreakSummary(null)
-  }
+  }, [])
 
   async function finishBreak(reason: 'complete' | 'early') {
     const elapsedRatio = breakTargetSec <= 0 ? 0 : (breakTargetSec - breakRemainingSec) / breakTargetSec
@@ -383,23 +407,6 @@ function App() {
     }
   }
 
-  function updateNudgeFromResult(session: SessionResult) {
-    if (session.posture_score < 0.45) {
-      setLastNudge('Straighten up and roll your shoulders back.')
-      return
-    }
-    const stressScore = stressIndex(session)
-    if (stressScore >= 61) {
-      setLastNudge('Take a 5 minute break. Step away for a reset.')
-      return
-    }
-    if (stressScore >= 31) {
-      setLastNudge('You have been focused for a while. Grab some water.')
-      return
-    }
-    setLastNudge('No nudge needed. You are in a good range.')
-  }
-
   async function runSession() {
     try {
       if (settings?.monitoring_paused) {
@@ -465,7 +472,7 @@ function App() {
       })
 
       unlistenBreakAuto = await listen<{ break_seconds: number; elapsed_minutes: number }>('break-auto-trigger', (event) => {
-        if (breakActive) return
+        if (breakActiveRef.current) return
         startBreak(event.payload?.break_seconds ?? 300)
         setBreakSummary(`Auto break after ${event.payload?.elapsed_minutes ?? 90}m focus.`)
       })
@@ -479,7 +486,7 @@ function App() {
       unlistenGesture?.()
       unlistenBreakAuto?.()
     }
-  }, [])
+  }, [loadCalibrationStatus, loadDailyReport, loadHistory, loadSettings, startBreak, updateNudgeFromResult])
 
   return (
     <AppSettingsProvider value={{ settings, updateSettings }}>
@@ -495,9 +502,10 @@ function App() {
         />
       ) : (
     <main className="popover">
-      {showOnboarding && (
-        <div className="overlay">
-          <section className="onboarding">
+      <AnimatePresence>
+        {showOnboarding && (
+        <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.section className="onboarding" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
             <h2>Welcome to Zeno</h2>
             <p>Zeno runs quietly in your menubar and checks your posture and stress privately on-device.</p>
             <ol>
@@ -509,9 +517,10 @@ function App() {
               <button className="btn-ghost" onClick={() => setShowOnboarding(false)}>Later</button>
               <button className="btn-solid" onClick={completeOnboarding}>Got it</button>
             </div>
-          </section>
-        </div>
+          </motion.section>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       <header className="headerbar" onMouseDown={handleHeaderMouseDown}>
         <div className="brand">
@@ -528,15 +537,18 @@ function App() {
         </div>
       </header>
       <div className="content-scroll">
+        <AnimatePresence initial={false}>
         {breakSummary && activePage === 'home' && (
-          <section className="breathing-summary">
+          <motion.section className="breathing-summary" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             <p className="label">Break</p>
             <p>{breakSummary}</p>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
+        <AnimatePresence initial={false}>
         {breakActive && activePage === 'home' && (
-          <section className="breathing-panel">
+          <motion.section className="breathing-panel" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             <div className="breathing-head">
               <p className="label">Break timer</p>
               <button className="icon-btn" onClick={stopBreak}>Stop</button>
@@ -548,18 +560,22 @@ function App() {
               {breakUseGenuinityChecks ? `away ${breakAwaySeconds}s / ${breakTargetSec}s` : 'genuinity checks off'}
             </p>
             <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
+        <AnimatePresence initial={false}>
         {breathingSummary && activePage === 'home' && (
-          <section className="breathing-summary">
+          <motion.section className="breathing-summary" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             <p className="label">Done</p>
             <p>{breathingSummary}</p>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
+        <AnimatePresence initial={false}>
         {breathingActive && activePage === 'home' && !breakActive && (
-          <section className="breathing-panel">
+          <motion.section className="breathing-panel" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             <div className="breathing-head">
               <p className="label">{activePattern.name}</p>
               <button className="icon-btn" onClick={() => void stopBreathing()}>Stop</button>
@@ -575,11 +591,13 @@ function App() {
             </div>
             <p className="breathing-countdown">{breathingRemainingSeconds}s</p>
             <p className="breathing-cycle">Cycle {breathingCycle} of {activePattern.cycles}</p>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
+        <AnimatePresence mode="wait" initial={false}>
         {activePage === 'home' && !breathingActive && !breakActive && (
-          <>
+          <motion.div key="popover-home" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             <section className="stress-card">
               <p className="label">stress index</p>
               <div className={`stress-value stress-value--${stressLabel}`}>{Math.round(displayedStress)}</div>
@@ -611,11 +629,13 @@ function App() {
               <p className="nudge-msg">{lastNudge}</p>
               <p className="nudge-time">{result ? prettyTime(result.timestamp) : '--:--'}</p>
             </section>
-          </>
+          </motion.div>
         )}
+        </AnimatePresence>
 
+        <AnimatePresence mode="wait" initial={false}>
         {activePage === 'report' && (
-          <section className="report-panel report-page">
+          <motion.section key="popover-report" className="report-panel report-page" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
             {dailyReport ? (
               <>
                 <h3>{new Date(dailyReport.date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
@@ -690,12 +710,15 @@ function App() {
                 </ul>
               )}
             </div>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
       </div>
 
+      <AnimatePresence>
       {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
         <QuickActionsPopover
           quickActionStep={quickActionStep}
           setQuickActionStep={setQuickActionStep}
@@ -722,7 +745,9 @@ function App() {
             setQuickActionStep('menu')
           }}
         />
+        </motion.div>
       )}
+      </AnimatePresence>
 
       <footer className="footerbar">
         {activePage === 'home' ? (

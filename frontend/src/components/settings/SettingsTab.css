@@ -229,12 +229,6 @@
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.1);
-  animation: settingsSheetIn 250ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes settingsSheetIn {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
 }
 
 .settings-sheet-handle {
