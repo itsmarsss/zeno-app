@@ -60,3 +60,8 @@ pub struct FocusTimerState {
 pub struct PostureStreamState {
     pub child: Mutex<Option<Child>>,
 }
+
+#[derive(Default)]
+pub struct HrStreamState {
+    pub child: Mutex<Option<Child>>,
+}

@@ -9,13 +9,14 @@ mod state;
 use commands::{
     open_main_window, run_calibration_status, run_clear_data, run_daily_report, run_get_settings,
     run_log_break_session, run_log_breathing_session, run_presence_check, run_python_session,
-    run_session_history, run_update_settings, start_posture_stream, stop_posture_stream,
+    run_session_history, run_update_settings, start_hr_stream, start_posture_stream, stop_hr_stream,
+    stop_posture_stream,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
     start_daily_report_trigger, start_focus_mode_sampler, start_focus_mode_timer, start_scheduler,
 };
-use state::{FocusTimerState, NotificationState, PostureStreamState, ReportState, SessionState, SettingsState};
+use state::{FocusTimerState, HrStreamState, NotificationState, PostureStreamState, ReportState, SessionState, SettingsState};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -72,6 +73,7 @@ fn main() {
         .manage(SettingsState::default())
         .manage(FocusTimerState::default())
         .manage(PostureStreamState::default())
+        .manage(HrStreamState::default())
         .invoke_handler(tauri::generate_handler![
             run_python_session,
             run_session_history,
@@ -85,7 +87,9 @@ fn main() {
             run_log_break_session,
             open_main_window,
             start_posture_stream,
-            stop_posture_stream
+            stop_posture_stream,
+            start_hr_stream,
+            stop_hr_stream
         ])
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,

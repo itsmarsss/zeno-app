@@ -4,7 +4,7 @@ use crate::python_sidecar::{
     run_log_break_session_blocking, run_log_breathing_session_blocking, run_presence_check_blocking,
     run_python_session_blocking, run_session_history_blocking, run_settings_blocking,
 };
-use crate::state::{NotificationState, PostureStreamState, SessionState, SettingsState};
+use crate::state::{HrStreamState, NotificationState, PostureStreamState, SessionState, SettingsState};
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -264,6 +264,83 @@ pub async fn stop_posture_stream(state: tauri::State<'_, PostureStreamState>) ->
         .child
         .lock()
         .map_err(|_| "Failed to lock posture stream state".to_string())?;
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_hr_stream(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, HrStreamState>,
+    update_every: Option<f64>,
+    window_seconds: Option<f64>,
+    max_seconds: Option<f64>,
+) -> Result<(), String> {
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "Failed to lock HR stream state".to_string())?;
+    if guard.is_some() {
+        return Ok(());
+    }
+
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("rppg_estimator.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut child = Command::new(python_bin)
+        .arg(script)
+        .arg("--continuous")
+        .arg("--update-every")
+        .arg(update_every.unwrap_or(4.0).clamp(1.0, 10.0).to_string())
+        .arg("--window-seconds")
+        .arg(window_seconds.unwrap_or(20.0).clamp(8.0, 45.0).to_string())
+        .arg("--max-seconds")
+        .arg(max_seconds.unwrap_or(0.0).max(0.0).to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to start HR stream sidecar: {e}"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture HR stream stdout".to_string())?;
+    *guard = Some(child);
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let reader = BufReader::new(stdout);
+        for line_result in reader.lines() {
+            let Ok(line) = line_result else {
+                break;
+            };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
+                let _ = app_handle.emit("hr-stream-update", payload);
+            }
+        }
+        let _ = app_handle.emit("hr-stream-ended", Value::Null);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_hr_stream(state: tauri::State<'_, HrStreamState>) -> Result<(), String> {
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "Failed to lock HR stream state".to_string())?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
         let _ = child.wait();

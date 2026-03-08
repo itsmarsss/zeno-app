@@ -80,6 +80,11 @@ type PostureStreamFrame = {
     progress_pct: number
   } | null
 }
+type HrStreamUpdate = {
+  timestamp: string
+  elapsed_seconds: number
+  heart_rate_bpm: number | null
+}
 type Exercise = {
   id: string
   name: string
@@ -821,6 +826,11 @@ function App() {
   const [breakTargetSec, setBreakTargetSec] = useState(5 * 60)
   const [breakAwaySeconds, setBreakAwaySeconds] = useState(0)
   const [showQuickActions, setShowQuickActions] = useState(false)
+  const [quickActionStep, setQuickActionStep] = useState<'menu' | 'breathe' | 'break'>('menu')
+  const [breathingUseHrSensing, setBreathingUseHrSensing] = useState(true)
+  const [breathingLiveHr, setBreathingLiveHr] = useState<number | null>(null)
+  const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
+  const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -867,7 +877,7 @@ function App() {
   }
 
   async function stopBreathing() {
-    const hrEnd = result?.heart_rate_bpm ?? null
+    const hrEnd = breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm ?? null
     const hrStart = breathingStartHr
     const hrDelta = hrStart == null || hrEnd == null ? null : Math.round((hrEnd - hrStart) * 10) / 10
     const cyclesCompleted = Math.max(0, breathingCycle - 1)
@@ -897,6 +907,7 @@ function App() {
       setBreathingSummary('Session complete')
     }
     setBreathingActive(false)
+    setBreathingLiveHr(null)
   }
 
   useEffect(() => {
@@ -942,6 +953,31 @@ function App() {
   }, [breathingSummary])
 
   useEffect(() => {
+    if (!breathingActive || !breathingUseHrSensing) return
+    let unlistenUpdate: (() => void) | null = null
+    let unlistenEnded: (() => void) | null = null
+
+    const setup = async () => {
+      await invoke('start_hr_stream', { updateEvery: 4, windowSeconds: 20, maxSeconds: 0 })
+      unlistenUpdate = await listen<HrStreamUpdate>('hr-stream-update', (event) => {
+        const bpm = event.payload?.heart_rate_bpm ?? null
+        setBreathingLiveHr(bpm)
+        setBreathingStartHr((prev) => prev ?? bpm)
+      })
+      unlistenEnded = await listen('hr-stream-ended', () => {
+        // silent by design
+      })
+    }
+
+    void setup()
+    return () => {
+      unlistenUpdate?.()
+      unlistenEnded?.()
+      void invoke('stop_hr_stream').catch(() => null)
+    }
+  }, [breathingActive, breathingUseHrSensing])
+
+  useEffect(() => {
     if (!breakActive) return
     const timer = window.setInterval(() => {
       setBreakRemainingSec((prev) => {
@@ -958,7 +994,7 @@ function App() {
   }, [breakActive])
 
   useEffect(() => {
-    if (!breakActive) return
+    if (!breakActive || !breakUseGenuinityChecks) return
     const poll = window.setInterval(async () => {
       try {
         const payload = await invoke<{ presence_detected: boolean }>('run_presence_check')
@@ -970,7 +1006,7 @@ function App() {
       }
     }, 10_000)
     return () => window.clearInterval(poll)
-  }, [breakActive])
+  }, [breakActive, breakUseGenuinityChecks])
 
   useEffect(() => {
     if (!breakSummary) return
@@ -1042,7 +1078,8 @@ function App() {
     setBreathingPhaseIndex(0)
     setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
     setBreathingCycle(1)
-    setBreathingStartHr(result?.heart_rate_bpm ?? null)
+    setBreathingStartHr(breathingUseHrSensing ? null : result?.heart_rate_bpm ?? null)
+    setBreathingLiveHr(null)
     setBreathingSummary(null)
   }
 
@@ -1061,8 +1098,11 @@ function App() {
   }
 
   async function finishBreak(reason: 'complete' | 'early') {
-    const qualityScore = breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
-    const genuineBreak = qualityScore >= 60
+    const elapsedRatio = breakTargetSec <= 0 ? 0 : (breakTargetSec - breakRemainingSec) / breakTargetSec
+    const presenceBased = breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
+    const durationBased = Math.max(0, Math.min(100, Math.round(elapsedRatio * 100)))
+    const qualityScore = breakUseGenuinityChecks ? presenceBased : durationBased
+    const genuineBreak = breakUseGenuinityChecks ? qualityScore >= 60 : reason === 'complete'
     try {
       await invoke('run_log_break_session', {
         breakSeconds: breakTargetSec,
@@ -1268,7 +1308,9 @@ function App() {
             <p className="breathing-hr">
               {String(breakMinutes).padStart(2, '0')}:{String(breakSeconds).padStart(2, '0')}
             </p>
-            <p className="breathing-countdown">away {breakAwaySeconds}s / {breakTargetSec}s</p>
+            <p className="breathing-countdown">
+              {breakUseGenuinityChecks ? `away ${breakAwaySeconds}s / ${breakTargetSec}s` : 'genuinity checks off'}
+            </p>
             <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
           </section>
         )}
@@ -1287,7 +1329,10 @@ function App() {
               <button className="icon-btn" onClick={() => void stopBreathing()}>Stop</button>
             </div>
             <p className="breathing-hr">
-              {result?.heart_rate_bpm == null ? '--' : Math.round(result.heart_rate_bpm)} <span>bpm</span>
+              {((breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) == null)
+                ? '--'
+                : Math.round((breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) as number)}{' '}
+              <span>bpm</span>
             </p>
             <div className={`breathing-circle ${breathingPhase.label.toLowerCase()}`}>
               <span>{breathingPhase.label}</span>
@@ -1414,53 +1459,106 @@ function App() {
 
       </div>
 
-      {showQuickActions && activePage === 'home' && settings?.focus_mode_active && !breathingActive && !breakActive && (
+      {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
         <section className="quick-actions-pop">
           <div className="quick-actions-head">
-            <span>Quick actions</span>
+            <span>{quickActionStep === 'menu' ? 'Quick actions' : quickActionStep === 'breathe' ? 'Breathe options' : 'Break options'}</span>
             <button
               className="quick-actions-close"
               aria-label="Close quick actions"
               title="Close"
-              onClick={() => setShowQuickActions(false)}
+              onClick={() => {
+                setShowQuickActions(false)
+                setQuickActionStep('menu')
+              }}
             >
               ×
             </button>
           </div>
-          <div className="pattern-picker">
-            <button
-              className={`pattern-chip ${breathingPattern === 'box' ? 'is-active' : ''}`}
-              onClick={() => setBreathingPattern('box')}
-            >
-              Box
-            </button>
-            <button
-              className={`pattern-chip ${breathingPattern === 'four-seven-eight' ? 'is-active' : ''}`}
-              onClick={() => setBreathingPattern('four-seven-eight')}
-            >
-              4-7-8
-            </button>
-          </div>
-          <div className="quick-actions-row">
-            <button
-              className="report-link"
-              onClick={() => {
-                setShowQuickActions(false)
-                startBreathing()
-              }}
-            >
-              Breathe
-            </button>
-            <button
-              className="report-link"
-              onClick={() => {
-                setShowQuickActions(false)
-                startBreak(5 * 60)
-              }}
-            >
-              Break
-            </button>
-          </div>
+          {quickActionStep === 'menu' && (
+            <div className="quick-actions-row">
+              <button className="report-link" onClick={() => setQuickActionStep('breathe')}>
+                Breathe
+              </button>
+              <button className="report-link" onClick={() => setQuickActionStep('break')}>
+                Break
+              </button>
+            </div>
+          )}
+          {quickActionStep === 'breathe' && (
+            <>
+              <div className="pattern-picker">
+                <button
+                  className={`pattern-chip ${breathingPattern === 'box' ? 'is-active' : ''}`}
+                  onClick={() => setBreathingPattern('box')}
+                >
+                  Box
+                </button>
+                <button
+                  className={`pattern-chip ${breathingPattern === 'four-seven-eight' ? 'is-active' : ''}`}
+                  onClick={() => setBreathingPattern('four-seven-eight')}
+                >
+                  4-7-8
+                </button>
+              </div>
+              <label className="quick-option">
+                <input
+                  type="checkbox"
+                  checked={breathingUseHrSensing}
+                  onChange={(e) => setBreathingUseHrSensing(e.target.checked)}
+                />
+                Enable heart rate sensing
+              </label>
+              <div className="quick-actions-row">
+                <button className="report-link" onClick={() => setQuickActionStep('menu')}>Back</button>
+                <button
+                  className="report-link"
+                  onClick={() => {
+                    setShowQuickActions(false)
+                    setQuickActionStep('menu')
+                    startBreathing()
+                  }}
+                >
+                  Start
+                </button>
+              </div>
+            </>
+          )}
+          {quickActionStep === 'break' && (
+            <>
+              <label className="quick-option">
+                Break length (minutes)
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={breakPlannedMinutes}
+                  onChange={(e) => setBreakPlannedMinutes(Math.max(1, Math.min(30, Number(e.target.value) || 5)))}
+                />
+              </label>
+              <label className="quick-option">
+                <input
+                  type="checkbox"
+                  checked={breakUseGenuinityChecks}
+                  onChange={(e) => setBreakUseGenuinityChecks(e.target.checked)}
+                />
+                Enable genuinity checks
+              </label>
+              <div className="quick-actions-row">
+                <button className="report-link" onClick={() => setQuickActionStep('menu')}>Back</button>
+                <button
+                  className="report-link"
+                  onClick={() => {
+                    setShowQuickActions(false)
+                    setQuickActionStep('menu')
+                    startBreak(breakPlannedMinutes * 60)
+                  }}
+                >
+                  Start
+                </button>
+              </div>
+            </>
+          )}
         </section>
       )}
 
@@ -1492,10 +1590,16 @@ function App() {
         >
           <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
         </button>
-        {activePage === 'home' && settings?.focus_mode_active && !breathingActive && !breakActive && (
+        {activePage === 'home' && !breathingActive && !breakActive && (
           <button
             className="icon-action-btn"
-            onClick={() => setShowQuickActions((v) => !v)}
+            onClick={() =>
+              setShowQuickActions((v) => {
+                const next = !v
+                if (next) setQuickActionStep('menu')
+                return next
+              })
+            }
             aria-label="Open quick actions"
             title="Actions"
           >
