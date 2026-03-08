@@ -55,6 +55,13 @@ type AppSettings = {
   onboarding_completed: boolean
 }
 
+const BOX_PATTERN = [
+  { label: 'Inhale', seconds: 4 },
+  { label: 'Hold', seconds: 4 },
+  { label: 'Exhale', seconds: 4 },
+  { label: 'Hold', seconds: 4 },
+] as const
+
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
@@ -153,6 +160,10 @@ function App() {
   const [lastNudge, setLastNudge] = useState('No nudges yet.')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(null)
   const [displayedStress, setDisplayedStress] = useState(0)
+  const [breathingActive, setBreathingActive] = useState(false)
+  const [breathingPhaseIndex, setBreathingPhaseIndex] = useState(0)
+  const [breathingRemainingMs, setBreathingRemainingMs] = useState(BOX_PATTERN[0].seconds * 1000)
+  const [breathingCycle, setBreathingCycle] = useState(1)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -184,6 +195,8 @@ function App() {
   const stressTrend = useMemo(() => stressTrendPoints.map((item) => item.value), [stressTrendPoints])
   const postureStats = useMemo(() => trendStats(postureTrend), [postureTrend])
   const stressStats = useMemo(() => trendStats(stressTrend), [stressTrend])
+  const breathingPhase = BOX_PATTERN[breathingPhaseIndex]
+  const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
 
   useEffect(() => {
     let rafId = 0
@@ -198,6 +211,28 @@ function App() {
     rafId = window.requestAnimationFrame(animate)
     return () => window.cancelAnimationFrame(rafId)
   }, [stress])
+
+  useEffect(() => {
+    if (!breathingActive) return
+    const timeout = window.setTimeout(() => {
+      if (breathingRemainingMs > 100) {
+        setBreathingRemainingMs((v) => v - 100)
+        return
+      }
+
+      const nextPhase = (breathingPhaseIndex + 1) % BOX_PATTERN.length
+      const wrapped = nextPhase === 0
+      const nextCycle = wrapped ? breathingCycle + 1 : breathingCycle
+      if (nextCycle > 4) {
+        setBreathingActive(false)
+        return
+      }
+      setBreathingPhaseIndex(nextPhase)
+      setBreathingRemainingMs(BOX_PATTERN[nextPhase].seconds * 1000)
+      if (wrapped) setBreathingCycle(nextCycle)
+    }, 100)
+    return () => window.clearTimeout(timeout)
+  }, [breathingActive, breathingCycle, breathingPhaseIndex, breathingRemainingMs])
 
   async function loadHistory() {
     try {
@@ -256,6 +291,17 @@ function App() {
 
   async function toggleFocusMode() {
     await updateSettings({ focus_mode_active: !settings?.focus_mode_active })
+  }
+
+  function startBreathing() {
+    setBreathingActive(true)
+    setBreathingPhaseIndex(0)
+    setBreathingRemainingMs(BOX_PATTERN[0].seconds * 1000)
+    setBreathingCycle(1)
+  }
+
+  function stopBreathing() {
+    setBreathingActive(false)
   }
 
   async function completeOnboarding() {
@@ -408,7 +454,24 @@ function App() {
         </div>
       </header>
       <div className="content-scroll">
-        {activePage === 'home' && (
+        {breathingActive && activePage === 'home' && (
+          <section className="breathing-panel">
+            <div className="breathing-head">
+              <p className="label">Box breathing</p>
+              <button className="icon-btn" onClick={stopBreathing}>Stop</button>
+            </div>
+            <p className="breathing-hr">
+              {result?.heart_rate_bpm == null ? '--' : Math.round(result.heart_rate_bpm)} <span>bpm</span>
+            </p>
+            <div className={`breathing-circle ${breathingPhase.label.toLowerCase()}`}>
+              <span>{breathingPhase.label}</span>
+            </div>
+            <p className="breathing-countdown">{breathingRemainingSeconds}s</p>
+            <p className="breathing-cycle">Cycle {breathingCycle} of 4</p>
+          </section>
+        )}
+
+        {activePage === 'home' && !breathingActive && (
           <>
             <section className="stress-card">
               <p className="label">stress index</p>
@@ -572,6 +635,12 @@ function App() {
           <button className="report-link" onClick={() => setActivePage('home')}>Home</button>
         )}
         <div className="toggle-wrap">
+          {activePage === 'home' && settings?.focus_mode_active && !breathingActive && (
+            <button className="report-link" onClick={startBreathing}>Breathe</button>
+          )}
+          {activePage === 'home' && breathingActive && (
+            <button className="report-link" onClick={stopBreathing}>Stop</button>
+          )}
           <button
             className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
             onClick={toggleFocusMode}
@@ -589,7 +658,7 @@ function App() {
         </div>
       </footer>
 
-      {activePage === 'home' && (
+      {activePage === 'home' && !breathingActive && (
         <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused}>
           {status === 'Running' ? 'Checking' : 'Check in'}
         </button>

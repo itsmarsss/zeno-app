@@ -271,6 +271,85 @@
   text-align: right;
 }
 
+.breathing-panel {
+  min-height: 100%;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  animation: breathing-in 240ms ease;
+}
+
+@keyframes breathing-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.breathing-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.breathing-hr {
+  margin: 12px 0 8px;
+  text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 34px;
+  color: var(--text-primary);
+}
+
+.breathing-hr span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.breathing-circle {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+}
+
+.breathing-circle.inhale {
+  animation: breathe-in 4s ease-in-out forwards;
+  background: rgba(45, 106, 79, 0.06);
+}
+
+.breathing-circle.hold {
+  transform: scale(1);
+}
+
+.breathing-circle.exhale {
+  animation: breathe-out 4s ease-in-out forwards;
+}
+
+@keyframes breathe-in {
+  from { transform: scale(0.74); opacity: 0.5; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes breathe-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.74); opacity: 0.5; }
+}
+
+.breathing-countdown,
+.breathing-cycle {
+  margin: 8px 0 0;
+  text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-secondary);
+}
+
+.breathing-countdown { font-size: 13px; }
+.breathing-cycle { font-size: 11px; color: var(--text-tertiary); }
+
 .footerbar {
   height: 44px;
   flex-shrink: 0;
