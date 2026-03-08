@@ -3,9 +3,9 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -16,6 +16,11 @@ use tauri_plugin_notification::NotificationExt;
 #[derive(Default)]
 struct SessionState {
     running: AtomicBool,
+}
+
+#[derive(Default)]
+struct NotificationState {
+    suppress_until_unix: AtomicU64,
 }
 
 fn project_root() -> PathBuf {
@@ -64,6 +69,13 @@ fn extract_session_from_logger_payload(payload: Value) -> Result<Value, String> 
     ))
 }
 
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -104,6 +116,40 @@ fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value,
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let payload = parse_json_line(&stdout)?;
     extract_session_from_logger_payload(payload)
+}
+
+fn run_gesture_dismiss_blocking(max_seconds: u32) -> Result<bool, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let gesture_script = root.join("backend").join("gesture_dismissal.py");
+    if !gesture_script.is_file() {
+        return Err(format!("Missing script: {}", gesture_script.display()));
+    }
+
+    let output = Command::new(python_bin)
+        .arg(gesture_script)
+        .arg("--max-seconds")
+        .arg(max_seconds.clamp(3, 20).to_string())
+        .output()
+        .map_err(|e| format!("Failed to run gesture sidecar: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Gesture sidecar failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let payload = parse_json_line(&stdout)?;
+    Ok(payload
+        .get("dismissed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
 }
 
 fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
@@ -202,10 +248,40 @@ fn notification_for_result(result: &Value) -> Option<(String, String)> {
     None
 }
 
-fn notify_for_session(app: &tauri::AppHandle, result: &Value) {
+fn notify_for_session(
+    app: &tauri::AppHandle,
+    notification_state: &NotificationState,
+    result: &Value,
+) -> bool {
+    let now = now_unix_secs();
+    let suppress_until = notification_state.suppress_until_unix.load(Ordering::SeqCst);
+    if now < suppress_until {
+        return false;
+    }
+
     if let Some((title, body)) = notification_for_result(result) {
         let _ = app.notification().builder().title(title).body(body).show();
+        return true;
     }
+    false
+}
+
+fn start_gesture_dismiss_listener(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        let dismissed = run_gesture_dismiss_blocking(10).unwrap_or(false);
+        if dismissed {
+            let notification_state = app_handle.state::<NotificationState>();
+            let suppress_until = now_unix_secs() + (20 * 60);
+            notification_state
+                .suppress_until_unix
+                .store(suppress_until, Ordering::SeqCst);
+            let _ = app_handle.emit(
+                "gesture-dismissed",
+                serde_json::json!({"snooze_minutes": 20}),
+            );
+        }
+    });
 }
 
 #[tauri::command]
@@ -213,6 +289,7 @@ async fn run_python_session(
     emotion_backend: Option<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, SessionState>,
+    notification_state: tauri::State<'_, NotificationState>,
 ) -> Result<Value, String> {
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A session is already running.".to_string());
@@ -226,7 +303,9 @@ async fn run_python_session(
 
     state.running.store(false, Ordering::SeqCst);
     if let Ok(ref payload) = result {
-        notify_for_session(&app, payload);
+        if notify_for_session(&app, &notification_state, payload) {
+            start_gesture_dismiss_listener(&app);
+        }
     }
     result
 }
@@ -258,7 +337,10 @@ fn start_scheduler(app: &tauri::AppHandle) {
 
             match session_result {
                 Ok(payload) => {
-                    notify_for_session(&app_handle, &payload);
+                    let notification_state = app_handle.state::<NotificationState>();
+                    if notify_for_session(&app_handle, &notification_state, &payload) {
+                        start_gesture_dismiss_listener(&app_handle);
+                    }
                     let _ = app_handle.emit(
                         "session-result",
                         serde_json::json!({
@@ -284,6 +366,7 @@ fn start_scheduler(app: &tauri::AppHandle) {
 fn main() {
     let app_builder = tauri::Builder::default()
         .manage(SessionState::default())
+        .manage(NotificationState::default())
         .invoke_handler(tauri::generate_handler![run_python_session, run_session_history])
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {

@@ -95,6 +95,7 @@ function App() {
     let unlistenResult: (() => void) | null = null
     let unlistenError: (() => void) | null = null
     let unlistenSkip: (() => void) | null = null
+    let unlistenGesture: (() => void) | null = null
 
     const setup = async () => {
       await loadHistory()
@@ -116,6 +117,11 @@ function App() {
         setSchedulerState('Skipped because another check is already running')
         setTimeout(() => setSchedulerState('Automatic check every 10 minutes'), 3000)
       })
+
+      unlistenGesture = await listen<{ snooze_minutes: number }>('gesture-dismissed', (event) => {
+        setSchedulerState(`Dismissed by gesture · snoozed ${event.payload.snooze_minutes} min`)
+        setTimeout(() => setSchedulerState('Automatic check every 10 minutes'), 5000)
+      })
     }
 
     void setup()
@@ -123,6 +129,7 @@ function App() {
       unlistenResult?.()
       unlistenError?.()
       unlistenSkip?.()
+      unlistenGesture?.()
     }
   }, [])
 
