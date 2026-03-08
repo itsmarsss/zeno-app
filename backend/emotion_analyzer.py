@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+from collections import defaultdict
 
 import cv2
 
@@ -58,23 +59,34 @@ def analyze_emotion(
             while cv2.getTickCount() < end_ticks:
                 cap.read()
 
-        ok, frame = cap.read()
-        if not ok:
+        detector = FER(mtcnn=False, min_face_size=30, min_neighbors=3)
+        aggregate_scores: dict[str, float] = defaultdict(float)
+        detections_used = 0
+
+        # Sample several frames to reduce one-frame noise.
+        for _ in range(5):
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            detections = detector.detect_emotions(frame)
+            primary_face = _select_primary_face(detections)
+            if not primary_face:
+                continue
+
+            emotions = primary_face.get("emotions", {})
+            if not emotions:
+                continue
+
+            for emotion, score in emotions.items():
+                aggregate_scores[emotion] += float(score)
+            detections_used += 1
+
+        if detections_used == 0 or not aggregate_scores:
             return "unknown", 0.0
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        detector = FER(mtcnn=False)
-        detections = detector.detect_emotions(rgb_frame)
-        primary_face = _select_primary_face(detections)
-        if not primary_face:
-            return "unknown", 0.0
-
-        emotions = primary_face.get("emotions", {})
-        if not emotions:
-            return "unknown", 0.0
-
-        dominant, score = max(emotions.items(), key=lambda item: item[1])
-        return dominant, float(score)
+        dominant, total_score = max(aggregate_scores.items(), key=lambda item: item[1])
+        confidence = total_score / detections_used
+        return dominant, float(confidence)
     finally:
         cap.release()
 
