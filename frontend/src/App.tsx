@@ -504,6 +504,8 @@ function App() {
           error={error}
           replayOnboarding={() => setShowOnboarding(true)}
           clearAllData={clearAllData}
+          onRunCheckIn={runSession}
+          isCheckInRunning={status === 'Running'}
         />
       ) : (
     <main className="popover">
