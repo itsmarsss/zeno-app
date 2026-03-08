@@ -28,6 +28,21 @@
   color: #166534;
 }
 
+.status--running {
+  background: #fde68a;
+  color: #92400e;
+}
+
+.status--done {
+  background: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.status--error {
+  background: #fecaca;
+  color: #991b1b;
+}
+
 .panel__section {
   border-radius: 12px;
   padding: 12px;
@@ -51,6 +66,47 @@
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.panel__section pre {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #d1fae5;
+  font-size: 12px;
+  overflow: auto;
+}
+
+.panel__section--error pre {
+  background: #1f1111;
+  color: #fecaca;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+}
+
+.controls select,
+.controls button {
+  border: 1px solid #c9d8d3;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.controls button {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.controls button:disabled,
+.controls select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .muted {
