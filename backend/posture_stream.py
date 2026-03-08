@@ -21,6 +21,12 @@ POSE_MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_
 NOSE = 0
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
+LEFT_ELBOW = 13
+RIGHT_ELBOW = 14
+LEFT_WRIST = 15
+RIGHT_WRIST = 16
+LEFT_HIP = 23
+RIGHT_HIP = 24
 
 
 def _ensure_pose_model() -> Path:
@@ -64,55 +70,107 @@ def _point_payload(landmark) -> dict[str, float]:
     }
 
 
+def _exercise_features(landmarks) -> dict[str, float | bool]:
+    nose = landmarks[NOSE]
+    left_shoulder = landmarks[LEFT_SHOULDER]
+    right_shoulder = landmarks[RIGHT_SHOULDER]
+    left_elbow = landmarks[LEFT_ELBOW]
+    right_elbow = landmarks[RIGHT_ELBOW]
+    left_wrist = landmarks[LEFT_WRIST]
+    right_wrist = landmarks[RIGHT_WRIST]
+    left_hip = landmarks[LEFT_HIP]
+    right_hip = landmarks[RIGHT_HIP]
+
+    shoulder_width = abs(left_shoulder.x - right_shoulder.x)
+    shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
+    shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
+    head_offset_norm = (shoulder_mid_y - nose.y) / max(shoulder_width, 1e-6)
+    left_upper_arm = abs(left_shoulder.y - left_elbow.y) / max(shoulder_width, 1e-6)
+    right_upper_arm = abs(right_shoulder.y - right_elbow.y) / max(shoulder_width, 1e-6)
+    wrists_above_shoulders = left_wrist.y < left_shoulder.y and right_wrist.y < right_shoulder.y
+    wrists_at_shoulder_band = (
+        abs(left_wrist.y - left_shoulder.y) / max(shoulder_width, 1e-6) < 0.2
+        and abs(right_wrist.y - right_shoulder.y) / max(shoulder_width, 1e-6) < 0.2
+    )
+    one_wrist_above_head = min(left_wrist.y, right_wrist.y) < nose.y * 0.97
+    torso_upright = abs(((left_hip.y + right_hip.y) / 2.0) - shoulder_mid_y) > 0.1
+
+    return {
+        "shoulder_width": shoulder_width,
+        "shoulder_tilt_norm": shoulder_tilt,
+        "head_offset_norm": head_offset_norm,
+        "elbows_bent": left_upper_arm < 0.23 and right_upper_arm < 0.23,
+        "wrists_above_shoulders": wrists_above_shoulders,
+        "wrists_at_shoulder_band": wrists_at_shoulder_band,
+        "wrist_spread_wide": abs(left_wrist.x - right_wrist.x) > shoulder_width * 0.95,
+        "one_wrist_above_head": one_wrist_above_head,
+        "torso_upright": torso_upright,
+    }
+
+
 def _exercise_feedback(exercise_id: str | None, landmarks, posture_score: float) -> str | None:
     if not exercise_id or landmarks is None:
         return None
 
-    nose = landmarks[NOSE]
-    left_shoulder = landmarks[LEFT_SHOULDER]
-    right_shoulder = landmarks[RIGHT_SHOULDER]
-    shoulder_width = abs(left_shoulder.x - right_shoulder.x)
-    shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
-    shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
-    head_offset = shoulder_mid_y - nose.y
+    features = _exercise_features(landmarks)
 
     if posture_score < 0.45:
         return "Lift your chest and stack head over shoulders."
 
-    if exercise_id in {"chin-tuck", "scap-squeeze", "thoracic-extension"}:
-        if head_offset < shoulder_width * 0.25:
+    if exercise_id == "chin-tuck":
+        if features["head_offset_norm"] < 0.26:
             return "Gently draw the chin back."
-    if exercise_id in {"wall-angels", "doorway-pec-stretch"}:
-        if shoulder_tilt > 0.18:
+        if features["shoulder_tilt_norm"] > 0.14:
             return "Level your shoulders before next rep."
+    if exercise_id == "scap-squeeze":
+        if features["shoulder_tilt_norm"] > 0.12:
+            return "Keep both shoulders level."
+        if features["head_offset_norm"] < 0.24:
+            return "Stay tall and avoid neck drift."
+    if exercise_id == "thoracic-extension":
+        if features["head_offset_norm"] < 0.3:
+            return "Lift through your sternum slightly more."
+    if exercise_id == "wall-angels":
+        if not features["wrists_above_shoulders"]:
+            return "Raise wrists a bit higher."
+        if not features["elbows_bent"]:
+            return "Keep elbows bent and wrists aligned."
+    if exercise_id == "doorway-pec-stretch":
+        if not features["wrists_at_shoulder_band"]:
+            return "Keep forearms around shoulder height."
+        if not features["wrist_spread_wide"]:
+            return "Open your chest by widening your arms."
     if exercise_id == "seated-side-bend":
-        if shoulder_tilt < 0.08:
+        if not features["one_wrist_above_head"]:
+            return "Reach one arm overhead."
+        if features["shoulder_tilt_norm"] < 0.1:
             return "Lean slightly more to find a side stretch."
+        if features["shoulder_tilt_norm"] > 0.18:
+            return "Ease the bend slightly and stay long."
+
+    if exercise_id in {"wall-angels", "doorway-pec-stretch"} and features["shoulder_tilt_norm"] > 0.18:
+        return "Level your shoulders before next rep."
+    if exercise_id in {"chin-tuck", "scap-squeeze", "thoracic-extension"} and features["head_offset_norm"] < 0.22:
+        return "Lengthen through the neck and upper spine."
 
     return "Good form. Keep breathing steadily."
 
 
 def _exercise_target_active(exercise_id: str, landmarks) -> bool:
-    nose = landmarks[NOSE]
-    left_shoulder = landmarks[LEFT_SHOULDER]
-    right_shoulder = landmarks[RIGHT_SHOULDER]
-    shoulder_width = abs(left_shoulder.x - right_shoulder.x)
-    shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
-    head_offset = shoulder_mid_y - nose.y
-    shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
+    features = _exercise_features(landmarks)
 
     if exercise_id == "chin-tuck":
-        return head_offset > shoulder_width * 0.28
+        return bool(features["head_offset_norm"] > 0.28 and features["shoulder_tilt_norm"] < 0.16)
     if exercise_id == "scap-squeeze":
-        return shoulder_tilt < 0.1 and head_offset > shoulder_width * 0.24
+        return bool(features["shoulder_tilt_norm"] < 0.1 and features["head_offset_norm"] > 0.24)
     if exercise_id == "thoracic-extension":
-        return head_offset > shoulder_width * 0.31
+        return bool(features["head_offset_norm"] > 0.31 and features["torso_upright"])
     if exercise_id == "wall-angels":
-        return shoulder_tilt < 0.12
+        return bool(features["wrists_above_shoulders"] and features["elbows_bent"] and features["shoulder_tilt_norm"] < 0.14)
     if exercise_id == "doorway-pec-stretch":
-        return shoulder_tilt < 0.16
+        return bool(features["wrists_at_shoulder_band"] and features["wrist_spread_wide"])
     if exercise_id == "seated-side-bend":
-        return shoulder_tilt > 0.1
+        return bool(features["one_wrist_above_head"] and features["shoulder_tilt_norm"] > 0.1)
     return False
 
 
@@ -148,7 +206,9 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
     exercise_state = {
         "rep_count": 0,
         "hold_seconds": 0.0,
-        "active_prev": False,
+        "active_frames": 0,
+        "inactive_frames": 0,
+        "stable_active": False,
         "quality_ema": 0.0,
         "last_tick": time.perf_counter(),
     }
@@ -184,12 +244,24 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                         elapsed = max(0.0, now_tick - float(exercise_state["last_tick"]))
                         exercise_state["last_tick"] = now_tick
 
-                        active_now = _exercise_target_active(exercise_id, landmarks)
-                        if active_now and not exercise_state["active_prev"]:
+                        raw_active = _exercise_target_active(exercise_id, landmarks)
+                        if raw_active:
+                            exercise_state["active_frames"] = int(exercise_state["active_frames"]) + 1
+                            exercise_state["inactive_frames"] = 0
+                        else:
+                            exercise_state["inactive_frames"] = int(exercise_state["inactive_frames"]) + 1
+                            exercise_state["active_frames"] = 0
+
+                        stable_active = bool(exercise_state["stable_active"])
+                        if not stable_active and int(exercise_state["active_frames"]) >= 2:
+                            stable_active = True
                             exercise_state["rep_count"] = int(exercise_state["rep_count"]) + 1
-                        if active_now:
+                        if stable_active and int(exercise_state["inactive_frames"]) >= 2:
+                            stable_active = False
+                        exercise_state["stable_active"] = stable_active
+
+                        if stable_active:
                             exercise_state["hold_seconds"] = float(exercise_state["hold_seconds"]) + elapsed
-                        exercise_state["active_prev"] = active_now
 
                         previous_q = float(exercise_state["quality_ema"])
                         exercise_state["quality_ema"] = (
@@ -204,11 +276,14 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                             "target_reps": target_reps,
                             "hold_seconds": hold_seconds,
                             "quality_score": round(float(exercise_state["quality_ema"]), 3),
-                            "target_active": active_now,
+                            "target_active": stable_active,
                             "progress_pct": progress_pct,
                         }
                 elif exercise_id:
-                    exercise_state["active_prev"] = False
+                    exercise_state["active_frames"] = 0
+                    exercise_state["inactive_frames"] = int(exercise_state["inactive_frames"]) + 1
+                    if int(exercise_state["inactive_frames"]) >= 2:
+                        exercise_state["stable_active"] = False
 
                 ok, encoded = cv2.imencode(
                     ".jpg",
