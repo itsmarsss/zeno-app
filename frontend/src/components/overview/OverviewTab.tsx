@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Activity, TrendingUp, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
@@ -20,7 +21,8 @@ import {
 } from '../../shared/dashboard'
 
 type TimelinePoint = {
-  hour: number
+  slotStartIso: string
+  slotEndIso: string
   label: string
   stress: number | null
   heartRate: number | null
@@ -50,12 +52,15 @@ export function OverviewTab({
   timelineData,
   chartHoverIndex,
   setChartHoverIndex,
+  timelineBucketMinutes,
+  setTimelineBucketMinutes,
   timelineAreaPath,
   timelineStressPath,
   timelineHeartPath,
   insights,
   secondaryMetricSeries,
   dailyReport,
+  onViewFocusHistory,
 }: {
   now: Date
   heroHeadline: string
@@ -71,14 +76,35 @@ export function OverviewTab({
   timelineData: TimelinePoint[]
   chartHoverIndex: number | null
   setChartHoverIndex: (value: number | null) => void
+  timelineBucketMinutes: number
+  setTimelineBucketMinutes: (value: number) => void
   timelineAreaPath: string
   timelineStressPath: string
   timelineHeartPath: string
   insights: InsightCard[]
   secondaryMetricSeries: SecondaryMetricSeries
   dailyReport: DailyReport | null
+  onViewFocusHistory: () => void
 }) {
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday)}`
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null)
+  const [hoverXPx, setHoverXPx] = useState<number | null>(null)
+  const [chartWidthPx, setChartWidthPx] = useState<number>(0)
+  const hoveredPoint = chartHoverIndex != null ? timelineData[chartHoverIndex] : null
+  const fallbackRatio = chartHoverIndex == null ? 0 : chartHoverIndex / Math.max(timelineData.length - 1, 1)
+  const hoverXPercent = hoverPercent ?? (fallbackRatio * 100)
+  const chartStartMs = timelineData[0] ? new Date(timelineData[0].slotStartIso).getTime() : 0
+  const chartEndMs = timelineData[timelineData.length - 1] ? new Date(timelineData[timelineData.length - 1].slotEndIso).getTime() : 0
+  const chartSpanMs = Math.max(chartEndMs - chartStartMs, 1)
+  const fallbackXPx = chartWidthPx > 0 ? (hoverXPercent / 100) * chartWidthPx : 0
+  const cursorXPx = hoverXPx ?? fallbackXPx
+  const tooltipWidthPx = 196
+  const tooltipPaddingPx = 8
+  const tooltipLeftPx = clamp(
+    cursorXPx - tooltipWidthPx / 2,
+    tooltipPaddingPx,
+    Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx),
+  )
 
   return (
     <>
@@ -123,18 +149,44 @@ export function OverviewTab({
       <motion.section className="overview-section primary-chart" variants={staggerItem(0.08)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>Today</h3>
-          <span>{`${formatHourLabel(6)} - now`}</span>
+          <div className="overview-chart-controls">
+            <button className="overview-view-more overview-view-more--secondary" onClick={onViewFocusHistory}>
+              View More
+            </button>
+            <span>{`${formatHourLabel(6)} - now`}</span>
+            <label className="timeline-interval-label">
+              <span>Interval</span>
+              <select
+                className="timeline-interval-select"
+                value={timelineBucketMinutes}
+                onChange={(event) => setTimelineBucketMinutes(Number(event.target.value))}
+              >
+                <option value={5}>5m</option>
+                <option value={15}>15m</option>
+                <option value={30}>30m</option>
+                <option value={60}>60m</option>
+              </select>
+            </label>
+          </div>
         </div>
         {todaySessions.length === 0 ? (
           <p className="main-empty">No sessions yet today.</p>
         ) : (
           <div
             className="overview-chart-canvas"
-            onMouseLeave={() => setChartHoverIndex(null)}
-            onMouseMove={(event) => {
+            onMouseLeave={() => {
+              setChartHoverIndex(null)
+              setHoverPercent(null)
+              setHoverXPx(null)
+            }}
+            onPointerMove={(event) => {
               const rect = event.currentTarget.getBoundingClientRect()
-              const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1)
+              const xPx = clamp(event.clientX - rect.left, 0, Math.max(rect.width, 1))
+              const ratio = clamp(xPx / Math.max(rect.width, 1), 0, 1)
               const nextIndex = Math.round(ratio * (timelineData.length - 1))
+              setChartWidthPx(rect.width)
+              setHoverXPx(xPx)
+              setHoverPercent(ratio * 100)
               setChartHoverIndex(nextIndex)
             }}
           >
@@ -145,10 +197,14 @@ export function OverviewTab({
                   <stop offset="100%" stopColor={stressColor(avgStressToday || 20)} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              {timelineData.map((point, index) => {
+              {timelineData.map((point) => {
                 if (!point.focusActive) return null
-                const xStart = (index / timelineData.length) * 100
-                return <rect key={`${point.hour}-focus`} x={xStart} y={0} width={(1 / timelineData.length) * 100} height={100} className="focus-band" />
+                const startMs = new Date(point.slotStartIso).getTime()
+                const endMs = new Date(point.slotEndIso).getTime()
+                const xStart = clamp(((startMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
+                const xEnd = clamp(((endMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
+                const width = Math.max(0.2, xEnd - xStart)
+                return <rect key={`${point.slotStartIso}-focus`} x={xStart} y={0} width={width} height={100} className="focus-band" />
               })}
               <path d={timelineAreaPath} className="timeline-area" />
               <path d={timelineStressPath} className="timeline-stress" />
@@ -156,24 +212,53 @@ export function OverviewTab({
               {timelineData.map((point, index) => {
                 if (!point.breathing) return null
                 const x = timelineData.length === 1 ? 50 : (index / (timelineData.length - 1)) * 100
-                return <line key={`${point.hour}-breath`} x1={x} x2={x} y1={0} y2={100} className="timeline-breath" />
+                return <line key={`${point.slotStartIso}-breath`} x1={x} x2={x} y1={0} y2={100} className="timeline-breath" />
               })}
             </svg>
-            {chartHoverIndex != null && timelineData[chartHoverIndex] && (
-              <div className="timeline-tooltip" style={{ left: `${(chartHoverIndex / Math.max(timelineData.length - 1, 1)) * 100}%` }}>
-                <p>{timelineData[chartHoverIndex].label}</p>
-                <strong>Stress: {timelineData[chartHoverIndex].stress ?? '--'}</strong>
-                <span>Heart rate: {timelineData[chartHoverIndex].heartRate ?? '--'} bpm</span>
-                {timelineData[chartHoverIndex].focusActive && <em>Focus Mode active</em>}
-              </div>
+            {hoveredPoint && (
+              <>
+                <motion.div
+                  className="timeline-cursor"
+                  initial={false}
+                  animate={{ left: `${cursorXPx}px`, opacity: 1 }}
+                  transition={{ type: 'tween', duration: 0.06, ease: 'linear' }}
+                />
+                <motion.div
+                  className="timeline-tooltip"
+                  initial={false}
+                  animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
+                  transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
+                >
+                  <p>{hoveredPoint.label}</p>
+                  <div className="timeline-tooltip-row">
+                    <strong>{hoveredPoint.stress ?? '--'}</strong>
+                    <span>Stress index</span>
+                  </div>
+                  <div className="timeline-tooltip-row">
+                    <strong>{hoveredPoint.heartRate ?? '--'} bpm</strong>
+                    <span>Heart rate</span>
+                  </div>
+                  {hoveredPoint.focusActive && <em>Focus Mode active</em>}
+                </motion.div>
+              </>
             )}
-            <div className="timeline-axis">
-              {timelineData.map((point, index) => (index % 3 === 0 || index === timelineData.length - 1 ? <span key={point.hour}>{point.label}</span> : <span key={point.hour} />))}
+            <div className="timeline-hover-hint">
+              <span>Move cursor to inspect</span>
+            </div>
+            <div className="timeline-axis" style={{ gridTemplateColumns: `repeat(${timelineData.length}, minmax(0, 1fr))` }}>
+              {/*
+                Keep axis readable as granularity increases.
+              */}
+              {(() => {
+                const labelStep = Math.max(1, Math.ceil(timelineData.length / 8))
+                return timelineData.map((point, index) => (
+                  index % labelStep === 0 || index === timelineData.length - 1 ? <span key={point.slotStartIso}>{point.label}</span> : <span key={point.slotStartIso} />
+                ))
+              })()}
             </div>
           </div>
         )}
       </motion.section>
-
       <motion.section className="overview-section insight-cards" variants={staggerItem(0.12)} initial="hidden" animate="visible">
         {insights.map((card) => {
           const Icon = card.icon === 'trending' ? TrendingUp : card.icon === 'activity' ? Activity : User

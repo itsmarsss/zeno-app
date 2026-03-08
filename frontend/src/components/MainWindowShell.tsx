@@ -30,6 +30,7 @@ import './MainWindowShell.css'
 
 const HOUR_START = 6
 const HOUR_END = 21
+const DEFAULT_TIMELINE_BUCKET_MINUTES = 15
 const HEATMAP_START = 8
 const HEATMAP_END = 19
 
@@ -67,6 +68,7 @@ export function MainWindowShell({
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [chartHoverIndex, setChartHoverIndex] = useState<number | null>(null)
+  const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
 
   const now = new Date()
   const todayKey = localDateKey(now)
@@ -101,18 +103,33 @@ export function MainWindowShell({
   const heroSubline = `Average stress ${avgStressToday || 0} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
   const heroTrendTone = trendTone(stressDeltaVsYesterday)
 
-  const timelineData: Array<{ hour: number; label: string; stress: number | null; heartRate: number | null; focusActive: boolean; breathing: boolean }> = []
-  for (let hour = HOUR_START; hour <= HOUR_END; hour += 1) {
-    const slice = todaySessions.filter((item) => new Date(item.created_at).getHours() === hour)
+  const timelineData: Array<{ slotStartIso: string; slotEndIso: string; label: string; stress: number | null; heartRate: number | null; focusActive: boolean; breathing: boolean }> = []
+  const timelineStart = new Date(now)
+  timelineStart.setHours(HOUR_START, 0, 0, 0)
+  const timelineEnd = new Date(now)
+  timelineEnd.setHours(HOUR_END, 59, 59, 999)
+  const clampedEnd = now < timelineEnd ? now : timelineEnd
+  for (let slot = new Date(timelineStart); slot <= clampedEnd; slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)) {
+    const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
+    const slice = todaySessions.filter((item) => {
+      const at = new Date(item.created_at)
+      return at >= slot && at < slotEnd
+    })
+    const overlapSlice = todaySessions.filter((item) => {
+      const start = new Date(item.created_at)
+      const end = new Date(start.getTime() + item.session_duration_seconds * 1000)
+      return start < slotEnd && end > slot
+    })
     const stressAvg = slice.length ? mean(slice.map((item) => stressIndexFromHistory(item))) : null
     const hrAvg = mean(slice.map((item) => item.heart_rate_bpm).filter((value): value is number => value != null))
     timelineData.push({
-      hour,
-      label: formatHourLabel(hour),
+      slotStartIso: slot.toISOString(),
+      slotEndIso: slotEnd.toISOString(),
+      label: slot.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
       stress: stressAvg == null ? null : Math.round(stressAvg),
       heartRate: Number.isFinite(hrAvg) && hrAvg > 0 ? Math.round(hrAvg) : null,
-      focusActive: slice.some((item) => Boolean(item.focus_mode)),
-      breathing: slice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
+      focusActive: overlapSlice.some((item) => Boolean(item.focus_mode)),
+      breathing: overlapSlice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
     })
   }
 
@@ -123,6 +140,11 @@ export function MainWindowShell({
   const timelineHeartPath = buildPath(timelineHeart, 50, 110, 100, 100)
 
   const insights = buildInsights(history, todaySessions)
+
+  function handleTimelineBucketMinutesChange(value: number) {
+    setTimelineBucketMinutes(value)
+    setChartHoverIndex(null)
+  }
 
   const sevenDayDays: string[] = []
   for (let offset = 6; offset >= 0; offset -= 1) {
@@ -340,12 +362,15 @@ export function MainWindowShell({
                 timelineData={timelineData}
                 chartHoverIndex={chartHoverIndex}
                 setChartHoverIndex={setChartHoverIndex}
+                timelineBucketMinutes={timelineBucketMinutes}
+                setTimelineBucketMinutes={handleTimelineBucketMinutesChange}
                 timelineAreaPath={timelineAreaPath}
                 timelineStressPath={timelineStressPath}
                 timelineHeartPath={timelineHeartPath}
                 insights={insights}
                 secondaryMetricSeries={secondaryMetricSeries}
                 dailyReport={dailyReport}
+                onViewFocusHistory={() => setTab('focus')}
               />
             </motion.div>
           )}
