@@ -67,12 +67,28 @@ def _detect_with_legacy(rgb_frame, min_detection_confidence: float) -> bool:
     raise RuntimeError("Legacy MediaPipe Solutions face detection is unavailable.")
 
 
-def detect_presence(camera_index: int = 0, min_detection_confidence: float = 0.5) -> bool:
+def detect_presence(
+    camera_index: int = 0,
+    min_detection_confidence: float = 0.5,
+    preview_seconds: float = 1.0,
+) -> bool:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return False
 
     try:
+        if preview_seconds > 0:
+            cv2.namedWindow("Zeno Presence Test", cv2.WINDOW_AUTOSIZE)
+            end_ticks = cv2.getTickCount() + int(preview_seconds * cv2.getTickFrequency())
+            while cv2.getTickCount() < end_ticks:
+                ok, preview_frame = cap.read()
+                if not ok:
+                    break
+                cv2.imshow("Zeno Presence Test", preview_frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+            cv2.destroyWindow("Zeno Presence Test")
+
         ok, frame = cap.read()
         if not ok:
             return False
@@ -92,6 +108,7 @@ def detect_presence(camera_index: int = 0, min_detection_confidence: float = 0.5
                     f"Legacy API error: {legacy_error}."
                 ) from legacy_error
     finally:
+        cv2.destroyAllWindows()
         cap.release()
 
 
