@@ -1,8 +1,8 @@
 use crate::notifications::{notify_for_session, start_gesture_dismiss_listener};
 use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
-    run_log_breathing_session_blocking, run_python_session_blocking, run_session_history_blocking,
-    run_settings_blocking,
+    run_log_break_session_blocking, run_log_breathing_session_blocking, run_presence_check_blocking,
+    run_python_session_blocking, run_session_history_blocking, run_settings_blocking,
 };
 use crate::state::{NotificationState, SessionState, SettingsState};
 use serde_json::Value;
@@ -116,4 +116,32 @@ pub async fn run_log_breathing_session(
     })
     .await
     .map_err(|e| format!("Breathing log task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_presence_check() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_presence_check_blocking)
+        .await
+        .map_err(|e| format!("Presence check task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_log_break_session(
+    break_seconds: u32,
+    away_seconds: u32,
+    quality_score: f64,
+    genuine_break: bool,
+    triggered_by: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_log_break_session_blocking(
+            break_seconds,
+            away_seconds,
+            quality_score,
+            genuine_break,
+            triggered_by.unwrap_or_else(|| "manual".to_string()),
+        )
+    })
+    .await
+    .map_err(|e| format!("Break log task join error: {e}"))?
 }

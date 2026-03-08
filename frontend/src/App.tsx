@@ -190,6 +190,8 @@ function App() {
   const [breakActive, setBreakActive] = useState(false)
   const [breakRemainingSec, setBreakRemainingSec] = useState(5 * 60)
   const [breakSummary, setBreakSummary] = useState<string | null>(null)
+  const [breakTargetSec, setBreakTargetSec] = useState(5 * 60)
+  const [breakAwaySeconds, setBreakAwaySeconds] = useState(0)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -309,13 +311,28 @@ function App() {
         if (prev <= 1) {
           window.clearInterval(timer)
           setBreakActive(false)
-          setBreakSummary('Break complete. Back to focus.')
+          void finishBreak('complete')
           return 0
         }
         return prev - 1
       })
     }, 1000)
     return () => window.clearInterval(timer)
+  }, [breakActive])
+
+  useEffect(() => {
+    if (!breakActive) return
+    const poll = window.setInterval(async () => {
+      try {
+        const payload = await invoke<{ presence_detected: boolean }>('run_presence_check')
+        if (!payload?.presence_detected) {
+          setBreakAwaySeconds((v) => v + 10)
+        }
+      } catch {
+        // Silent by design: break should continue even if camera check fails.
+      }
+    }, 10_000)
+    return () => window.clearInterval(poll)
   }, [breakActive])
 
   useEffect(() => {
@@ -398,14 +415,38 @@ function App() {
   }
 
   function startBreak(durationSec = 5 * 60) {
+    const target = Math.max(60, durationSec)
     setBreakActive(true)
-    setBreakRemainingSec(Math.max(60, durationSec))
+    setBreakTargetSec(target)
+    setBreakRemainingSec(target)
+    setBreakAwaySeconds(0)
     setBreakSummary(null)
+  }
+
+  async function finishBreak(reason: 'complete' | 'early') {
+    const qualityScore = breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
+    const genuineBreak = qualityScore >= 60
+    try {
+      await invoke('run_log_break_session', {
+        breakSeconds: breakTargetSec,
+        awaySeconds: breakAwaySeconds,
+        qualityScore,
+        genuineBreak,
+        triggeredBy: 'manual',
+      })
+    } catch {
+      // Silent fallback.
+    }
+    if (reason === 'complete') {
+      setBreakSummary(`${genuineBreak ? 'Genuine break.' : 'Mostly at desk.'} Score ${qualityScore}.`)
+    } else {
+      setBreakSummary(`Break ended early. Score ${qualityScore}.`)
+    }
   }
 
   function stopBreak() {
     setBreakActive(false)
-    setBreakSummary('Break ended early.')
+    void finishBreak('early')
   }
 
   async function clearAllData() {
@@ -569,6 +610,7 @@ function App() {
             <p className="breathing-hr">
               {String(breakMinutes).padStart(2, '0')}:{String(breakSeconds).padStart(2, '0')}
             </p>
+            <p className="breathing-countdown">away {breakAwaySeconds}s / {breakTargetSec}s</p>
             <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
           </section>
         )}

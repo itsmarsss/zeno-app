@@ -338,3 +338,76 @@ pub fn run_log_breathing_session_blocking(
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     parse_json_line(&stdout)
 }
+
+pub fn run_presence_check_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("presence_check.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let output = Command::new(python_bin)
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Failed to run presence check: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Presence check failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_log_break_session_blocking(
+    break_seconds: u32,
+    away_seconds: u32,
+    quality_score: f64,
+    genuine_break: bool,
+    triggered_by: String,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("break_logger.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(script)
+        .arg("--break-seconds")
+        .arg(break_seconds.to_string())
+        .arg("--away-seconds")
+        .arg(away_seconds.to_string())
+        .arg("--quality-score")
+        .arg(quality_score.to_string())
+        .arg("--triggered-by")
+        .arg(triggered_by);
+    if genuine_break {
+        cmd.arg("--genuine-break");
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to log break session: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Break logger failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}

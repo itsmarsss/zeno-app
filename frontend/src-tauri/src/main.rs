@@ -7,8 +7,9 @@ mod schedulers;
 mod state;
 
 use commands::{
-    run_calibration_status, run_clear_data, run_daily_report, run_get_settings,
-    run_log_breathing_session, run_python_session, run_session_history, run_update_settings,
+    run_calibration_status, run_clear_data, run_daily_report, run_get_settings, run_log_break_session,
+    run_log_breathing_session, run_presence_check, run_python_session, run_session_history,
+    run_update_settings,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
@@ -78,7 +79,9 @@ fn main() {
             run_update_settings,
             run_clear_data,
             run_calibration_status,
-            run_log_breathing_session
+            run_log_breathing_session,
+            run_presence_check,
+            run_log_break_session
         ])
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
