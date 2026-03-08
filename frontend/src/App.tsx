@@ -167,25 +167,233 @@ function trendStats(values: number[]): { latest: number; low: number; high: numb
   }
 }
 
-function MainWindowShell() {
+function dayKey(timestamp: string): string {
+  return new Date(timestamp).toISOString().slice(0, 10)
+}
+
+function MainWindowShell({
+  history,
+  dailyReport,
+  settings,
+  calibration,
+  lastRunSource,
+  error,
+  updateSettings,
+  replayOnboarding,
+  clearAllData,
+}: {
+  history: SessionHistoryItem[]
+  dailyReport: DailyReport | null
+  settings: AppSettings | null
+  calibration: CalibrationStatus | null
+  lastRunSource: string | null
+  error: string | null
+  updateSettings: (patch: Partial<AppSettings>) => Promise<void>
+  replayOnboarding: () => void
+  clearAllData: () => Promise<void>
+}) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const todaySessions = useMemo(
+    () =>
+      history
+        .filter((item) => dayKey(item.created_at) === todayKey)
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    [history, todayKey],
+  )
+  const latest = history[0] ?? null
+  const focusSessions = useMemo(() => history.filter((item) => Boolean(item.focus_mode)), [history])
+  const weeklyFocusTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const d = new Date()
+      d.setDate(d.getDate() - offset)
+      totals.set(d.toISOString().slice(0, 10), 0)
+    }
+    for (const item of focusSessions) {
+      const key = dayKey(item.created_at)
+      if (totals.has(key)) totals.set(key, (totals.get(key) ?? 0) + item.session_duration_seconds)
+    }
+    return Array.from(totals.entries()).map(([date, seconds]) => ({
+      date,
+      minutes: Math.round(seconds / 60),
+    }))
+  }, [focusSessions])
+  const weeklyValues = useMemo(() => weeklyFocusTotals.map((item) => item.minutes), [weeklyFocusTotals])
+  const weeklyMax = Math.max(...weeklyValues, 1)
+
   return (
     <main className="main-shell">
       <aside className="main-sidebar">
         <h2>Zeno</h2>
-        <button className={tab === 'overview' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('overview')}>Overview</button>
-        <button className={tab === 'focus' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('focus')}>Focus History</button>
-        <button className={tab === 'posture' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('posture')}>Posture</button>
-        <button className={tab === 'exercises' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('exercises')}>Exercises</button>
-        <button className={tab === 'settings' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('settings')}>Settings</button>
+        <button className={tab === 'overview' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('overview')}>
+          Overview
+        </button>
+        <button className={tab === 'focus' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('focus')}>
+          Focus History
+        </button>
+        <button className={tab === 'posture' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('posture')}>
+          Posture
+        </button>
+        <button className={tab === 'exercises' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('exercises')}>
+          Exercises
+        </button>
+        <button className={tab === 'settings' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('settings')}>
+          Settings
+        </button>
       </aside>
       <section className="main-content">
-        {tab === 'overview' && <h1>Overview</h1>}
-        {tab === 'focus' && <h1>Focus History</h1>}
-        {tab === 'posture' && <h1>Posture</h1>}
-        {tab === 'exercises' && <h1>Exercises</h1>}
-        {tab === 'settings' && <h1>Settings</h1>}
-        <p>Main window shell ready for Phase 4+ implementation.</p>
+        {tab === 'overview' && (
+          <>
+            <h1>Overview</h1>
+            <div className="main-stats-grid">
+              <article className="main-stat-card">
+                <p>Sessions today</p>
+                <strong>{todaySessions.length}</strong>
+              </article>
+              <article className="main-stat-card">
+                <p>Avg stress</p>
+                <strong>{dailyReport?.average_stress_index ?? 0}</strong>
+              </article>
+              <article className="main-stat-card">
+                <p>Focused minutes</p>
+                <strong>{dailyReport?.focused_minutes ?? 0}</strong>
+              </article>
+              <article className="main-stat-card">
+                <p>Latest heart rate</p>
+                <strong>{latest?.heart_rate_bpm == null ? '--' : `${Math.round(latest.heart_rate_bpm)} bpm`}</strong>
+              </article>
+            </div>
+
+            <div className="main-panel">
+              <div className="main-panel-head">
+                <h3>Today timeline</h3>
+                <span>{todaySessions.length} sessions</span>
+              </div>
+              {todaySessions.length === 0 ? (
+                <p className="main-empty">No sessions yet today.</p>
+              ) : (
+                <div className="timeline-list">
+                  {todaySessions.slice(-16).map((item) => (
+                    <div className="timeline-item" key={item.id}>
+                      <span className="timeline-time">{new Date(item.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                      <span className="timeline-chip">Stress {stressIndexFromHistory(item)}</span>
+                      <span className="timeline-chip">Posture {friendlyPosture(item.posture_score)}</span>
+                      <span className="timeline-chip">{item.heart_rate_bpm == null ? 'HR --' : `HR ${Math.round(item.heart_rate_bpm)}`}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === 'focus' && (
+          <>
+            <h1>Focus History</h1>
+            <div className="main-panel">
+              <div className="main-panel-head">
+                <h3>Weekly focus</h3>
+                <span>Last 7 days</span>
+              </div>
+              <div className="week-bars">
+                {weeklyFocusTotals.map((item) => (
+                  <div key={item.date} className="week-bar-col">
+                    <div className="week-bar-track">
+                      <div
+                        className="week-bar-fill"
+                        style={{ height: `${Math.max(8, (item.minutes / weeklyMax) * 100)}%` }}
+                        title={`${new Date(item.date).toLocaleDateString([], { weekday: 'long' })}: ${item.minutes} min`}
+                      />
+                    </div>
+                    <span>{new Date(item.date).toLocaleDateString([], { weekday: 'short' })}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="main-panel">
+              <div className="main-panel-head">
+                <h3>Session log</h3>
+                <span>{focusSessions.length} focus sessions</span>
+              </div>
+              {focusSessions.length === 0 ? (
+                <p className="main-empty">No focus sessions logged yet.</p>
+              ) : (
+                <div className="timeline-list">
+                  {focusSessions.slice(0, 24).map((item) => (
+                    <div className="timeline-item" key={item.id}>
+                      <span className="timeline-time">
+                        {new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                      <span className="timeline-chip">{Math.round(item.session_duration_seconds / 60)}m</span>
+                      <span className="timeline-chip">Stress {stressIndexFromHistory(item)}</span>
+                      <span className="timeline-chip">Posture {friendlyPosture(item.posture_score)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === 'posture' && <h1>Posture tab coming next phase.</h1>}
+        {tab === 'exercises' && <h1>Exercises tab coming next phase.</h1>}
+
+        {tab === 'settings' && (
+          <>
+            <h1>Settings</h1>
+            <section className="prefs-panel main-settings">
+              {!calibration?.calibrated && (
+                <p className="prefs-note">Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.</p>
+              )}
+              <div className="prefs-row">
+                <label>Session frequency</label>
+                <select
+                  value={settings?.session_frequency_minutes ?? 10}
+                  onChange={(e) => void updateSettings({ session_frequency_minutes: Number(e.target.value) })}
+                >
+                  <option value={5}>5 min</option>
+                  <option value={10}>10 min</option>
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                </select>
+              </div>
+              <div className="prefs-row">
+                <label>Report time</label>
+                <input
+                  type="time"
+                  value={`${String(settings?.daily_report_hour ?? 21).padStart(2, '0')}:${String(
+                    settings?.daily_report_minute ?? 0,
+                  ).padStart(2, '0')}`}
+                  onChange={(e) => {
+                    const [hour, minute] = e.target.value.split(':').map(Number)
+                    void updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
+                  }}
+                />
+              </div>
+              <div className="prefs-row">
+                <label>Pause monitoring</label>
+                <button
+                  className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}
+                  onClick={() => void updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
+                  aria-label="Toggle monitoring"
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="prefs-actions">
+                <button className="btn-ghost" onClick={replayOnboarding}>
+                  Replay onboarding
+                </button>
+                <button className="btn-danger" onClick={() => void clearAllData()}>
+                  Clear data
+                </button>
+              </div>
+              <p className="prefs-meta">Last run: {lastRunSource ?? 'none'}</p>
+              {error && <p className="prefs-error">{error}</p>}
+            </section>
+          </>
+        )}
       </section>
     </main>
   )
@@ -201,7 +409,7 @@ function App() {
   const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [activePage, setActivePage] = useState<'home' | 'report' | 'settings'>('home')
+  const [activePage, setActivePage] = useState<'home' | 'report'>('home')
   const [lastNudge, setLastNudge] = useState('No nudges yet.')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(null)
   const [displayedStress, setDisplayedStress] = useState(0)
@@ -602,7 +810,17 @@ function App() {
 
   return (
     isMainWindow ? (
-      <MainWindowShell />
+      <MainWindowShell
+        history={history}
+        dailyReport={dailyReport}
+        settings={settings}
+        calibration={calibration}
+        lastRunSource={lastRunSource}
+        error={error}
+        updateSettings={updateSettings}
+        replayOnboarding={() => setShowOnboarding(true)}
+        clearAllData={clearAllData}
+      />
     ) : (
     <main className="popover">
       {showOnboarding && (
@@ -630,7 +848,7 @@ function App() {
         </div>
         <div className="header-actions">
           {activePage === 'home' ? (
-            <button className="icon-btn" onClick={() => setActivePage('settings')}>Settings</button>
+            <button className="icon-btn" onClick={() => void openMainWindow()}>Open app</button>
           ) : (
             <button className="icon-btn" onClick={() => setActivePage('home')}>Back</button>
           )}
@@ -798,46 +1016,6 @@ function App() {
           </section>
         )}
 
-        {activePage === 'settings' && (
-          <section className="prefs-panel prefs-page">
-            {!calibration?.calibrated && (
-              <p className="prefs-note">
-                Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.
-              </p>
-            )}
-            <div className="prefs-row">
-              <label>Session frequency</label>
-              <select
-                value={settings?.session_frequency_minutes ?? 10}
-                onChange={(e) => updateSettings({ session_frequency_minutes: Number(e.target.value) })}
-              >
-                <option value={5}>5 min</option>
-                <option value={10}>10 min</option>
-                <option value={15}>15 min</option>
-                <option value={30}>30 min</option>
-              </select>
-            </div>
-            <div className="prefs-row">
-              <label>Report time</label>
-              <input
-                type="time"
-                value={`${String(settings?.daily_report_hour ?? 21).padStart(2, '0')}:${String(
-                  settings?.daily_report_minute ?? 0,
-                ).padStart(2, '0')}`}
-                onChange={(e) => {
-                  const [hour, minute] = e.target.value.split(':').map(Number)
-                  updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
-                }}
-              />
-            </div>
-            <div className="prefs-actions">
-              <button className="btn-ghost" onClick={() => setShowOnboarding(true)}>Replay onboarding</button>
-              <button className="btn-danger" onClick={clearAllData}>Clear data</button>
-            </div>
-            <p className="prefs-meta">Last run: {lastRunSource ?? 'none'}</p>
-            {error && <p className="prefs-error">{error}</p>}
-          </section>
-        )}
       </div>
 
       <footer className="footerbar">
