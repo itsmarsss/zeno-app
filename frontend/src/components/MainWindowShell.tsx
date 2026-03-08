@@ -51,10 +51,6 @@ export function MainWindowShell({
   const { settings, updateSettings } = useAppSettings()
   const [tab, setTab] = useState<MainTab>('overview')
   const [selectedExerciseId, setSelectedExerciseId] = useState(EXERCISE_LIBRARY[0]?.id ?? 'chin-tuck')
-  const [spaceFilter, setSpaceFilter] = useState<'all' | 'desk' | 'open'>('all')
-  const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'moderate'>('all')
-  const [durationFilter, setDurationFilter] = useState<'all' | 'short' | 'long'>('all')
-  const [targetFilter, setTargetFilter] = useState<'all' | string>('all')
   const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
   const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
   const [exerciseMetrics, setExerciseMetrics] = useState<PostureStreamFrame['exercise_metrics']>(null)
@@ -246,20 +242,7 @@ export function MainWindowShell({
     return sortNewestFirst ? ordered.reverse() : ordered
   }, [currentPeriodFocus, sortNewestFirst])
 
-  const targetOptions = useMemo(() => Array.from(new Set(EXERCISE_LIBRARY.map((exercise) => exercise.target))), [])
-  const filteredExercises = useMemo(
-    () => EXERCISE_LIBRARY.filter((exercise) => {
-      if (spaceFilter !== 'all' && exercise.space !== spaceFilter) return false
-      if (difficultyFilter !== 'all' && exercise.difficulty !== difficultyFilter) return false
-      if (durationFilter === 'short' && exercise.duration_minutes > 2) return false
-      if (durationFilter === 'long' && exercise.duration_minutes < 3) return false
-      if (targetFilter !== 'all' && exercise.target !== targetFilter) return false
-      return true
-    }),
-    [spaceFilter, difficultyFilter, durationFilter, targetFilter],
-  )
-
-  const selectedExercise = filteredExercises.find((exercise) => exercise.id === selectedExerciseId) ?? filteredExercises[0] ?? null
+  const selectedExercise = EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
   const isPro = settings?.plan_tier === 'pro'
 
   function toggleGuidedExercise() {
@@ -401,21 +384,9 @@ export function MainWindowShell({
 
         {tab === 'exercises' && (
           <ExercisesTab
-            spaceFilter={spaceFilter}
-            setSpaceFilter={setSpaceFilter}
-            durationFilter={durationFilter}
-            setDurationFilter={setDurationFilter}
-            difficultyFilter={difficultyFilter}
-            setDifficultyFilter={setDifficultyFilter}
-            targetFilter={targetFilter}
-            setTargetFilter={setTargetFilter}
-            targetOptions={targetOptions}
-            filteredExercises={filteredExercises}
-            selectedExercise={selectedExercise}
+            exercises={EXERCISE_LIBRARY}
+            selectedExerciseId={selectedExerciseId}
             setSelectedExerciseId={setSelectedExerciseId}
-            setExerciseFeedback={setExerciseFeedback}
-            setExerciseMetrics={setExerciseMetrics}
-            setPaywallMessage={setPaywallMessage}
             exerciseGuidedActive={exerciseGuidedActive}
             toggleGuided={toggleGuidedExercise}
             postureStreamState={postureStreamState}
