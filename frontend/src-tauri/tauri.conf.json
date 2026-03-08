@@ -14,9 +14,10 @@
       {
         "label": "main",
         "title": "Zeno",
-        "width": 360,
-        "height": 520,
+        "width": 320,
+        "height": 480,
         "resizable": false,
+        "decorations": false,
         "visible": false,
         "alwaysOnTop": true
       }
