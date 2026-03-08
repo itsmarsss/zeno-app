@@ -1,6 +1,6 @@
 import { ChevronRight, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
@@ -68,12 +68,52 @@ export function FocusHistoryTab({
   setSortNewestFirst: (value: boolean | ((prev: boolean) => boolean)) => void
 }) {
   const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
+  const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<number | null>(null)
   const [rhythmHoverDirection, setRhythmHoverDirection] = useState<1 | -1>(1)
   const previousRhythmHoverIndexRef = useRef<number | null>(null)
+  const [rhythmPlotLeftPx, setRhythmPlotLeftPx] = useState(0)
+  const [rhythmPlotWidthPx, setRhythmPlotWidthPx] = useState(0)
   const hoveredRhythm = rhythmHoverIndex == null ? null : rhythmData[rhythmHoverIndex] ?? null
-  const hoverRatio = rhythmHoverIndex == null ? 0 : rhythmHoverIndex / Math.max(rhythmData.length - 1, 1)
-  const cursorLeft = `${hoverRatio * 100}%`
-  const tooltipLeft = `${Math.max(8, Math.min(84, hoverRatio * 100))}%`
+  const bucketWidthPx = rhythmData.length > 0 ? rhythmPlotWidthPx / rhythmData.length : 0
+  const hoverBandLeftPx = rhythmHoverIndex == null ? rhythmPlotLeftPx : rhythmPlotLeftPx + rhythmHoverIndex * bucketWidthPx
+  const tooltipWidthPx = 170
+  const tooltipPaddingPx = 8
+  const tooltipLeftPx = Math.max(
+    rhythmPlotLeftPx + tooltipPaddingPx,
+    Math.min(
+      hoverBandLeftPx + bucketWidthPx / 2 - tooltipWidthPx / 2,
+      rhythmPlotLeftPx + Math.max(tooltipPaddingPx, rhythmPlotWidthPx - tooltipWidthPx - tooltipPaddingPx),
+    ),
+  )
+
+  const hoveredDaySummary = useMemo(() => {
+    if (hoveredHeatmapDay == null) return null
+    const row = heatmapData[hoveredHeatmapDay]
+    if (!row) return null
+
+    let totalSessions = 0
+    let weightedStress = 0
+    let bestHourIndex = -1
+    let bestStress = Number.POSITIVE_INFINITY
+
+    row.forEach((cell, index) => {
+      if (!cell.count || cell.avgStress == null) return
+      totalSessions += cell.count
+      weightedStress += cell.avgStress * cell.count
+      if (cell.avgStress < bestStress) {
+        bestStress = cell.avgStress
+        bestHourIndex = index
+      }
+    })
+
+    const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    const dayName = fullDayNames[hoveredHeatmapDay] ?? 'Day'
+    if (totalSessions === 0) return `${dayName}: no focus sessions yet.`
+
+    const avgStress = Math.round(weightedStress / totalSessions)
+    const bestHour = bestHourIndex >= 0 ? formatHourLabel(8 + bestHourIndex) : '--'
+    return `${dayName}: ${totalSessions} sessions · avg stress ${avgStress} · best hour ${bestHour}`
+  }, [heatmapData, hoveredHeatmapDay])
 
   return (
     <>
@@ -128,7 +168,12 @@ export function FocusHistoryTab({
               </div>
               <div className="heatmap-body">
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, rowIndex) => (
-                  <div key={day} className="heatmap-row">
+                  <div
+                    key={day}
+                    className="heatmap-row"
+                    onMouseEnter={() => setHoveredHeatmapDay(rowIndex)}
+                    onMouseLeave={() => setHoveredHeatmapDay(null)}
+                  >
                     <span>{day}</span>
                     <div className="heatmap-cells">
                       {heatmapData[rowIndex].map((cell, colIndex) => {
@@ -146,6 +191,7 @@ export function FocusHistoryTab({
                 ))}
               </div>
             </div>
+            {hoveredDaySummary ? <p className="heatmap-day-summary">{hoveredDaySummary}</p> : null}
             {focusPatternCallout && (
               <p className="heatmap-callout"><Zap size={13} /> {focusPatternCallout}</p>
             )}
@@ -161,7 +207,7 @@ export function FocusHistoryTab({
         <h3>{focusPeriod === 'week' ? 'Daily rhythm' : focusPeriod === 'month' ? 'Weekly rhythm' : 'Monthly rhythm'}</h3>
         {hasEnoughPatternData ? (
           <>
-            <div className="rhythm-canvas">
+            <div className="rhythm-canvas interactive-chart-surface">
               <svg
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
@@ -171,14 +217,19 @@ export function FocusHistoryTab({
                   previousRhythmHoverIndexRef.current = null
                 }}
                 onPointerMove={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)))
+                  const svgRect = event.currentTarget.getBoundingClientRect()
+                  const canvasRect = event.currentTarget.parentElement?.getBoundingClientRect() ?? svgRect
+                  const localLeft = Math.max(0, svgRect.left - canvasRect.left)
+                  const localWidth = Math.max(1, svgRect.width)
+                  const ratio = Math.max(0, Math.min(1, (event.clientX - svgRect.left) / localWidth))
                   const index = Math.round(ratio * (rhythmData.length - 1))
                   const prev = previousRhythmHoverIndexRef.current
                   if (prev != null && index !== prev) {
                     setRhythmHoverDirection(index > prev ? 1 : -1)
                   }
                   previousRhythmHoverIndexRef.current = index
+                  setRhythmPlotLeftPx(localLeft)
+                  setRhythmPlotWidthPx(localWidth)
                   setRhythmHoverIndex(index)
                 }}
               >
@@ -196,16 +247,16 @@ export function FocusHistoryTab({
                 {hoveredRhythm && (
                   <>
                     <motion.div
-                      className="rhythm-cursor"
+                      className="rhythm-hover-band"
                       initial={{ opacity: 0 }}
-                      animate={{ left: cursorLeft, opacity: 1 }}
+                      animate={{ left: `${hoverBandLeftPx}px`, width: `${Math.max(0, bucketWidthPx)}px`, opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
                     />
                     <motion.div
                       className="rhythm-tooltip"
                       initial={{ opacity: 0, y: 6 }}
-                      animate={{ left: tooltipLeft, opacity: 1, y: 0 }}
+                      animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 6 }}
                       transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
                     >

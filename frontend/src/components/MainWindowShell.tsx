@@ -343,15 +343,24 @@ export function MainWindowShell({
   const selectedExercise = EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
   const isPro = settings?.plan_tier === 'pro'
 
-  function toggleGuidedExercise() {
+  function toggleGuidedExercise(exerciseId?: string) {
+    const targetExercise = (exerciseId
+      ? EXERCISE_LIBRARY.find((exercise) => exercise.id === exerciseId)
+      : selectedExercise) ?? selectedExercise
+
     if (!isPro) {
       setPaywallMessage('Guided sets are a Pro feature. Add your license key in Settings.')
       return
     }
-    if (selectedExercise && !FREE_EXERCISE_IDS.has(selectedExercise.id)) {
+    if (targetExercise && !FREE_EXERCISE_IDS.has(targetExercise.id)) {
       setPaywallMessage('This exercise requires Pro.')
       return
     }
+
+    if (targetExercise) {
+      setSelectedExerciseId(targetExercise.id)
+    }
+    setPaywallMessage(null)
 
     setExerciseGuidedActive((v) => {
       const next = !v

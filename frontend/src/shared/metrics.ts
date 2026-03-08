@@ -66,9 +66,23 @@ export function sparklinePath(values: number[], width = 260, height = 74): strin
   const points = values.map((value, i) => {
     const x = i * stepX
     const y = height - ((Math.max(min, Math.min(max, value)) - min) / (max - min || 1)) * height
-    return `${x.toFixed(2)} ${y.toFixed(2)}`
+    return { x, y }
   })
-  return `M ${points.join(' L ')}`
+  if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+  if (points.length === 2) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`
+
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const c = points[i]
+    const n = points[i + 1]
+    const midX = (c.x + n.x) / 2
+    const midY = (c.y + n.y) / 2
+    path += ` Q ${c.x.toFixed(2)} ${c.y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`
+  }
+  const penultimate = points[points.length - 2]
+  const last = points[points.length - 1]
+  path += ` Q ${penultimate.x.toFixed(2)} ${penultimate.y.toFixed(2)} ${last.x.toFixed(2)} ${last.y.toFixed(2)}`
+  return path
 }
 
 export function pointY(value: number, height = 74): number {

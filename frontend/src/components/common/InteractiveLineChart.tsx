@@ -16,12 +16,13 @@ export function InteractiveLineChart({
   yMax,
   thresholdValue,
   thresholdLabel,
-  hoverHint = 'Move cursor to inspect',
   valueLabel = 'Value',
   valueSuffix = '',
   className = '',
   lineClassName = '',
   areaClassName = '',
+  areaGradientId,
+  areaGradientColor,
   thresholdClassName = '',
 }: {
   points: InteractiveLineChartPoint[]
@@ -29,12 +30,13 @@ export function InteractiveLineChart({
   yMax: number
   thresholdValue?: number
   thresholdLabel?: string
-  hoverHint?: string
   valueLabel?: string
   valueSuffix?: string
   className?: string
   lineClassName?: string
   areaClassName?: string
+  areaGradientId?: string
+  areaGradientColor?: string
   thresholdClassName?: string
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -96,10 +98,22 @@ export function InteractiveLineChart({
       }}
     >
       <svg ref={svgRef} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        {areaGradientId && areaGradientColor ? (
+          <defs>
+            <linearGradient id={areaGradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={areaGradientColor} stopOpacity="0.18" />
+              <stop offset="100%" stopColor={areaGradientColor} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        ) : null}
         {thresholdY != null && (
           <line x1="0" x2="100" y1={thresholdY} y2={thresholdY} className={`interactive-chart-threshold ${thresholdClassName}`.trim()} />
         )}
-        <path d={areaPath} className={`interactive-chart-area ${areaClassName}`.trim()} />
+        <path
+          d={areaPath}
+          className={`interactive-chart-area ${areaClassName}`.trim()}
+          style={areaGradientId ? { fill: `url(#${areaGradientId})` } : undefined}
+        />
         <path d={linePath} className={`interactive-chart-line ${lineClassName}`.trim()} />
       </svg>
 
@@ -138,9 +152,6 @@ export function InteractiveLineChart({
       </AnimatePresence>
 
       {thresholdLabel ? <span className="interactive-chart-threshold-label">{thresholdLabel}</span> : null}
-      <div className="interactive-chart-hover-hint">
-        <span>{hoverHint}</span>
-      </div>
       <div className="interactive-chart-axis" style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}>
         {points.map((point, index) => (
           index % axisStep === 0 || index === points.length - 1 ? <span key={point.id}>{point.label}</span> : <span key={point.id} />

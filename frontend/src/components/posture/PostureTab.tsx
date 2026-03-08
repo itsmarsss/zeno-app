@@ -230,11 +230,12 @@ export function PostureTab({
             points={postureChartPoints}
             yMin={0}
             yMax={100}
+            areaGradientId="postureGradient"
+            areaGradientColor="var(--state-calm)"
             thresholdValue={70}
             thresholdLabel="Good threshold"
             valueLabel="Posture"
             valueSuffix="/100"
-            hoverHint="Move cursor to inspect"
             lineClassName="posture-line"
             areaClassName="posture-area"
             thresholdClassName="posture-threshold"

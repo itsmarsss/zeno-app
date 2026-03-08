@@ -1,11 +1,55 @@
+.interactive-chart-surface {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-light) 22%, var(--bg-surface)),
+    var(--bg-surface) 44%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.interactive-chart-surface::before {
+  content: '';
+  position: absolute;
+  inset: 10px 12px 34px;
+  background: repeating-linear-gradient(
+    to top,
+    color-mix(in srgb, var(--border-subtle) 65%, transparent) 0,
+    color-mix(in srgb, var(--border-subtle) 65%, transparent) 1px,
+    transparent 1px,
+    transparent 26px
+  );
+  pointer-events: none;
+  opacity: 0.55;
+}
+
 .interactive-chart-canvas {
   margin-top: 16px;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
-  background: var(--bg-surface);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-light) 22%, var(--bg-surface)),
+    var(--bg-surface) 44%
+  );
   padding: 14px 12px 14px;
   position: relative;
   overflow: hidden;
+}
+
+.interactive-chart-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 14px 12px 34px;
+  background: repeating-linear-gradient(
+    to top,
+    color-mix(in srgb, var(--border-subtle) 65%, transparent) 0,
+    color-mix(in srgb, var(--border-subtle) 65%, transparent) 1px,
+    transparent 1px,
+    transparent 26px
+  );
+  pointer-events: none;
+  opacity: 0.55;
 }
 
 .interactive-chart-canvas svg {
@@ -13,6 +57,8 @@
   height: 130px;
   display: block;
   padding-bottom: 1px;
+  position: relative;
+  z-index: 1;
 }
 
 .interactive-chart-threshold {
@@ -56,6 +102,7 @@
   padding: 8px 10px;
   pointer-events: none;
   backdrop-filter: blur(8px);
+  z-index: 50;
 }
 
 .interactive-chart-tooltip p {
@@ -92,17 +139,6 @@
   top: 6px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
-  color: var(--text-tertiary);
-}
-
-.interactive-chart-hover-hint {
-  margin-top: 4px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.interactive-chart-hover-hint span {
-  font-size: 11px;
   color: var(--text-tertiary);
 }
 

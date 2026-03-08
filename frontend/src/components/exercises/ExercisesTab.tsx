@@ -59,7 +59,7 @@ export function ExercisesTab({
   selectedExerciseId: string
   setSelectedExerciseId: (value: string) => void
   exerciseGuidedActive: boolean
-  toggleGuided: () => void
+  toggleGuided: (exerciseId?: string) => void
   postureStreamState: 'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   exerciseMetrics: PostureStreamFrame['exercise_metrics']
   postureFrame: string | null
@@ -130,7 +130,7 @@ export function ExercisesTab({
         </div>
 
         <aside className="exercise-coach-panel">
-          <button className="exercise-back-link" onClick={toggleGuided}><ArrowLeft size={14} /> Back to exercises</button>
+          <button className="exercise-back-link" onClick={() => toggleGuided()}><ArrowLeft size={14} /> Back to exercises</button>
           <h2>{selectedExercise.name}</h2>
           <p className="exercise-tag">{selectedExercise.target}</p>
           <hr />
@@ -242,7 +242,7 @@ export function ExercisesTab({
                   className="exercise-v2-start"
                   onClick={() => {
                     setSelectedExerciseId(exercise.id)
-                    toggleGuided()
+                    toggleGuided(exercise.id)
                   }}
                 >
                   <Play size={12} /> Begin exercise

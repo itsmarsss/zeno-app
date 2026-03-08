@@ -434,6 +434,45 @@
 
 .report-link:hover { color: var(--accent-dim); }
 
+.checkin-fab {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 58px;
+  height: 46px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  box-shadow: 0 6px 16px rgba(45, 106, 79, 0.18);
+  transition: background-color 150ms ease, border-color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+
+.checkin-fab:hover {
+  border-color: var(--accent-dim);
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(45, 106, 79, 0.22);
+}
+
+.checkin-fab:active {
+  transform: translateY(0);
+}
+
+.checkin-fab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .toggle-wrap {
   display: flex;
   gap: 6px;

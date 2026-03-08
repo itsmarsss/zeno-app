@@ -64,24 +64,49 @@ export function formatDelta(delta: number): string {
 }
 
 export function buildPath(values: Array<number | null>, min: number, max: number, width = 100, height = 100): string {
-  let path = ''
-  let hasStarted = false
+  const segments: Array<Array<{ x: number; y: number }>> = []
+  let current: Array<{ x: number; y: number }> = []
+
   values.forEach((raw, index) => {
     if (raw == null || Number.isNaN(raw)) {
-      hasStarted = false
+      if (current.length > 0) segments.push(current)
+      current = []
       return
     }
+
     const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width
     const norm = clamp((raw - min) / Math.max(max - min, 1), 0, 1)
     const y = height - norm * height
-    if (!hasStarted) {
-      path += `M ${x.toFixed(2)} ${y.toFixed(2)} `
-      hasStarted = true
-    } else {
-      path += `L ${x.toFixed(2)} ${y.toFixed(2)} `
-    }
+    current.push({ x, y })
   })
-  return path.trim()
+  if (current.length > 0) segments.push(current)
+
+  const pathParts = segments.map((points) => {
+    if (points.length === 0) return ''
+    if (points.length === 1) {
+      const p = points[0]
+      return `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
+    }
+    if (points.length === 2) {
+      const [a, b] = points
+      return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}`
+    }
+
+    let segmentPath = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const c = points[i]
+      const n = points[i + 1]
+      const midX = (c.x + n.x) / 2
+      const midY = (c.y + n.y) / 2
+      segmentPath += ` Q ${c.x.toFixed(2)} ${c.y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`
+    }
+    const penultimate = points[points.length - 2]
+    const last = points[points.length - 1]
+    segmentPath += ` Q ${penultimate.x.toFixed(2)} ${penultimate.y.toFixed(2)} ${last.x.toFixed(2)} ${last.y.toFixed(2)}`
+    return segmentPath
+  })
+
+  return pathParts.filter(Boolean).join(' ')
 }
 
 export function buildAreaPath(values: number[], min: number, max: number, width = 100, height = 100): string {

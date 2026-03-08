@@ -180,7 +180,7 @@ export function OverviewTab({
           <p className="main-empty">No sessions yet today.</p>
         ) : (
           <div
-            className="overview-chart-canvas"
+            className="overview-chart-canvas interactive-chart-surface"
             onMouseLeave={() => {
               setChartHoverIndex(null)
               setHoverPercent(null)
@@ -269,9 +269,6 @@ export function OverviewTab({
                 </>
               )}
             </AnimatePresence>
-            <div className="timeline-hover-hint">
-              <span>Move cursor to inspect</span>
-            </div>
             <div className="timeline-axis" style={{ gridTemplateColumns: `repeat(${timelineData.length}, minmax(0, 1fr))` }}>
               {/*
                 Keep axis readable as granularity increases.

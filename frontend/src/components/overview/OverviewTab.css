@@ -187,13 +187,12 @@
 }
 
 .overview-chart-canvas {
-    margin-top: 16px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 14px;
-    background: var(--bg-surface);
-    padding: 16px 14px 18px;
-    position: relative;
-    overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 16px 14px 18px;
+  position: relative;
+  overflow: hidden;
 }
 
 .overview-chart-canvas svg {
@@ -201,6 +200,8 @@
     height: 180px;
     display: block;
     padding: 1px;
+    position: relative;
+    z-index: 1;
 }
 
 .focus-band {
@@ -268,18 +269,19 @@
 }
 
 .timeline-tooltip {
-    position: absolute;
-    top: 10px;
-    width: 196px;
+  position: absolute;
+  top: 10px;
+  width: 196px;
     max-width: calc(100% - 16px);
     border: 1px solid rgba(45, 106, 79, 0.22);
     border-radius: 12px;
     background: color-mix(in srgb, var(--bg-surface) 92%, #ffffff 8%);
     box-shadow: 0 10px 22px rgba(13, 26, 18, 0.14);
     padding: 10px 12px;
-    pointer-events: none;
-    backdrop-filter: blur(8px);
-    will-change: left, transform, opacity;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  will-change: left, transform, opacity;
+  z-index: 60;
 }
 
 .timeline-tooltip p {
@@ -318,19 +320,8 @@
     font-style: normal;
 }
 
-.timeline-hover-hint {
-    margin-top: 6px;
-    display: flex;
-    justify-content: flex-end;
-}
-
-.timeline-hover-hint span {
-    font-size: 11px;
-    color: var(--text-tertiary);
-}
-
 .insight-cards {
-    display: flex;
+  display: flex;
     gap: 12px;
     overflow-x: auto;
     scrollbar-width: none;

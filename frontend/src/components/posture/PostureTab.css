@@ -242,10 +242,6 @@
   stroke-dasharray: 4 4;
 }
 
-.posture-area {
-  fill: url(#postureGradient);
-}
-
 .posture-line {
   fill: none;
   stroke: var(--state-calm);
