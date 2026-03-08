@@ -68,6 +68,7 @@ type PostureStreamFrame = {
   frame_jpeg_b64: string
   landmarks: PostureLandmarks
   posture_score: number
+  exercise_feedback?: string | null
 }
 type Exercise = {
   id: string
@@ -266,6 +267,8 @@ function MainWindowShell({
 }) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
   const [selectedExerciseId, setSelectedExerciseId] = useState(EXERCISE_LIBRARY[0]?.id ?? 'chin-tuck')
+  const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
+  const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
@@ -305,7 +308,8 @@ function MainWindowShell({
     EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0]
 
   useEffect(() => {
-    if (tab !== 'posture') {
+    const shouldStream = tab === 'posture' || (tab === 'exercises' && exerciseGuidedActive)
+    if (!shouldStream) {
       return
     }
 
@@ -316,12 +320,14 @@ function MainWindowShell({
       setPostureStreamState('connecting')
       setPostureStreamError(null)
       try {
-        await invoke('start_posture_stream', { fps: 8 })
+        const exerciseIdArg = tab === 'exercises' ? selectedExercise.id : null
+        await invoke('start_posture_stream', { fps: 8, exerciseId: exerciseIdArg })
         unlistenFrame = await listen<PostureStreamFrame>('posture-stream-frame', (event) => {
           const payload = event.payload
           setPostureFrame(`data:image/jpeg;base64,${payload.frame_jpeg_b64}`)
           setPostureLandmarks(payload.landmarks ?? null)
           setPostureScoreLive(payload.posture_score)
+          setExerciseFeedback(payload.exercise_feedback ?? null)
           setPostureStreamState(payload.landmarks ? 'running' : 'no-pose')
         })
         unlistenEnded = await listen('posture-stream-ended', () => {
@@ -339,7 +345,7 @@ function MainWindowShell({
       if (unlistenEnded) unlistenEnded()
       void invoke('stop_posture_stream').catch(() => null)
     }
-  }, [tab])
+  }, [tab, exerciseGuidedActive, selectedExercise.id])
 
   return (
     <main className="main-shell">
@@ -531,10 +537,45 @@ function MainWindowShell({
                     <li key={step}>{step}</li>
                   ))}
                 </ol>
-                <button className="btn-solid" type="button">
-                  Start guided set
-                </button>
-                <p className="exercise-note">Live form feedback connects in the next step.</p>
+                <div className="exercise-actions">
+                  <button
+                    className="btn-solid"
+                    type="button"
+                    onClick={() => setExerciseGuidedActive((v) => !v)}
+                  >
+                    {exerciseGuidedActive ? 'Stop guided set' : 'Start guided set'}
+                  </button>
+                  {exerciseGuidedActive && (
+                    <span className="exercise-live-pill">
+                      {postureStreamState === 'running' ? 'Live' : postureStreamState === 'no-pose' ? 'No pose' : 'Connecting'}
+                    </span>
+                  )}
+                </div>
+                {exerciseGuidedActive && postureFrame && (
+                  <div className="exercise-live-preview">
+                    <img src={postureFrame} className="posture-video" alt="Guided exercise stream" />
+                    {postureLandmarks?.nose && postureLandmarks.left_shoulder && postureLandmarks.right_shoulder ? (
+                      <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <line
+                          x1={postureLandmarks.left_shoulder.x * 100}
+                          y1={postureLandmarks.left_shoulder.y * 100}
+                          x2={postureLandmarks.right_shoulder.x * 100}
+                          y2={postureLandmarks.right_shoulder.y * 100}
+                        />
+                        <line
+                          x1={postureLandmarks.nose.x * 100}
+                          y1={postureLandmarks.nose.y * 100}
+                          x2={(postureLandmarks.left_shoulder.x * 100 + postureLandmarks.right_shoulder.x * 100) / 2}
+                          y2={(postureLandmarks.left_shoulder.y * 100 + postureLandmarks.right_shoulder.y * 100) / 2}
+                        />
+                        <circle cx={postureLandmarks.nose.x * 100} cy={postureLandmarks.nose.y * 100} r="1.4" />
+                        <circle cx={postureLandmarks.left_shoulder.x * 100} cy={postureLandmarks.left_shoulder.y * 100} r="1.4" />
+                        <circle cx={postureLandmarks.right_shoulder.x * 100} cy={postureLandmarks.right_shoulder.y * 100} r="1.4" />
+                      </svg>
+                    ) : null}
+                  </div>
+                )}
+                <p className="exercise-note">{exerciseFeedback ?? 'Live form feedback will appear here while guided mode runs.'}</p>
               </section>
             </div>
           </>

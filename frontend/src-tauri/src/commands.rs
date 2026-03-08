@@ -197,6 +197,7 @@ pub async fn start_posture_stream(
     app: tauri::AppHandle,
     state: tauri::State<'_, PostureStreamState>,
     fps: Option<f64>,
+    exercise_id: Option<String>,
 ) -> Result<(), String> {
     {
         let mut guard = state
@@ -218,6 +219,12 @@ pub async fn start_posture_stream(
             .arg(script)
             .arg("--fps")
             .arg(fps.unwrap_or(8.0).clamp(2.0, 15.0).to_string())
+            .args(
+                exercise_id
+                    .as_ref()
+                    .map(|id| vec!["--exercise-id".to_string(), id.clone()])
+                    .unwrap_or_default(),
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()

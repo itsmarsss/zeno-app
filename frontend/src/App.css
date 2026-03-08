@@ -291,6 +291,33 @@
   color: var(--text-tertiary);
 }
 
+.exercise-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exercise-live-pill {
+  border: 1px solid #bdd8ca;
+  background: #eef6f1;
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.exercise-live-preview {
+  margin-top: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  background: #0d1013;
+  max-width: 540px;
+  aspect-ratio: 16 / 9;
+}
+
 .posture-preview {
   margin-top: 12px;
   border-radius: 12px;
