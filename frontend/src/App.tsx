@@ -167,7 +167,32 @@ function trendStats(values: number[]): { latest: number; low: number; high: numb
   }
 }
 
+function MainWindowShell() {
+  const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
+  return (
+    <main className="main-shell">
+      <aside className="main-sidebar">
+        <h2>Zeno</h2>
+        <button className={tab === 'overview' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('overview')}>Overview</button>
+        <button className={tab === 'focus' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('focus')}>Focus History</button>
+        <button className={tab === 'posture' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('posture')}>Posture</button>
+        <button className={tab === 'exercises' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('exercises')}>Exercises</button>
+        <button className={tab === 'settings' ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab('settings')}>Settings</button>
+      </aside>
+      <section className="main-content">
+        {tab === 'overview' && <h1>Overview</h1>}
+        {tab === 'focus' && <h1>Focus History</h1>}
+        {tab === 'posture' && <h1>Posture</h1>}
+        {tab === 'exercises' && <h1>Exercises</h1>}
+        {tab === 'settings' && <h1>Settings</h1>}
+        <p>Main window shell ready for Phase 4+ implementation.</p>
+      </section>
+    </main>
+  )
+}
+
 function App() {
+  const isMainWindow = getCurrentWindow().label === 'main-window'
   const [status, setStatus] = useState<'Idle' | 'Running' | 'Done' | 'Error'>('Idle')
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SessionResult | null>(null)
@@ -228,6 +253,14 @@ function App() {
   const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
   const breakMinutes = Math.floor(breakRemainingSec / 60)
   const breakSeconds = breakRemainingSec % 60
+
+  async function openMainWindow() {
+    try {
+      await invoke('open_main_window')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   async function stopBreathing() {
     const hrEnd = result?.heart_rate_bpm ?? null
@@ -568,6 +601,9 @@ function App() {
   }, [])
 
   return (
+    isMainWindow ? (
+      <MainWindowShell />
+    ) : (
     <main className="popover">
       {showOnboarding && (
         <div className="overlay">
@@ -810,6 +846,7 @@ function App() {
         ) : (
           <button className="report-link" onClick={() => setActivePage('home')}>Home</button>
         )}
+        <button className="report-link" onClick={() => void openMainWindow()}>Open app</button>
         <div className="toggle-wrap">
           {activePage === 'home' && settings?.focus_mode_active && !breathingActive && (
             <>
@@ -862,6 +899,7 @@ function App() {
         </button>
       )}
     </main>
+    )
   )
 }
 

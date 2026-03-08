@@ -7,6 +7,7 @@ use crate::python_sidecar::{
 use crate::state::{NotificationState, SessionState, SettingsState};
 use serde_json::Value;
 use std::sync::atomic::Ordering;
+use tauri::{Manager, WebviewWindowBuilder};
 
 #[tauri::command]
 pub async fn run_python_session(
@@ -144,4 +145,29 @@ pub async fn run_log_break_session(
     })
     .await
     .map_err(|e| format!("Break log task join error: {e}"))?
+}
+
+#[tauri::command]
+pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main-window") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main-window")
+        .ok_or_else(|| "Missing main-window config".to_string())?;
+
+    let window = WebviewWindowBuilder::from_config(&app, config)
+        .map_err(|e| format!("Failed to build main window config: {e}"))?
+        .build()
+        .map_err(|e| format!("Failed to create main window: {e}"))?;
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
 }

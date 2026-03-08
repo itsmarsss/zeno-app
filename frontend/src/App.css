@@ -25,6 +25,57 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
+.main-shell {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.main-sidebar {
+  border-right: 1px solid var(--border-subtle);
+  padding: 18px 12px;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.main-sidebar h2 {
+  margin: 0 0 8px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+}
+
+.main-nav {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 14px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.main-nav.is-active {
+  border-color: var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.main-content {
+  padding: 24px;
+}
+
+.main-content h1 {
+  margin: 0 0 8px;
+  font-family: 'DM Serif Display', serif;
+}
+
 .popover {
   width: 100%;
   height: 100%;
