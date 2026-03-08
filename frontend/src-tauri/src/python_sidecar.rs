@@ -286,3 +286,55 @@ pub fn run_calibration_status_blocking() -> Result<Value, String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     parse_json_line(&stdout)
 }
+
+pub fn run_log_breathing_session_blocking(
+    exercise_type: String,
+    cycles_completed: u32,
+    hr_start: Option<f64>,
+    hr_end: Option<f64>,
+    hr_delta: Option<f64>,
+    triggered_by: String,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("breathing_logger.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(script)
+        .arg("--exercise-type")
+        .arg(exercise_type)
+        .arg("--cycles-completed")
+        .arg(cycles_completed.to_string())
+        .arg("--triggered-by")
+        .arg(triggered_by);
+
+    if let Some(v) = hr_start {
+        cmd.arg("--hr-start").arg(v.to_string());
+    }
+    if let Some(v) = hr_end {
+        cmd.arg("--hr-end").arg(v.to_string());
+    }
+    if let Some(v) = hr_delta {
+        cmd.arg("--hr-delta").arg(v.to_string());
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to log breathing session: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Breathing logger failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}

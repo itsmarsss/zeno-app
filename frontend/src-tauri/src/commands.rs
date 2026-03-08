@@ -1,7 +1,8 @@
 use crate::notifications::{notify_for_session, start_gesture_dismiss_listener};
 use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
-    run_python_session_blocking, run_session_history_blocking, run_settings_blocking,
+    run_log_breathing_session_blocking, run_python_session_blocking, run_session_history_blocking,
+    run_settings_blocking,
 };
 use crate::state::{NotificationState, SessionState, SettingsState};
 use serde_json::Value;
@@ -92,4 +93,27 @@ pub async fn run_calibration_status() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(run_calibration_status_blocking)
         .await
         .map_err(|e| format!("Calibration task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_log_breathing_session(
+    exercise_type: String,
+    cycles_completed: u32,
+    hr_start: Option<f64>,
+    hr_end: Option<f64>,
+    hr_delta: Option<f64>,
+    triggered_by: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_log_breathing_session_blocking(
+            exercise_type,
+            cycles_completed,
+            hr_start,
+            hr_end,
+            hr_delta,
+            triggered_by.unwrap_or_else(|| "manual".to_string()),
+        )
+    })
+    .await
+    .map_err(|e| format!("Breathing log task join error: {e}"))?
 }

@@ -185,6 +185,8 @@ function App() {
   const [breathingPhaseIndex, setBreathingPhaseIndex] = useState(0)
   const [breathingRemainingMs, setBreathingRemainingMs] = useState(BREATHING_PATTERNS.box.phases[0].seconds * 1000)
   const [breathingCycle, setBreathingCycle] = useState(1)
+  const [breathingStartHr, setBreathingStartHr] = useState<number | null>(null)
+  const [breathingSummary, setBreathingSummary] = useState<string | null>(null)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -220,6 +222,39 @@ function App() {
   const breathingPhase = activePattern.phases[breathingPhaseIndex] ?? activePattern.phases[0]
   const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
 
+  async function stopBreathing() {
+    const hrEnd = result?.heart_rate_bpm ?? null
+    const hrStart = breathingStartHr
+    const hrDelta = hrStart == null || hrEnd == null ? null : Math.round((hrEnd - hrStart) * 10) / 10
+    const cyclesCompleted = Math.max(0, breathingCycle - 1)
+
+    try {
+      await invoke('run_log_breathing_session', {
+        exerciseType: breathingPattern,
+        cyclesCompleted,
+        hrStart,
+        hrEnd,
+        hrDelta,
+        triggeredBy: 'manual',
+      })
+    } catch {
+      // Keep UX resilient; logging should never block the flow.
+    }
+
+    if (hrDelta != null) {
+      const summary =
+        hrDelta < 0
+          ? `Heart rate down ${Math.abs(Math.round(hrDelta))} bpm`
+          : hrDelta > 0
+            ? `Heart rate up ${Math.round(hrDelta)} bpm`
+            : 'Heart rate unchanged'
+      setBreathingSummary(summary)
+    } else {
+      setBreathingSummary('Session complete')
+    }
+    setBreathingActive(false)
+  }
+
   useEffect(() => {
     let rafId = 0
     const animate = () => {
@@ -246,7 +281,7 @@ function App() {
       const wrapped = nextPhase === 0
       const nextCycle = wrapped ? breathingCycle + 1 : breathingCycle
       if (nextCycle > activePattern.cycles) {
-        setBreathingActive(false)
+        void stopBreathing()
         return
       }
       setBreathingPhaseIndex(nextPhase)
@@ -254,7 +289,13 @@ function App() {
       if (wrapped) setBreathingCycle(nextCycle)
     }, 100)
     return () => window.clearTimeout(timeout)
-  }, [activePattern, breathingActive, breathingCycle, breathingPhaseIndex, breathingRemainingMs])
+  }, [activePattern, breathingActive, breathingCycle, breathingPhaseIndex, breathingRemainingMs, stopBreathing])
+
+  useEffect(() => {
+    if (!breathingSummary) return
+    const timeout = window.setTimeout(() => setBreathingSummary(null), 3000)
+    return () => window.clearTimeout(timeout)
+  }, [breathingSummary])
 
   async function loadHistory() {
     try {
@@ -320,10 +361,8 @@ function App() {
     setBreathingPhaseIndex(0)
     setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
     setBreathingCycle(1)
-  }
-
-  function stopBreathing() {
-    setBreathingActive(false)
+    setBreathingStartHr(result?.heart_rate_bpm ?? null)
+    setBreathingSummary(null)
   }
 
   async function completeOnboarding() {
@@ -476,11 +515,18 @@ function App() {
         </div>
       </header>
       <div className="content-scroll">
+        {breathingSummary && activePage === 'home' && (
+          <section className="breathing-summary">
+            <p className="label">Done</p>
+            <p>{breathingSummary}</p>
+          </section>
+        )}
+
         {breathingActive && activePage === 'home' && (
           <section className="breathing-panel">
             <div className="breathing-head">
               <p className="label">{activePattern.name}</p>
-              <button className="icon-btn" onClick={stopBreathing}>Stop</button>
+              <button className="icon-btn" onClick={() => void stopBreathing()}>Stop</button>
             </div>
             <p className="breathing-hr">
               {result?.heart_rate_bpm == null ? '--' : Math.round(result.heart_rate_bpm)} <span>bpm</span>
@@ -677,7 +723,7 @@ function App() {
             </>
           )}
           {activePage === 'home' && breathingActive && (
-            <button className="report-link" onClick={stopBreathing}>Stop</button>
+            <button className="report-link" onClick={() => void stopBreathing()}>Stop</button>
           )}
           <button
             className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
