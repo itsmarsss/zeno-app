@@ -224,6 +224,22 @@
   gap: 8px;
 }
 
+.exercise-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.exercise-filters select {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
 .exercise-card {
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);

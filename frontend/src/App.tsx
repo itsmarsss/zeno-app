@@ -74,8 +74,9 @@ type Exercise = {
   id: string
   name: string
   target: string
-  duration: string
+  duration_minutes: number
   difficulty: 'easy' | 'moderate'
+  space: 'desk' | 'open'
   steps: string[]
 }
 
@@ -109,48 +110,54 @@ const EXERCISE_LIBRARY: Exercise[] = [
     id: 'chin-tuck',
     name: 'Chin tucks',
     target: 'Neck alignment',
-    duration: '2 min',
+    duration_minutes: 2,
     difficulty: 'easy',
+    space: 'desk',
     steps: ['Sit tall and look forward.', 'Pull chin straight back (not down).', 'Hold 3 seconds, release, repeat 10 times.'],
   },
   {
     id: 'wall-angels',
     name: 'Wall angels',
     target: 'Upper back mobility',
-    duration: '3 min',
+    duration_minutes: 3,
     difficulty: 'moderate',
+    space: 'open',
     steps: ['Stand against a wall with arms bent at 90°.', 'Slide arms up slowly while keeping contact.', 'Return down with control for 8-10 reps.'],
   },
   {
     id: 'scap-squeeze',
     name: 'Scapular squeeze',
     target: 'Shoulder stability',
-    duration: '2 min',
+    duration_minutes: 2,
     difficulty: 'easy',
+    space: 'desk',
     steps: ['Relax shoulders down.', 'Squeeze shoulder blades gently together.', 'Hold 4 seconds, repeat 12 times.'],
   },
   {
     id: 'thoracic-extension',
     name: 'Thoracic extension',
     target: 'Spine extension',
-    duration: '3 min',
+    duration_minutes: 3,
     difficulty: 'moderate',
+    space: 'desk',
     steps: ['Sit upright with hands behind head.', 'Lift chest and extend upper back slightly.', 'Return neutral and repeat 8-10 reps.'],
   },
   {
     id: 'doorway-pec-stretch',
     name: 'Doorway pec stretch',
     target: 'Chest opening',
-    duration: '2 min',
+    duration_minutes: 2,
     difficulty: 'easy',
+    space: 'open',
     steps: ['Place forearm on door frame at shoulder height.', 'Step forward until chest stretch is felt.', 'Hold 20 seconds each side, 3 rounds.'],
   },
   {
     id: 'seated-side-bend',
     name: 'Seated side bend',
     target: 'Lateral chain release',
-    duration: '2 min',
+    duration_minutes: 2,
     difficulty: 'easy',
+    space: 'desk',
     steps: ['Sit with both feet grounded.', 'Reach one arm overhead and lean to opposite side.', 'Hold 15 seconds per side for 4 rounds.'],
   },
 ]
@@ -267,6 +274,10 @@ function MainWindowShell({
 }) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
   const [selectedExerciseId, setSelectedExerciseId] = useState(EXERCISE_LIBRARY[0]?.id ?? 'chin-tuck')
+  const [spaceFilter, setSpaceFilter] = useState<'all' | 'desk' | 'open'>('all')
+  const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'moderate'>('all')
+  const [durationFilter, setDurationFilter] = useState<'all' | 'short' | 'long'>('all')
+  const [targetFilter, setTargetFilter] = useState<'all' | string>('all')
   const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
   const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
@@ -304,8 +315,20 @@ function MainWindowShell({
   }, [focusSessions])
   const weeklyValues = useMemo(() => weeklyFocusTotals.map((item) => item.minutes), [weeklyFocusTotals])
   const weeklyMax = Math.max(...weeklyValues, 1)
-  const selectedExercise =
-    EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0]
+  const targetOptions = useMemo(() => Array.from(new Set(EXERCISE_LIBRARY.map((exercise) => exercise.target))), [])
+  const filteredExercises = useMemo(
+    () =>
+      EXERCISE_LIBRARY.filter((exercise) => {
+        if (spaceFilter !== 'all' && exercise.space !== spaceFilter) return false
+        if (difficultyFilter !== 'all' && exercise.difficulty !== difficultyFilter) return false
+        if (durationFilter === 'short' && exercise.duration_minutes > 2) return false
+        if (durationFilter === 'long' && exercise.duration_minutes < 3) return false
+        if (targetFilter !== 'all' && exercise.target !== targetFilter) return false
+        return true
+      }),
+    [spaceFilter, difficultyFilter, durationFilter, targetFilter],
+  )
+  const selectedExercise = filteredExercises.find((exercise) => exercise.id === selectedExerciseId) ?? filteredExercises[0] ?? null
 
   useEffect(() => {
     const shouldStream = tab === 'posture' || (tab === 'exercises' && exerciseGuidedActive)
@@ -320,7 +343,7 @@ function MainWindowShell({
       setPostureStreamState('connecting')
       setPostureStreamError(null)
       try {
-        const exerciseIdArg = tab === 'exercises' ? selectedExercise.id : null
+        const exerciseIdArg = tab === 'exercises' ? selectedExercise?.id ?? null : null
         await invoke('start_posture_stream', { fps: 8, exerciseId: exerciseIdArg })
         unlistenFrame = await listen<PostureStreamFrame>('posture-stream-frame', (event) => {
           const payload = event.payload
@@ -345,7 +368,7 @@ function MainWindowShell({
       if (unlistenEnded) unlistenEnded()
       void invoke('stop_posture_stream').catch(() => null)
     }
-  }, [tab, exerciseGuidedActive, selectedExercise.id])
+  }, [tab, exerciseGuidedActive, selectedExercise?.id])
 
   return (
     <main className="main-shell">
@@ -511,7 +534,42 @@ function MainWindowShell({
             <h1>Exercises</h1>
             <div className="exercise-grid">
               <section className="exercise-list">
-                {EXERCISE_LIBRARY.map((exercise) => (
+                <div className="exercise-filters">
+                  <select value={spaceFilter} onChange={(e) => setSpaceFilter(e.target.value as 'all' | 'desk' | 'open')}>
+                    <option value="all">Any space</option>
+                    <option value="desk">On the spot</option>
+                    <option value="open">Needs room</option>
+                  </select>
+                  <select
+                    value={durationFilter}
+                    onChange={(e) => setDurationFilter(e.target.value as 'all' | 'short' | 'long')}
+                  >
+                    <option value="all">Any duration</option>
+                    <option value="short">Up to 2 min</option>
+                    <option value="long">3+ min</option>
+                  </select>
+                  <select
+                    value={difficultyFilter}
+                    onChange={(e) => setDifficultyFilter(e.target.value as 'all' | 'easy' | 'moderate')}
+                  >
+                    <option value="all">Any difficulty</option>
+                    <option value="easy">Easy</option>
+                    <option value="moderate">Moderate</option>
+                  </select>
+                  <select value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
+                    <option value="all">Any target</option>
+                    {targetOptions.map((target) => (
+                      <option key={target} value={target}>
+                        {target}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {filteredExercises.length === 0 ? (
+                  <p className="main-empty">No exercises match these filters.</p>
+                ) : (
+                  filteredExercises.map((exercise) => (
                   <button
                     key={exercise.id}
                     className={`exercise-card ${exercise.id === selectedExercise.id ? 'is-active' : ''}`}
@@ -520,62 +578,70 @@ function MainWindowShell({
                     <p className="exercise-name">{exercise.name}</p>
                     <p className="exercise-meta">{exercise.target}</p>
                     <div className="exercise-tags">
-                      <span>{exercise.duration}</span>
+                      <span>{exercise.duration_minutes} min</span>
                       <span>{exercise.difficulty}</span>
+                      <span>{exercise.space === 'desk' ? 'on spot' : 'needs room'}</span>
                     </div>
                   </button>
-                ))}
+                  ))
+                )}
               </section>
               <section className="exercise-detail">
-                <div className="main-panel-head">
-                  <h3>{selectedExercise.name}</h3>
-                  <span>{selectedExercise.duration}</span>
-                </div>
-                <p className="main-empty">Target: {selectedExercise.target}</p>
-                <ol className="exercise-steps">
-                  {selectedExercise.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <div className="exercise-actions">
-                  <button
-                    className="btn-solid"
-                    type="button"
-                    onClick={() => setExerciseGuidedActive((v) => !v)}
-                  >
-                    {exerciseGuidedActive ? 'Stop guided set' : 'Start guided set'}
-                  </button>
-                  {exerciseGuidedActive && (
-                    <span className="exercise-live-pill">
-                      {postureStreamState === 'running' ? 'Live' : postureStreamState === 'no-pose' ? 'No pose' : 'Connecting'}
-                    </span>
-                  )}
-                </div>
-                {exerciseGuidedActive && postureFrame && (
-                  <div className="exercise-live-preview">
-                    <img src={postureFrame} className="posture-video" alt="Guided exercise stream" />
-                    {postureLandmarks?.nose && postureLandmarks.left_shoulder && postureLandmarks.right_shoulder ? (
-                      <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        <line
-                          x1={postureLandmarks.left_shoulder.x * 100}
-                          y1={postureLandmarks.left_shoulder.y * 100}
-                          x2={postureLandmarks.right_shoulder.x * 100}
-                          y2={postureLandmarks.right_shoulder.y * 100}
-                        />
-                        <line
-                          x1={postureLandmarks.nose.x * 100}
-                          y1={postureLandmarks.nose.y * 100}
-                          x2={(postureLandmarks.left_shoulder.x * 100 + postureLandmarks.right_shoulder.x * 100) / 2}
-                          y2={(postureLandmarks.left_shoulder.y * 100 + postureLandmarks.right_shoulder.y * 100) / 2}
-                        />
-                        <circle cx={postureLandmarks.nose.x * 100} cy={postureLandmarks.nose.y * 100} r="1.4" />
-                        <circle cx={postureLandmarks.left_shoulder.x * 100} cy={postureLandmarks.left_shoulder.y * 100} r="1.4" />
-                        <circle cx={postureLandmarks.right_shoulder.x * 100} cy={postureLandmarks.right_shoulder.y * 100} r="1.4" />
-                      </svg>
-                    ) : null}
-                  </div>
+                {selectedExercise ? (
+                  <>
+                    <div className="main-panel-head">
+                      <h3>{selectedExercise.name}</h3>
+                      <span>{selectedExercise.duration_minutes} min</span>
+                    </div>
+                    <p className="main-empty">Target: {selectedExercise.target}</p>
+                    <ol className="exercise-steps">
+                      {selectedExercise.steps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                    <div className="exercise-actions">
+                      <button
+                        className="btn-solid"
+                        type="button"
+                        onClick={() => setExerciseGuidedActive((v) => !v)}
+                      >
+                        {exerciseGuidedActive ? 'Stop guided set' : 'Start guided set'}
+                      </button>
+                      {exerciseGuidedActive && (
+                        <span className="exercise-live-pill">
+                          {postureStreamState === 'running' ? 'Live' : postureStreamState === 'no-pose' ? 'No pose' : 'Connecting'}
+                        </span>
+                      )}
+                    </div>
+                    {exerciseGuidedActive && postureFrame && (
+                      <div className="exercise-live-preview">
+                        <img src={postureFrame} className="posture-video" alt="Guided exercise stream" />
+                        {postureLandmarks?.nose && postureLandmarks.left_shoulder && postureLandmarks.right_shoulder ? (
+                          <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <line
+                              x1={postureLandmarks.left_shoulder.x * 100}
+                              y1={postureLandmarks.left_shoulder.y * 100}
+                              x2={postureLandmarks.right_shoulder.x * 100}
+                              y2={postureLandmarks.right_shoulder.y * 100}
+                            />
+                            <line
+                              x1={postureLandmarks.nose.x * 100}
+                              y1={postureLandmarks.nose.y * 100}
+                              x2={(postureLandmarks.left_shoulder.x * 100 + postureLandmarks.right_shoulder.x * 100) / 2}
+                              y2={(postureLandmarks.left_shoulder.y * 100 + postureLandmarks.right_shoulder.y * 100) / 2}
+                            />
+                            <circle cx={postureLandmarks.nose.x * 100} cy={postureLandmarks.nose.y * 100} r="1.4" />
+                            <circle cx={postureLandmarks.left_shoulder.x * 100} cy={postureLandmarks.left_shoulder.y * 100} r="1.4" />
+                            <circle cx={postureLandmarks.right_shoulder.x * 100} cy={postureLandmarks.right_shoulder.y * 100} r="1.4" />
+                          </svg>
+                        ) : null}
+                      </div>
+                    )}
+                    <p className="exercise-note">{exerciseFeedback ?? 'Live form feedback will appear here while guided mode runs.'}</p>
+                  </>
+                ) : (
+                  <p className="main-empty">Adjust filters to pick an exercise.</p>
                 )}
-                <p className="exercise-note">{exerciseFeedback ?? 'Live form feedback will appear here while guided mode runs.'}</p>
               </section>
             </div>
           </>
