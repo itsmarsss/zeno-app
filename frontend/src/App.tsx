@@ -36,6 +36,15 @@ type DailyReport = {
   recommendation: string
 }
 
+type CalibrationStatus = {
+  calibrated: boolean
+  baseline_sessions_required: number
+  sessions_collected: number
+  sessions_remaining: number
+  baseline_posture_score: number | null
+  deviation_threshold: number
+}
+
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
@@ -57,6 +66,7 @@ function App() {
   const [result, setResult] = useState<SessionResult | null>(null)
   const [history, setHistory] = useState<SessionHistoryItem[]>([])
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null)
+  const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
   const [schedulerState, setSchedulerState] = useState('Automatic check every 10 minutes')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
 
@@ -96,6 +106,15 @@ function App() {
     }
   }
 
+  async function loadCalibrationStatus() {
+    try {
+      const payload = await invoke<CalibrationStatus>('run_calibration_status')
+      setCalibration(payload)
+    } catch {
+      setCalibration(null)
+    }
+  }
+
   async function runSession() {
     try {
       setStatus('Running')
@@ -106,6 +125,7 @@ function App() {
       setStatus('Done')
       await loadHistory()
       await loadDailyReport()
+      await loadCalibrationStatus()
     } catch (e) {
       setStatus('Error')
       setError(e instanceof Error ? e.message : String(e))
@@ -123,6 +143,7 @@ function App() {
     const setup = async () => {
       await loadHistory()
       await loadDailyReport()
+      await loadCalibrationStatus()
 
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
         setResult(event.payload.result)
@@ -131,6 +152,7 @@ function App() {
         setError(null)
         void loadHistory()
         void loadDailyReport()
+        void loadCalibrationStatus()
       })
 
       unlistenError = await listen<{ source: string; error: string }>('session-error', (event) => {
@@ -188,6 +210,29 @@ function App() {
         </div>
         <div className="pill">{status === 'Running' ? 'Running now' : schedulerState}</div>
       </section>
+
+      {calibration && !calibration.calibrated && (
+        <section className="card calibration">
+          <h3>Personal Baseline Setup</h3>
+          <p>
+            Zeno is learning your natural posture. Complete {calibration.sessions_remaining} more
+            check-in{calibration.sessions_remaining === 1 ? '' : 's'} to finish calibration.
+          </p>
+          <div className="calibration__meter">
+            <div
+              className="calibration__fill"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.round(
+                    (calibration.sessions_collected / calibration.baseline_sessions_required) * 100,
+                  ),
+                )}%`,
+              }}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="card metrics">
         <article>

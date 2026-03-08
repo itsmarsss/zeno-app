@@ -54,6 +54,30 @@
   margin-bottom: 10px;
 }
 
+.calibration h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.calibration p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.calibration__meter {
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.calibration__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #14b8a6);
+}
+
 .hero {
   display: flex;
   justify-content: space-between;

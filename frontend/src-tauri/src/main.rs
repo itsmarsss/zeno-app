@@ -221,6 +221,33 @@ fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, String> 
     parse_json_line(&stdout)
 }
 
+fn run_calibration_status_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("calibration_status.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let output = Command::new(python_bin)
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Failed to read calibration status: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Calibration status failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 fn stress_index_from_result(result: &Value) -> Option<u8> {
     let emotion = result
         .get("dominant_emotion")
@@ -362,6 +389,13 @@ async fn run_daily_report(date_iso: Option<String>) -> Result<Value, String> {
         .map_err(|e| format!("Report task join error: {e}"))?
 }
 
+#[tauri::command]
+async fn run_calibration_status() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_calibration_status_blocking)
+        .await
+        .map_err(|e| format!("Calibration task join error: {e}"))?
+}
+
 fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
     thread::spawn(move || {
@@ -454,7 +488,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             run_python_session,
             run_session_history,
-            run_daily_report
+            run_daily_report,
+            run_calibration_status
         ])
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
