@@ -26,6 +26,16 @@ type SessionHistoryItem = {
   session_duration_seconds: number
 }
 
+type DailyReport = {
+  date: string
+  sessions: number
+  average_stress_index: number
+  focused_minutes: number
+  peak_stress: { stress_index: number; time: string } | null
+  posture_trend: { time: string; score: number }[]
+  recommendation: string
+}
+
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
@@ -46,6 +56,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SessionResult | null>(null)
   const [history, setHistory] = useState<SessionHistoryItem[]>([])
+  const [dailyReport, setDailyReport] = useState<DailyReport | null>(null)
   const [schedulerState, setSchedulerState] = useState('Automatic check every 10 minutes')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
 
@@ -76,6 +87,15 @@ function App() {
     }
   }
 
+  async function loadDailyReport() {
+    try {
+      const payload = await invoke<DailyReport>('run_daily_report')
+      setDailyReport(payload)
+    } catch {
+      setDailyReport(null)
+    }
+  }
+
   async function runSession() {
     try {
       setStatus('Running')
@@ -85,6 +105,7 @@ function App() {
       setLastRunSource('manual')
       setStatus('Done')
       await loadHistory()
+      await loadDailyReport()
     } catch (e) {
       setStatus('Error')
       setError(e instanceof Error ? e.message : String(e))
@@ -96,9 +117,12 @@ function App() {
     let unlistenError: (() => void) | null = null
     let unlistenSkip: (() => void) | null = null
     let unlistenGesture: (() => void) | null = null
+    let unlistenReportReady: (() => void) | null = null
+    let unlistenReportError: (() => void) | null = null
 
     const setup = async () => {
       await loadHistory()
+      await loadDailyReport()
 
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
         setResult(event.payload.result)
@@ -106,6 +130,7 @@ function App() {
         setStatus('Done')
         setError(null)
         void loadHistory()
+        void loadDailyReport()
       })
 
       unlistenError = await listen<{ source: string; error: string }>('session-error', (event) => {
@@ -122,6 +147,14 @@ function App() {
         setSchedulerState(`Dismissed by gesture · snoozed ${event.payload.snooze_minutes} min`)
         setTimeout(() => setSchedulerState('Automatic check every 10 minutes'), 5000)
       })
+
+      unlistenReportReady = await listen<DailyReport>('report-ready', (event) => {
+        setDailyReport(event.payload)
+      })
+
+      unlistenReportError = await listen<{ error: string }>('report-error', (event) => {
+        setError(event.payload.error)
+      })
     }
 
     void setup()
@@ -130,6 +163,8 @@ function App() {
       unlistenError?.()
       unlistenSkip?.()
       unlistenGesture?.()
+      unlistenReportReady?.()
+      unlistenReportError?.()
     }
   }, [])
 
@@ -198,6 +233,39 @@ function App() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="card report">
+        <div className="history__head">
+          <h3>Daily Report</h3>
+          <button className="ghost" onClick={loadDailyReport}>
+            Refresh
+          </button>
+        </div>
+        {!dailyReport ? (
+          <p className="empty">No report available yet.</p>
+        ) : (
+          <>
+            <div className="report__metrics">
+              <span>Stress Avg: {dailyReport.average_stress_index}</span>
+              <span>Focused: {dailyReport.focused_minutes} min</span>
+              <span>Sessions: {dailyReport.sessions}</span>
+            </div>
+            {dailyReport.peak_stress && (
+              <p className="report__peak">
+                Peak stress {dailyReport.peak_stress.stress_index} at {prettyTime(dailyReport.peak_stress.time)}
+              </p>
+            )}
+            <div className="trend">
+              {dailyReport.posture_trend.slice(-10).map((point) => (
+                <div key={point.time} className="trend__bar-wrap" title={`${prettyTime(point.time)} · ${Math.round(point.score * 100)}%`}>
+                  <div className="trend__bar" style={{ height: `${Math.max(6, Math.round(point.score * 52))}px` }} />
+                </div>
+              ))}
+            </div>
+            <p className="report__recommendation">{dailyReport.recommendation}</p>
+          </>
         )}
       </section>
 
