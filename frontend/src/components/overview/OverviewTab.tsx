@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Activity, TrendingUp, User } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
 import './OverviewTab.css'
@@ -19,6 +19,7 @@ import {
   stressColor,
   stressTone,
 } from '../../shared/dashboard'
+import { AnimatedTickerText } from '../common/AnimatedTickerText'
 
 type TimelinePoint = {
   slotStartIso: string
@@ -92,6 +93,8 @@ export function OverviewTab({
   const [hoverXPx, setHoverXPx] = useState<number | null>(null)
   const [chartWidthPx, setChartWidthPx] = useState<number>(0)
   const [chartLeftPx, setChartLeftPx] = useState<number>(0)
+  const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
+  const previousHoverIndexRef = useRef<number | null>(null)
   const hoveredPoint = chartHoverIndex != null ? timelineData[chartHoverIndex] : null
   const fallbackRatio = chartHoverIndex == null ? 0 : chartHoverIndex / Math.max(timelineData.length - 1, 1)
   const hoverXPercent = hoverPercent ?? (fallbackRatio * 100)
@@ -182,6 +185,7 @@ export function OverviewTab({
               setChartHoverIndex(null)
               setHoverPercent(null)
               setHoverXPx(null)
+              previousHoverIndexRef.current = null
             }}
             onPointerMove={(event) => {
               const canvasRect = event.currentTarget.getBoundingClientRect()
@@ -191,6 +195,11 @@ export function OverviewTab({
               const xWithinSvg = clamp(event.clientX - svgRect.left, 0, localWidth)
               const ratio = clamp(xWithinSvg / localWidth, 0, 1)
               const nextIndex = Math.round(ratio * (timelineData.length - 1))
+              const prev = previousHoverIndexRef.current
+              if (prev != null && nextIndex !== prev) {
+                setHoverDirection(nextIndex > prev ? 1 : -1)
+              }
+              previousHoverIndexRef.current = nextIndex
               setChartLeftPx(localLeft)
               setChartWidthPx(localWidth)
               setHoverXPx(localLeft + xWithinSvg)
@@ -223,33 +232,43 @@ export function OverviewTab({
                 return <line key={`${point.slotStartIso}-breath`} x1={x} x2={x} y1={0} y2={100} className="timeline-breath" />
               })}
             </svg>
-            {hoveredPoint && (
-              <>
-                <motion.div
-                  className="timeline-cursor"
-                  initial={false}
-                  animate={{ left: `${cursorXPx}px`, opacity: 1 }}
-                  transition={{ type: 'tween', duration: 0.06, ease: 'linear' }}
-                />
-                <motion.div
-                  className="timeline-tooltip"
-                  initial={false}
-                  animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
-                  transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
-                >
-                  <p>{hoveredPoint.label}</p>
-                  <div className="timeline-tooltip-row">
-                    <strong>{hoveredPoint.stress ?? '--'}</strong>
-                    <span>Stress index</span>
-                  </div>
-                  <div className="timeline-tooltip-row">
-                    <strong>{hoveredPoint.heartRate ?? '--'} bpm</strong>
-                    <span>Heart rate</span>
-                  </div>
-                  {hoveredPoint.focusActive && <em>Focus Mode active</em>}
-                </motion.div>
-              </>
-            )}
+            <AnimatePresence initial={false}>
+              {hoveredPoint && (
+                <>
+                  <motion.div
+                    className="timeline-cursor"
+                    initial={{ opacity: 0 }}
+                    animate={{ left: `${cursorXPx}px`, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
+                  />
+                  <motion.div
+                    className="timeline-tooltip"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
+                  >
+                    <p>
+                      <AnimatedTickerText value={hoveredPoint.label} direction={hoverDirection} />
+                    </p>
+                    <div className="timeline-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText value={`${hoveredPoint.stress ?? '--'}`} direction={hoverDirection} />
+                      </strong>
+                      <span>Stress index</span>
+                    </div>
+                    <div className="timeline-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText value={`${hoveredPoint.heartRate ?? '--'}`} staticSuffix="bpm" direction={hoverDirection} />
+                      </strong>
+                      <span>Heart rate</span>
+                    </div>
+                    {hoveredPoint.focusActive && <em>Focus Mode active</em>}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
             <div className="timeline-hover-hint">
               <span>Move cursor to inspect</span>
             </div>

@@ -268,10 +268,17 @@ export function PostureTab({
         <div className="posture-reco-strip">
           {recommended.map((exercise) => (
             <article key={exercise.id} className="posture-reco-item">
-              <p>{topIssue?.key === 'chin-forward' ? 'For chin forward' : topIssue?.key === 'rounded-shoulders' ? 'For rounded shoulders' : 'For posture balance'}</p>
+              <p className="posture-reco-kicker">
+                {topIssue?.key === 'chin-forward' ? 'For chin forward' : topIssue?.key === 'rounded-shoulders' ? 'For rounded shoulders' : 'For posture balance'}
+              </p>
               <h4>{exercise.name}</h4>
-              <span>{exercise.target}</span>
-              <button onClick={() => onStartExercise(exercise.id)}>Begin</button>
+              <p className="posture-reco-target">{exercise.target}</p>
+              <div className="posture-reco-meta">
+                <span>{exercise.duration_minutes}m</span>
+                <span>{exercise.difficulty}</span>
+                <span>{exercise.space}</span>
+              </div>
+              <button className="posture-reco-cta" onClick={() => onStartExercise(exercise.id)}>Start exercise</button>
             </article>
           ))}
         </div>

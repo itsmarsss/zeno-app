@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { buildAreaPath, buildPath, clamp } from '../../shared/dashboard'
+import { AnimatedTickerText } from './AnimatedTickerText'
 import './InteractiveLineChart.css'
 
 export type InteractiveLineChartPoint = {
@@ -41,6 +42,8 @@ export function InteractiveLineChart({
   const [hoverXPx, setHoverXPx] = useState<number | null>(null)
   const [chartWidthPx, setChartWidthPx] = useState<number>(0)
   const [chartLeftPx, setChartLeftPx] = useState<number>(0)
+  const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
+  const previousHoverIndexRef = useRef<number | null>(null)
 
   const values = points.map((point) => point.value)
   const areaValues = values.map((value) => value ?? yMin)
@@ -71,6 +74,7 @@ export function InteractiveLineChart({
       onMouseLeave={() => {
         setHoverIndex(null)
         setHoverXPx(null)
+        previousHoverIndexRef.current = null
       }}
       onPointerMove={(event) => {
         const canvasRect = event.currentTarget.getBoundingClientRect()
@@ -80,6 +84,11 @@ export function InteractiveLineChart({
         const xWithinSvg = clamp(event.clientX - svgRect.left, 0, localWidth)
         const ratio = clamp(xWithinSvg / localWidth, 0, 1)
         const nextIndex = Math.round(ratio * (points.length - 1))
+        const prev = previousHoverIndexRef.current
+        if (prev != null && nextIndex !== prev) {
+          setHoverDirection(nextIndex > prev ? 1 : -1)
+        }
+        previousHoverIndexRef.current = nextIndex
         setChartLeftPx(localLeft)
         setChartWidthPx(localWidth)
         setHoverXPx(localLeft + xWithinSvg)
@@ -94,28 +103,39 @@ export function InteractiveLineChart({
         <path d={linePath} className={`interactive-chart-line ${lineClassName}`.trim()} />
       </svg>
 
-      {hoveredPoint && (
-        <>
-          <motion.div
-            className="interactive-chart-cursor"
-            initial={false}
-            animate={{ left: `${cursorXPx}px`, opacity: 1 }}
-            transition={{ type: 'tween', duration: 0.06, ease: 'linear' }}
-          />
-          <motion.div
-            className="interactive-chart-tooltip"
-            initial={false}
-            animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
-            transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
-          >
-            <p>{hoveredPoint.label}</p>
-            <div className="interactive-chart-tooltip-row">
-              <strong>{hoveredPoint.value == null ? '--' : `${hoveredPoint.value}${valueSuffix}`}</strong>
-              <span>{valueLabel}</span>
-            </div>
-          </motion.div>
-        </>
-      )}
+      <AnimatePresence initial={false}>
+        {hoveredPoint && (
+          <>
+            <motion.div
+              className="interactive-chart-cursor"
+              initial={{ opacity: 0 }}
+              animate={{ left: `${cursorXPx}px`, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
+            />
+            <motion.div
+              className="interactive-chart-tooltip"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
+            >
+              <p>
+                <AnimatedTickerText value={hoveredPoint.label} direction={hoverDirection} />
+              </p>
+              <div className="interactive-chart-tooltip-row">
+                <strong>
+                  <AnimatedTickerText
+                    value={hoveredPoint.value == null ? '--' : `${hoveredPoint.value}${valueSuffix}`}
+                    direction={hoverDirection}
+                  />
+                </strong>
+                <span>{valueLabel}</span>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {thresholdLabel ? <span className="interactive-chart-threshold-label">{thresholdLabel}</span> : null}
       <div className="interactive-chart-hover-hint">

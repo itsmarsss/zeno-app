@@ -1,0 +1,34 @@
+.animated-ticker {
+  display: inline-flex;
+  align-items: baseline;
+  position: relative;
+  vertical-align: middle;
+  line-height: 1;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+.animated-ticker-track {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.animated-ticker-slot {
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  min-width: 0.62ch;
+  height: 1.15em;
+}
+
+.animated-ticker-item {
+  grid-area: 1 / 1;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.animated-ticker-suffix {
+  margin-left: 0.24em;
+}

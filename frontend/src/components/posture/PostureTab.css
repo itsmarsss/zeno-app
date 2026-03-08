@@ -344,39 +344,88 @@
 .posture-reco-strip::-webkit-scrollbar { display: none; }
 
 .posture-reco-item {
-  width: 180px;
+  width: 220px;
   flex-shrink: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border-subtle));
+  border-radius: 12px;
   background: var(--bg-surface);
-  padding: 12px;
+  padding: 14px;
+  position: relative;
+  overflow: hidden;
 }
 
-.posture-reco-item > p {
+.posture-reco-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 66%, #fff), color-mix(in srgb, var(--accent) 20%, #fff));
+}
+
+.posture-reco-kicker {
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 8px;
   font-size: 10px;
-  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--accent) 82%, #143326);
+  background: color-mix(in srgb, var(--accent-light) 74%, #fff);
 }
 
 .posture-reco-item h4 {
-  margin: 8px 0 4px;
+  margin: 10px 0 4px;
   font-family: 'DM Serif Display', serif;
-  font-size: 16px;
+  font-size: 19px;
+  line-height: 1.15;
 }
 
-.posture-reco-item span {
+.posture-reco-target {
+  margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
 }
 
-.posture-reco-item button {
+.posture-reco-meta {
   margin-top: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.posture-reco-meta span {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-transform: capitalize;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.posture-reco-cta {
+  margin-top: 12px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface));
+  color: color-mix(in srgb, var(--accent) 86%, #102419);
+  border-radius: 9px;
+  padding: 8px 10px;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.posture-reco-cta:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-subtle));
+  transform: translateY(-1px);
 }
 
 @keyframes postureLoader {

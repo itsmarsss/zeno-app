@@ -1,10 +1,11 @@
 import { ChevronRight, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
 import { staggerItem } from '../../shared/motion'
+import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import {
   type FocusPeriod,
   buildAreaPath,
@@ -67,6 +68,8 @@ export function FocusHistoryTab({
   setSortNewestFirst: (value: boolean | ((prev: boolean) => boolean)) => void
 }) {
   const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
+  const [rhythmHoverDirection, setRhythmHoverDirection] = useState<1 | -1>(1)
+  const previousRhythmHoverIndexRef = useRef<number | null>(null)
   const hoveredRhythm = rhythmHoverIndex == null ? null : rhythmData[rhythmHoverIndex] ?? null
   const hoverRatio = rhythmHoverIndex == null ? 0 : rhythmHoverIndex / Math.max(rhythmData.length - 1, 1)
   const cursorLeft = `${hoverRatio * 100}%`
@@ -163,11 +166,19 @@ export function FocusHistoryTab({
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
                 aria-hidden
-                onMouseLeave={() => setRhythmHoverIndex(null)}
+                onMouseLeave={() => {
+                  setRhythmHoverIndex(null)
+                  previousRhythmHoverIndexRef.current = null
+                }}
                 onPointerMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect()
                   const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)))
                   const index = Math.round(ratio * (rhythmData.length - 1))
+                  const prev = previousRhythmHoverIndexRef.current
+                  if (prev != null && index !== prev) {
+                    setRhythmHoverDirection(index > prev ? 1 : -1)
+                  }
+                  previousRhythmHoverIndexRef.current = index
                   setRhythmHoverIndex(index)
                 }}
               >
@@ -181,32 +192,42 @@ export function FocusHistoryTab({
                 })}
                 <path d={rhythmStressPath} className="rhythm-line" transform="translate(0, 5)" />
               </svg>
-              {hoveredRhythm && (
-                <>
-                  <motion.div
-                    className="rhythm-cursor"
-                    initial={false}
-                    animate={{ left: cursorLeft, opacity: 1 }}
-                    transition={{ type: 'tween', duration: 0.06, ease: 'linear' }}
-                  />
-                  <motion.div
-                    className="rhythm-tooltip"
-                    initial={false}
-                    animate={{ left: tooltipLeft, opacity: 1, y: 0 }}
-                    transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
-                  >
-                    <p>{hoveredRhythm.label}</p>
-                    <div>
-                      <strong>{hoveredRhythm.focusedMinutes}m</strong>
-                      <span>Focus time</span>
-                    </div>
-                    <div>
-                      <strong>{hoveredRhythm.avgStress ?? '--'}</strong>
-                      <span>Avg stress</span>
-                    </div>
-                  </motion.div>
-                </>
-              )}
+              <AnimatePresence initial={false}>
+                {hoveredRhythm && (
+                  <>
+                    <motion.div
+                      className="rhythm-cursor"
+                      initial={{ opacity: 0 }}
+                      animate={{ left: cursorLeft, opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
+                    />
+                    <motion.div
+                      className="rhythm-tooltip"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ left: tooltipLeft, opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 6 }}
+                      transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
+                    >
+                      <p>
+                        <AnimatedTickerText value={hoveredRhythm.label} direction={rhythmHoverDirection} />
+                      </p>
+                      <div>
+                        <strong>
+                          <AnimatedTickerText value={`${hoveredRhythm.focusedMinutes}m`} direction={rhythmHoverDirection} />
+                        </strong>
+                        <span>Focus time</span>
+                      </div>
+                      <div>
+                        <strong>
+                          <AnimatedTickerText value={`${hoveredRhythm.avgStress ?? '--'}`} direction={rhythmHoverDirection} />
+                        </strong>
+                        <span>Avg stress</span>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
               <div className="rhythm-labels" style={{ gridTemplateColumns: `repeat(${rhythmData.length}, minmax(0, 1fr))` }}>
                 {rhythmData.map((item, index) => (
                   <span key={item.label} className={index === rhythmBestIndex ? 'is-best' : ''}>{item.label}</span>
