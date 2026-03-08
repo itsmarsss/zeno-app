@@ -140,14 +140,35 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
                 let current = timer_state.started_at_unix.load(Ordering::SeqCst);
                 let started_at = if current == 0 {
                     timer_state.started_at_unix.store(now, Ordering::SeqCst);
+                    timer_state
+                        .break_triggered_for_session
+                        .store(false, Ordering::SeqCst);
                     now
                 } else {
                     current
                 };
                 let elapsed_minutes = now.saturating_sub(started_at) / 60;
+                if elapsed_minutes >= 90
+                    && timer_state
+                        .break_triggered_for_session
+                        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    let _ = app_handle.emit(
+                        "break-auto-trigger",
+                        serde_json::json!({
+                            "reason": "focus-threshold",
+                            "break_seconds": 300u32,
+                            "elapsed_minutes": elapsed_minutes
+                        }),
+                    );
+                }
                 format!("zeno · {}m", elapsed_minutes)
             } else {
                 timer_state.started_at_unix.store(0, Ordering::SeqCst);
+                timer_state
+                    .break_triggered_for_session
+                    .store(false, Ordering::SeqCst);
                 "zeno".to_string()
             };
 

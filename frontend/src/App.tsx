@@ -514,6 +514,7 @@ function App() {
     let unlistenError: (() => void) | null = null
     let unlistenSkip: (() => void) | null = null
     let unlistenGesture: (() => void) | null = null
+    let unlistenBreakAuto: (() => void) | null = null
 
     const setup = async () => {
       await loadHistory()
@@ -548,6 +549,12 @@ function App() {
       unlistenGesture = await listen<{ snooze_minutes: number }>('gesture-dismissed', (event) => {
         setLastNudge(`Gesture dismiss detected. Nudges snoozed for ${event.payload.snooze_minutes} minutes.`)
       })
+
+      unlistenBreakAuto = await listen<{ break_seconds: number; elapsed_minutes: number }>('break-auto-trigger', (event) => {
+        if (breakActive) return
+        startBreak(event.payload?.break_seconds ?? 300)
+        setBreakSummary(`Auto break after ${event.payload?.elapsed_minutes ?? 90}m focus.`)
+      })
     }
 
     void setup()
@@ -556,6 +563,7 @@ function App() {
       unlistenError?.()
       unlistenSkip?.()
       unlistenGesture?.()
+      unlistenBreakAuto?.()
     }
   }, [])
 

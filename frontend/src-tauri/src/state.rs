@@ -48,4 +48,5 @@ pub struct SettingsState {
 #[derive(Default)]
 pub struct FocusTimerState {
     pub started_at_unix: AtomicU64,
+    pub break_triggered_for_session: AtomicBool,
 }
