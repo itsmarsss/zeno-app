@@ -11,6 +11,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+use tauri_plugin_notification::NotificationExt;
 
 #[derive(Default)]
 struct SessionState {
@@ -91,9 +92,81 @@ fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value,
     parse_json_line(&stdout)
 }
 
+fn stress_index_from_result(result: &Value) -> Option<u8> {
+    let emotion = result
+        .get("dominant_emotion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_lowercase();
+    let emotion_score = result
+        .get("emotion_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let heart_rate = result.get("heart_rate_bpm").and_then(|v| v.as_f64());
+
+    let emotion_points = match emotion.as_str() {
+        "fear" => 28.0,
+        "angry" | "anger" => 25.0,
+        "disgust" | "contempt" => 22.0,
+        "sad" | "sadness" => 16.0,
+        "neutral" => 8.0,
+        "surprise" => 12.0,
+        "happy" | "happiness" => 4.0,
+        _ => 10.0,
+    } * emotion_score.max(0.25);
+
+    let hr_points = match heart_rate {
+        Some(bpm) if bpm >= 105.0 => 52.0,
+        Some(bpm) if bpm >= 95.0 => 40.0,
+        Some(bpm) if bpm >= 85.0 => 28.0,
+        Some(bpm) if bpm >= 75.0 => 14.0,
+        Some(_) => 6.0,
+        None => 8.0,
+    };
+
+    let score = (emotion_points + hr_points).round();
+    Some(score.clamp(0.0, 100.0) as u8)
+}
+
+fn notification_for_result(result: &Value) -> Option<(String, String)> {
+    let posture_score = result
+        .get("posture_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+
+    if posture_score < 0.45 {
+        return Some((
+            "Posture Check".to_string(),
+            "Straighten up and roll your shoulders back.".to_string(),
+        ));
+    }
+
+    let stress_index = stress_index_from_result(result)?;
+    if stress_index >= 61 {
+        return Some((
+            "Stress Check".to_string(),
+            "Take a 5 minute break. Step away for a reset.".to_string(),
+        ));
+    }
+    if (31..=60).contains(&stress_index) {
+        return Some((
+            "Focus Check".to_string(),
+            "You have been locked in for a while. Grab some water.".to_string(),
+        ));
+    }
+    None
+}
+
+fn notify_for_session(app: &tauri::AppHandle, result: &Value) {
+    if let Some((title, body)) = notification_for_result(result) {
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+}
+
 #[tauri::command]
 async fn run_python_session(
     emotion_backend: Option<String>,
+    app: tauri::AppHandle,
     state: tauri::State<'_, SessionState>,
 ) -> Result<Value, String> {
     if state.running.swap(true, Ordering::SeqCst) {
@@ -107,6 +180,9 @@ async fn run_python_session(
     .map_err(|e| format!("Session task join error: {e}"))?;
 
     state.running.store(false, Ordering::SeqCst);
+    if let Ok(ref payload) = result {
+        notify_for_session(&app, payload);
+    }
     result
 }
 
@@ -130,6 +206,7 @@ fn start_scheduler(app: &tauri::AppHandle) {
 
             match session_result {
                 Ok(payload) => {
+                    notify_for_session(&app_handle, &payload);
                     let _ = app_handle.emit(
                         "session-result",
                         serde_json::json!({
@@ -156,6 +233,7 @@ fn main() {
     let app_builder = tauri::Builder::default()
         .manage(SessionState::default())
         .invoke_handler(tauri::generate_handler![run_python_session])
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
