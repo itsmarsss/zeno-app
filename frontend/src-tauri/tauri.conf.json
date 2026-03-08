@@ -32,5 +32,13 @@
   "bundle": {
     "active": true,
     "targets": "all"
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": [
+        "https://github.com/[YOUR_USERNAME]/zeno/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

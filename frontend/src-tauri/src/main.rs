@@ -18,6 +18,47 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
+
+fn check_for_updates_on_launch(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Silent failure by design: updater should never impact app startup.
+        let Ok(updater) = app_handle.updater() else {
+            return;
+        };
+        let Ok(maybe_update) = updater.check().await else {
+            return;
+        };
+        let Some(update) = maybe_update else {
+            return;
+        };
+
+        let prompt = "A new version of Zeno is available. Update now?";
+        let app_for_dialog = app_handle.clone();
+        app_handle
+            .dialog()
+            .message(prompt)
+            .title("Zeno Update")
+            .kind(MessageDialogKind::Info)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Update now".to_string(),
+                "Later".to_string(),
+            ))
+            .show(move |accepted| {
+                if !accepted {
+                    return;
+                }
+                let app_for_update = app_for_dialog.clone();
+                tauri::async_runtime::spawn(async move {
+                    if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+                        app_for_update.restart();
+                    }
+                });
+            });
+    });
+}
 
 fn main() {
     let app_builder = tauri::Builder::default()
@@ -34,7 +75,9 @@ fn main() {
             run_clear_data,
             run_calibration_status
         ])
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -90,6 +133,7 @@ fn main() {
 
             start_scheduler(&app.app_handle());
             start_daily_report_trigger(&app.app_handle());
+            check_for_updates_on_launch(&app.app_handle());
 
             Ok(())
         });
