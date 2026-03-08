@@ -20,7 +20,7 @@ use state::{FocusTimerState, HrStreamState, NotificationState, PostureStreamStat
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, PhysicalPosition, Position, Rect, Size, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -65,6 +65,71 @@ fn check_for_updates_on_launch(app: &tauri::AppHandle) {
     });
 }
 
+fn tray_anchor_point(rect: &Rect, click_position: &PhysicalPosition<f64>) -> (f64, f64) {
+    let x = match rect.position {
+        Position::Physical(pos) => pos.x as f64,
+        Position::Logical(pos) => pos.x,
+    };
+    let y = match rect.position {
+        Position::Physical(pos) => pos.y as f64,
+        Position::Logical(pos) => pos.y,
+    };
+    let width = match rect.size {
+        Size::Physical(size) => size.width as f64,
+        Size::Logical(size) => size.width,
+    };
+    let height = match rect.size {
+        Size::Physical(size) => size.height as f64,
+        Size::Logical(size) => size.height,
+    };
+
+    if width > 0.0 && height > 0.0 {
+        (x + width / 2.0, y + height + 8.0)
+    } else {
+        (click_position.x, click_position.y + 12.0)
+    }
+}
+
+fn position_popover_window(
+    window: &WebviewWindow,
+    click_position: &PhysicalPosition<f64>,
+    tray_rect: &Rect,
+) {
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+
+    let width = size.width as i32;
+    let height = size.height as i32;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
+    let (anchor_x, anchor_y) = tray_anchor_point(tray_rect, click_position);
+    let mut target_x = (anchor_x.round() as i32) - width / 2;
+    let mut target_y = anchor_y.round() as i32;
+
+    let monitor = window
+        .monitor_from_point(anchor_x, anchor_y)
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+
+    if let Some(monitor) = monitor {
+        let area = monitor.work_area();
+        let left = area.position.x;
+        let top = area.position.y;
+        let right = left + area.size.width as i32;
+        let bottom = top + area.size.height as i32;
+        target_x = target_x.clamp(left + 8, right - width - 8);
+        target_y = target_y.clamp(top + 8, bottom - height - 8);
+    }
+
+    let _ = window.set_position(Position::Physical(PhysicalPosition::new(
+        target_x, target_y,
+    )));
+}
+
 fn main() {
     let app_builder = tauri::Builder::default()
         .manage(SessionState::default())
@@ -98,6 +163,18 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|window, event| {
+            if window.label() == "main-window" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    let _ = window
+                        .app_handle()
+                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
+            }
+        })
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -129,6 +206,8 @@ fn main() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
+                        rect,
                         ..
                     } = event
                     {
@@ -137,6 +216,7 @@ fn main() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
+                                position_popover_window(&window, &position, &rect);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }

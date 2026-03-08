@@ -152,6 +152,13 @@ pub async fn run_log_break_session(
 
 #[tauri::command]
 pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
+    if let Some(popover) = app.get_webview_window("main") {
+        let _ = popover.hide();
+    }
+
     if let Some(window) = app.get_webview_window("main-window") {
         let _ = window.show();
         let _ = window.set_focus();
