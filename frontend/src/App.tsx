@@ -45,6 +45,13 @@ type CalibrationStatus = {
   deviation_threshold: number
 }
 
+type AppSettings = {
+  monitoring_paused: boolean
+  session_frequency_minutes: number
+  daily_report_hour: number
+  daily_report_minute: number
+}
+
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
@@ -67,6 +74,7 @@ function App() {
   const [history, setHistory] = useState<SessionHistoryItem[]>([])
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null)
   const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [schedulerState, setSchedulerState] = useState('Automatic check every 10 minutes')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
 
@@ -115,8 +123,42 @@ function App() {
     }
   }
 
+  async function loadSettings() {
+    try {
+      const payload = await invoke<AppSettings>('run_get_settings')
+      setSettings(payload)
+    } catch {
+      setSettings(null)
+    }
+  }
+
+  async function updateSettings(patch: Partial<AppSettings>) {
+    try {
+      const payload = await invoke<AppSettings>('run_update_settings', { patch })
+      setSettings(payload)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function clearAllData() {
+    try {
+      await invoke('run_clear_data')
+      await loadHistory()
+      await loadDailyReport()
+      await loadCalibrationStatus()
+      setResult(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   async function runSession() {
     try {
+      if (settings?.monitoring_paused) {
+        setError('Monitoring is paused in Settings.')
+        return
+      }
       setStatus('Running')
       setError(null)
       const payload = await invoke<SessionResult>('run_python_session')
@@ -126,6 +168,7 @@ function App() {
       await loadHistory()
       await loadDailyReport()
       await loadCalibrationStatus()
+      await loadSettings()
     } catch (e) {
       setStatus('Error')
       setError(e instanceof Error ? e.message : String(e))
@@ -144,6 +187,7 @@ function App() {
       await loadHistory()
       await loadDailyReport()
       await loadCalibrationStatus()
+      await loadSettings()
 
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
         setResult(event.payload.result)
@@ -312,6 +356,52 @@ function App() {
             <p className="report__recommendation">{dailyReport.recommendation}</p>
           </>
         )}
+      </section>
+
+      <section className="card settings">
+        <div className="history__head">
+          <h3>Settings</h3>
+        </div>
+        <div className="settings__row">
+          <label>Monitoring</label>
+          <button
+            className="ghost"
+            onClick={() => updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
+          >
+            {settings?.monitoring_paused ? 'Resume' : 'Pause'}
+          </button>
+        </div>
+        <div className="settings__row">
+          <label>Session Frequency</label>
+          <select
+            value={settings?.session_frequency_minutes ?? 10}
+            onChange={(e) => updateSettings({ session_frequency_minutes: Number(e.target.value) })}
+          >
+            <option value={5}>5 min</option>
+            <option value={10}>10 min</option>
+            <option value={15}>15 min</option>
+            <option value={30}>30 min</option>
+          </select>
+        </div>
+        <div className="settings__row">
+          <label>Daily Report Time</label>
+          <input
+            type="time"
+            value={`${String(settings?.daily_report_hour ?? 21).padStart(2, '0')}:${String(
+              settings?.daily_report_minute ?? 0,
+            ).padStart(2, '0')}`}
+            onChange={(e) => {
+              const [hour, minute] = e.target.value.split(':').map(Number)
+              updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
+            }}
+          />
+        </div>
+        <div className="settings__row">
+          <label>Local Data</label>
+          <button className="ghost danger" onClick={clearAllData}>
+            Clear All
+          </button>
+        </div>
       </section>
 
       <footer className="footer">Last run source: {lastRunSource ?? 'none yet'}</footer>

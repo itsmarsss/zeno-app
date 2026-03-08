@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use chrono::{Datelike, Local, Timelike};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{
@@ -27,6 +29,30 @@ struct NotificationState {
 #[derive(Default)]
 struct ReportState {
     last_notified_ymd: AtomicU32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppSettings {
+    monitoring_paused: bool,
+    session_frequency_minutes: u32,
+    daily_report_hour: u32,
+    daily_report_minute: u32,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            monitoring_paused: false,
+            session_frequency_minutes: 10,
+            daily_report_hour: 21,
+            daily_report_minute: 0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct SettingsState {
+    inner: Mutex<AppSettings>,
 }
 
 fn project_root() -> PathBuf {
@@ -221,6 +247,64 @@ fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, String> 
     parse_json_line(&stdout)
 }
 
+fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("settings_store.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(script);
+    if let Some(patch_value) = patch {
+        cmd.arg("--set-json").arg(patch_value.to_string());
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to read/update settings: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Settings script failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    serde_json::from_value(parse_json_line(&stdout)?)
+        .map_err(|e| format!("Invalid settings payload: {e}"))
+}
+
+fn run_clear_data_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("clear_data.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let output = Command::new(python_bin)
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Failed to clear local data: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Clear data failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+    parse_json_line(&String::from_utf8_lossy(&output.stdout))
+}
+
 fn run_calibration_status_blocking() -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -390,6 +474,39 @@ async fn run_daily_report(date_iso: Option<String>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn run_get_settings(settings_state: tauri::State<'_, SettingsState>) -> Result<Value, String> {
+    let settings = tauri::async_runtime::spawn_blocking(|| run_settings_blocking(None))
+        .await
+        .map_err(|e| format!("Settings task join error: {e}"))??;
+
+    if let Ok(mut guard) = settings_state.inner.lock() {
+        *guard = settings.clone();
+    }
+    serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {e}"))
+}
+
+#[tauri::command]
+async fn run_update_settings(
+    patch: Value,
+    settings_state: tauri::State<'_, SettingsState>,
+) -> Result<Value, String> {
+    let settings = tauri::async_runtime::spawn_blocking(move || run_settings_blocking(Some(patch)))
+        .await
+        .map_err(|e| format!("Settings update join error: {e}"))??;
+    if let Ok(mut guard) = settings_state.inner.lock() {
+        *guard = settings.clone();
+    }
+    serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {e}"))
+}
+
+#[tauri::command]
+async fn run_clear_data() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_clear_data_blocking)
+        .await
+        .map_err(|e| format!("Clear data task join error: {e}"))?
+}
+
+#[tauri::command]
 async fn run_calibration_status() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(run_calibration_status_blocking)
         .await
@@ -399,8 +516,27 @@ async fn run_calibration_status() -> Result<Value, String> {
 fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
     thread::spawn(move || {
+        let mut last_run_unix = now_unix_secs();
         loop {
-            thread::sleep(Duration::from_secs(600));
+            thread::sleep(Duration::from_secs(20));
+
+            let settings_state = app_handle.state::<SettingsState>();
+            let settings = settings_state
+                .inner
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+
+            if settings.monitoring_paused {
+                continue;
+            }
+
+            let interval = (settings.session_frequency_minutes as u64).saturating_mul(60);
+            let now = now_unix_secs();
+            if now < last_run_unix.saturating_add(interval) {
+                continue;
+            }
+            last_run_unix = now;
 
             let state = app_handle.state::<SessionState>();
             if state.running.swap(true, Ordering::SeqCst) {
@@ -449,7 +585,14 @@ fn start_daily_report_trigger(app: &tauri::AppHandle) {
             thread::sleep(Duration::from_secs(30));
 
             let now = Local::now();
-            if now.hour() != 21 || now.minute() != 0 {
+            let settings_state = app_handle.state::<SettingsState>();
+            let settings = settings_state
+                .inner
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+
+            if now.hour() != settings.daily_report_hour || now.minute() != settings.daily_report_minute {
                 continue;
             }
 
@@ -485,16 +628,28 @@ fn main() {
         .manage(SessionState::default())
         .manage(NotificationState::default())
         .manage(ReportState::default())
+        .manage(SettingsState::default())
         .invoke_handler(tauri::generate_handler![
             run_python_session,
             run_session_history,
             run_daily_report,
+            run_get_settings,
+            run_update_settings,
+            run_clear_data,
             run_calibration_status
         ])
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            if let Ok(settings) = run_settings_blocking(None) {
+                let settings_state = app.state::<SettingsState>();
+                let lock_result = settings_state.inner.lock();
+                if let Ok(mut guard) = lock_result {
+                    *guard = settings;
+                }
+            }
 
             let open_item = MenuItemBuilder::with_id("open", "Open Zeno").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
