@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import './App.css'
 
 type SessionResult = {
@@ -18,6 +19,8 @@ function App() {
   const [status, setStatus] = useState<'Idle' | 'Running' | 'Done' | 'Error'>('Idle')
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SessionResult | null>(null)
+  const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
+  const [schedulerState, setSchedulerState] = useState('Active (every 10 min)')
 
   const canRun = status !== 'Running'
   const statusTone = useMemo(() => {
@@ -35,12 +38,46 @@ function App() {
         emotionBackend: backend,
       })
       setResult(payload)
+      setLastRunSource('manual')
       setStatus('Done')
     } catch (e) {
       setStatus('Error')
       setError(e instanceof Error ? e.message : String(e))
     }
   }
+
+  useEffect(() => {
+    let unlistenResult: (() => void) | null = null
+    let unlistenError: (() => void) | null = null
+    let unlistenSkip: (() => void) | null = null
+
+    const setup = async () => {
+      unlistenResult = await listen<{ source: string; result: SessionResult }>(
+        'session-result',
+        (event) => {
+          setResult(event.payload.result)
+          setLastRunSource('scheduler')
+          setStatus('Done')
+          setError(null)
+        },
+      )
+      unlistenError = await listen<{ source: string; error: string }>('session-error', (event) => {
+        setStatus('Error')
+        setError(event.payload.error)
+      })
+      unlistenSkip = await listen<{ reason: string }>('scheduler-skip', () => {
+        setSchedulerState('Skipped (run already in progress)')
+        setTimeout(() => setSchedulerState('Active (every 10 min)'), 2500)
+      })
+    }
+
+    void setup()
+    return () => {
+      unlistenResult?.()
+      unlistenError?.()
+      unlistenSkip?.()
+    }
+  }, [])
 
   return (
     <main className="panel">
@@ -51,6 +88,7 @@ function App() {
       <section className="panel__section">
         <p>Menubar app is running.</p>
         <p className="muted">Camera checks run locally on this device.</p>
+        <p className="muted">Scheduler: {schedulerState}</p>
       </section>
       <section className="panel__section">
         <h2>Session</h2>
@@ -87,6 +125,7 @@ function App() {
               Heart Rate: {result.heart_rate_bpm === null ? 'unknown' : `${result.heart_rate_bpm} bpm`}
             </li>
             <li>Duration: {result.session_duration_seconds.toFixed(1)}s</li>
+            <li>Source: {lastRunSource ?? 'manual'}</li>
           </ul>
         </section>
       )}

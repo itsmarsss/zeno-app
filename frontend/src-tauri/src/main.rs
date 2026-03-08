@@ -3,11 +3,18 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
+
+#[derive(Default)]
+struct SessionState {
+    running: AtomicBool,
+}
 
 fn project_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -42,8 +49,7 @@ fn parse_json_line(stdout: &str) -> Result<Value, String> {
     ))
 }
 
-#[tauri::command]
-fn run_python_session(emotion_backend: Option<String>) -> Result<Value, String> {
+fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
     let session_script = root.join("backend").join("session_runner.py");
@@ -84,8 +90,81 @@ fn run_python_session(emotion_backend: Option<String>) -> Result<Value, String> 
     parse_json_line(&stdout)
 }
 
+#[tauri::command]
+async fn run_python_session(
+    emotion_backend: Option<String>,
+    state: tauri::State<'_, SessionState>,
+) -> Result<Value, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A session is already running.".to_string());
+    }
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_python_session_blocking(emotion_backend)
+    })
+    .await
+    .map_err(|e| format!("Session task join error: {e}"))?;
+
+    state.running.store(false, Ordering::SeqCst);
+    result
+}
+
+fn start_scheduler(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tauri::async_runtime::sleep(Duration::from_secs(600)).await;
+
+            let state = app_handle.state::<SessionState>();
+            if state.running.swap(true, Ordering::SeqCst) {
+                let _ = app_handle.emit(
+                    "scheduler-skip",
+                    serde_json::json!({"reason": "session already running"}),
+                );
+                continue;
+            }
+
+            let session_result =
+                tauri::async_runtime::spawn_blocking(|| run_python_session_blocking(None))
+                    .await;
+            state.running.store(false, Ordering::SeqCst);
+
+            match session_result {
+                Ok(Ok(payload)) => {
+                    let _ = app_handle.emit(
+                        "session-result",
+                        serde_json::json!({
+                            "source": "scheduler",
+                            "result": payload
+                        }),
+                    );
+                }
+                Ok(Err(err_msg)) => {
+                    let _ = app_handle.emit(
+                        "session-error",
+                        serde_json::json!({
+                            "source": "scheduler",
+                            "error": err_msg
+                        }),
+                    );
+                }
+                Err(join_err) => {
+                    let _ = app_handle.emit(
+                        "session-error",
+                        serde_json::json!({
+                            "source": "scheduler",
+                            "error": format!("Scheduler task join error: {join_err}")
+                        }),
+                    );
+                }
+            }
+        }
+    });
+}
+
 fn main() {
     let app_builder = tauri::Builder::default()
+        .manage(SessionState::default())
         .invoke_handler(tauri::generate_handler![run_python_session])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -131,6 +210,8 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+
+            start_scheduler(&app.app_handle());
 
             Ok(())
         });
