@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
+from urllib.error import HTTPError
 
 import cv2
 import numpy as np
 
 try:
+    import hsemotion.facial_emotions as hsemotion_module
     from hsemotion.facial_emotions import HSEmotionRecognizer
 except ImportError as exc:
     raise RuntimeError(
@@ -59,12 +62,37 @@ def _extract_score(scores, label: str) -> float:
     return 0.0
 
 
+def _build_recognizer(model_name: str, model_path: str | None) -> HSEmotionRecognizer:
+    if not model_path:
+        try:
+            return HSEmotionRecognizer(model_name=model_name, device="cpu")
+        except HTTPError as exc:
+            if exc.code == 429:
+                raise RuntimeError(
+                    "HSEmotion model download was rate-limited (HTTP 429). "
+                    "Download the .pt model manually and pass --model-path."
+                ) from exc
+            raise
+
+    resolved_path = Path(model_path).expanduser().resolve()
+    if not resolved_path.is_file():
+        raise RuntimeError(f"Model file not found: {resolved_path}")
+
+    original_get_model_path = hsemotion_module.get_model_path
+    hsemotion_module.get_model_path = lambda _model_name: str(resolved_path)
+    try:
+        return HSEmotionRecognizer(model_name=model_name, device="cpu")
+    finally:
+        hsemotion_module.get_model_path = original_get_model_path
+
+
 def analyze_emotion(
     camera_index: int = 0,
     warmup_seconds: float = 0.6,
     preview_seconds: float = 0.0,
     sample_frames: int = 5,
     model_name: str = "enet_b0_8_best_afew",
+    model_path: str | None = None,
 ) -> tuple[str, float]:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -73,7 +101,7 @@ def analyze_emotion(
     face_detector = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     )
-    recognizer = HSEmotionRecognizer(model_name=model_name, device="cpu")
+    recognizer = _build_recognizer(model_name=model_name, model_path=model_path)
     aggregate_scores: dict[str, float] = defaultdict(float)
     detections_used = 0
 
@@ -143,11 +171,17 @@ def main() -> None:
         default="enet_b0_8_best_afew",
         help="HSEmotion model name (default: enet_b0_8_best_afew).",
     )
+    parser.add_argument(
+        "--model-path",
+        default=None,
+        help="Local .pt path for HSEmotion model (skips auto-download).",
+    )
     args = parser.parse_args()
 
     emotion, score = analyze_emotion(
         preview_seconds=1.0 if args.preview else 0.0,
         model_name=args.model,
+        model_path=args.model_path,
     )
     timestamp = datetime.now().isoformat(timespec="seconds")
     print(f"[{timestamp}] dominant_emotion={emotion} score={score:.3f}")
