@@ -1,0 +1,108 @@
+use crate::python_sidecar::{now_unix_secs, run_gesture_dismiss_blocking};
+use crate::state::NotificationState;
+use serde_json::Value;
+use std::sync::atomic::Ordering;
+use std::thread;
+use tauri::{Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
+
+fn stress_index_from_result(result: &Value) -> Option<u8> {
+    let emotion = result
+        .get("dominant_emotion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_lowercase();
+    let emotion_score = result
+        .get("emotion_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let heart_rate = result.get("heart_rate_bpm").and_then(|v| v.as_f64());
+
+    let emotion_points = match emotion.as_str() {
+        "fear" => 28.0,
+        "angry" | "anger" => 25.0,
+        "disgust" | "contempt" => 22.0,
+        "sad" | "sadness" => 16.0,
+        "neutral" => 8.0,
+        "surprise" => 12.0,
+        "happy" | "happiness" => 4.0,
+        _ => 10.0,
+    } * emotion_score.max(0.25);
+
+    let hr_points = match heart_rate {
+        Some(bpm) if bpm >= 105.0 => 52.0,
+        Some(bpm) if bpm >= 95.0 => 40.0,
+        Some(bpm) if bpm >= 85.0 => 28.0,
+        Some(bpm) if bpm >= 75.0 => 14.0,
+        Some(_) => 6.0,
+        None => 8.0,
+    };
+
+    let score = (emotion_points + hr_points).round();
+    Some(score.clamp(0.0, 100.0) as u8)
+}
+
+fn notification_for_result(result: &Value) -> Option<(String, String)> {
+    let posture_score = result
+        .get("posture_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+
+    if posture_score < 0.45 {
+        return Some((
+            "Posture Check".to_string(),
+            "Straighten up and roll your shoulders back.".to_string(),
+        ));
+    }
+
+    let stress_index = stress_index_from_result(result)?;
+    if stress_index >= 61 {
+        return Some((
+            "Stress Check".to_string(),
+            "Take a 5 minute break. Step away for a reset.".to_string(),
+        ));
+    }
+    if (31..=60).contains(&stress_index) {
+        return Some((
+            "Focus Check".to_string(),
+            "You have been locked in for a while. Grab some water.".to_string(),
+        ));
+    }
+    None
+}
+
+pub fn notify_for_session(
+    app: &tauri::AppHandle,
+    notification_state: &NotificationState,
+    result: &Value,
+) -> bool {
+    let now = now_unix_secs();
+    let suppress_until = notification_state.suppress_until_unix.load(Ordering::SeqCst);
+    if now < suppress_until {
+        return false;
+    }
+
+    if let Some((title, body)) = notification_for_result(result) {
+        let _ = app.notification().builder().title(title).body(body).show();
+        return true;
+    }
+    false
+}
+
+pub fn start_gesture_dismiss_listener(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        let dismissed = run_gesture_dismiss_blocking(10).unwrap_or(false);
+        if dismissed {
+            let notification_state = app_handle.state::<NotificationState>();
+            let suppress_until = now_unix_secs() + (20 * 60);
+            notification_state
+                .suppress_until_unix
+                .store(suppress_until, Ordering::SeqCst);
+            let _ = app_handle.emit(
+                "gesture-dismissed",
+                serde_json::json!({"snooze_minutes": 20}),
+            );
+        }
+    });
+}
