@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import json
 
 import cv2
 import numpy as np
@@ -178,6 +179,135 @@ def estimate_heart_rate(
         cap.release()
 
 
+def _update_point_due(now_tick: int, next_update_tick: int) -> bool:
+    return now_tick >= next_update_tick
+
+
+def stream_heart_rate_updates(
+    camera_index: int = 0,
+    update_every_seconds: float = 5.0,
+    analysis_window_seconds: float = 30.0,
+    warmup_seconds: float = 0.8,
+    max_seconds: float = 0.0,
+    preview: bool = False,
+) -> list[dict]:
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        return []
+
+    face_detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+
+    signal: list[float] = []
+    timestamps: list[float] = []
+    updates: list[dict] = []
+    last_face: tuple[int, int, int, int] | None = None
+
+    tick_hz = cv2.getTickFrequency()
+    update_every_seconds = max(1.0, float(update_every_seconds))
+    analysis_window_seconds = max(8.0, float(analysis_window_seconds))
+    max_seconds = max(0.0, float(max_seconds))
+
+    try:
+        if warmup_seconds > 0:
+            warmup_end = cv2.getTickCount() + int(warmup_seconds * tick_hz)
+            while cv2.getTickCount() < warmup_end:
+                cap.read()
+
+        start = cv2.getTickCount()
+        next_update_tick = start + int(update_every_seconds * tick_hz)
+        max_end_tick = (
+            start + int(max_seconds * tick_hz)
+            if max_seconds > 0
+            else None
+        )
+        frame_count = 0
+
+        while True:
+            now_tick = cv2.getTickCount()
+            if max_end_tick is not None and now_tick >= max_end_tick:
+                break
+
+            ok, frame = cap.read()
+            if not ok:
+                if preview and cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+                continue
+
+            frame_count += 1
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            if frame_count % 3 == 1 or last_face is None:
+                faces = face_detector.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(60, 60),
+                )
+                found = _largest_face_box(faces)
+                if found is not None:
+                    last_face = found
+
+            if last_face is not None:
+                roi = _forehead_roi(frame, last_face)
+                if roi.size > 0:
+                    green_mean = float(np.mean(roi[:, :, 1]))
+                    red_mean = float(np.mean(roi[:, :, 2]))
+                    blue_mean = float(np.mean(roi[:, :, 0]))
+                    pulse_signal = green_mean - 0.5 * red_mean - 0.5 * blue_mean
+                    t = (cv2.getTickCount() - start) / tick_hz
+                    signal.append(pulse_signal)
+                    timestamps.append(t)
+
+            if _update_point_due(now_tick, next_update_tick):
+                if timestamps:
+                    latest_t = timestamps[-1]
+                    window_start = latest_t - analysis_window_seconds
+                    start_idx = 0
+                    for idx, t in enumerate(timestamps):
+                        if t >= window_start:
+                            start_idx = idx
+                            break
+                    bpm = _estimate_bpm(signal[start_idx:], timestamps[start_idx:])
+                else:
+                    latest_t = (now_tick - start) / tick_hz
+                    bpm = 0.0
+
+                update = {
+                    "timestamp": datetime.now().isoformat(timespec="seconds"),
+                    "elapsed_seconds": round(float(latest_t), 1),
+                    "heart_rate_bpm": None if bpm <= 0 else float(bpm),
+                }
+                updates.append(update)
+                print(json.dumps(update), flush=True)
+                next_update_tick += int(update_every_seconds * tick_hz)
+
+            if preview:
+                if last_face is not None:
+                    x, y, w, h = last_face
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 200, 0), 2)
+                cv2.putText(
+                    frame,
+                    "Live rPPG (press q to stop)",
+                    (12, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 220, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imshow("Zeno rPPG Capture", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+        return updates
+    finally:
+        if preview:
+            cv2.destroyAllWindows()
+        cap.release()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="One-shot 30s rPPG heart rate estimator.")
     parser.add_argument(
@@ -191,7 +321,42 @@ def main() -> None:
         default=30.0,
         help="Capture duration in seconds (default: 30).",
     )
+    parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Run continuously and emit JSON heart-rate updates every interval.",
+    )
+    parser.add_argument(
+        "--update-every",
+        type=float,
+        default=5.0,
+        help="Continuous mode update interval in seconds (default: 5).",
+    )
+    parser.add_argument(
+        "--window-seconds",
+        type=float,
+        default=30.0,
+        help="Signal analysis window for continuous mode (default: 30).",
+    )
+    parser.add_argument(
+        "--max-seconds",
+        type=float,
+        default=0.0,
+        help="Stop continuous mode after N seconds (0 = run until interrupted).",
+    )
     args = parser.parse_args()
+
+    if args.continuous:
+        try:
+            stream_heart_rate_updates(
+                update_every_seconds=args.update_every,
+                analysis_window_seconds=args.window_seconds,
+                max_seconds=args.max_seconds,
+                preview=args.preview,
+            )
+        except KeyboardInterrupt:
+            pass
+        return
 
     bpm = estimate_heart_rate(capture_seconds=args.seconds, preview=args.preview)
     timestamp = datetime.now().isoformat(timespec="seconds")
