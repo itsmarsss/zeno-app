@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { ArrowUpRight, ChartNoAxesCombined, Ellipsis, House } from 'lucide-react'
 import './App.css'
 
 type SessionResult = {
@@ -487,6 +488,7 @@ function App() {
   const [breakSummary, setBreakSummary] = useState<string | null>(null)
   const [breakTargetSec, setBreakTargetSec] = useState(5 * 60)
   const [breakAwaySeconds, setBreakAwaySeconds] = useState(0)
+  const [showQuickActions, setShowQuickActions] = useState(false)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -1080,42 +1082,102 @@ function App() {
 
       </div>
 
+      {showQuickActions && activePage === 'home' && settings?.focus_mode_active && !breathingActive && !breakActive && (
+        <section className="quick-actions-pop">
+          <div className="quick-actions-head">
+            <span>Quick actions</span>
+            <button
+              className="quick-actions-close"
+              aria-label="Close quick actions"
+              title="Close"
+              onClick={() => setShowQuickActions(false)}
+            >
+              ×
+            </button>
+          </div>
+          <div className="pattern-picker">
+            <button
+              className={`pattern-chip ${breathingPattern === 'box' ? 'is-active' : ''}`}
+              onClick={() => setBreathingPattern('box')}
+            >
+              Box
+            </button>
+            <button
+              className={`pattern-chip ${breathingPattern === 'four-seven-eight' ? 'is-active' : ''}`}
+              onClick={() => setBreathingPattern('four-seven-eight')}
+            >
+              4-7-8
+            </button>
+          </div>
+          <div className="quick-actions-row">
+            <button
+              className="report-link"
+              onClick={() => {
+                setShowQuickActions(false)
+                startBreathing()
+              }}
+            >
+              Breathe
+            </button>
+            <button
+              className="report-link"
+              onClick={() => {
+                setShowQuickActions(false)
+                startBreak(5 * 60)
+              }}
+            >
+              Break
+            </button>
+          </div>
+        </section>
+      )}
+
       <footer className="footerbar">
         {activePage === 'home' ? (
-          <button className="report-link" onClick={() => setActivePage('report')}>Report</button>
+          <button
+            className="icon-action-btn"
+            onClick={() => setActivePage('report')}
+            aria-label="Open report"
+            title="Report"
+          >
+            <ChartNoAxesCombined className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+          </button>
         ) : (
-          <button className="report-link" onClick={() => setActivePage('home')}>Home</button>
+          <button
+            className="icon-action-btn"
+            onClick={() => setActivePage('home')}
+            aria-label="Go to home"
+            title="Home"
+          >
+            <House className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+          </button>
         )}
-        <button className="report-link" onClick={() => void openMainWindow()}>Open app</button>
+        <button
+          className="icon-action-btn"
+          onClick={() => void openMainWindow()}
+          aria-label="Open main app window"
+          title="Open app"
+        >
+          <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+        </button>
+        {activePage === 'home' && settings?.focus_mode_active && !breathingActive && !breakActive && (
+          <button
+            className="icon-action-btn"
+            onClick={() => setShowQuickActions((v) => !v)}
+            aria-label="Open quick actions"
+            title="Actions"
+          >
+            <Ellipsis className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+            <span className="sr-only">Actions</span>
+          </button>
+        )}
+        {activePage === 'home' && breathingActive && (
+          <button className="report-link" onClick={() => void stopBreathing()}>Stop</button>
+        )}
+        {activePage === 'home' && breakActive && (
+          <button className="report-link" onClick={stopBreak}>End break</button>
+        )}
         <div className="toggle-wrap">
-          {activePage === 'home' && settings?.focus_mode_active && !breathingActive && (
-            <>
-              <div className="pattern-picker">
-                <button
-                  className={`pattern-chip ${breathingPattern === 'box' ? 'is-active' : ''}`}
-                  onClick={() => setBreathingPattern('box')}
-                >
-                  Box
-                </button>
-                <button
-                  className={`pattern-chip ${breathingPattern === 'four-seven-eight' ? 'is-active' : ''}`}
-                  onClick={() => setBreathingPattern('four-seven-eight')}
-                >
-                  4-7-8
-                </button>
-              </div>
-              <button className="report-link" onClick={startBreathing}>Breathe</button>
-            </>
-          )}
-          {activePage === 'home' && settings?.focus_mode_active && !breakActive && (
-            <button className="report-link" onClick={() => startBreak(5 * 60)}>Break</button>
-          )}
-          {activePage === 'home' && breathingActive && (
-            <button className="report-link" onClick={() => void stopBreathing()}>Stop</button>
-          )}
-          {activePage === 'home' && breakActive && (
-            <button className="report-link" onClick={stopBreak}>End break</button>
-          )}
           <button
             className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
             onClick={toggleFocusMode}
