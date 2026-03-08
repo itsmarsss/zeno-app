@@ -92,6 +92,38 @@ def _exercise_feedback(exercise_id: str | None, landmarks, posture_score: float)
     return "Good form. Keep breathing steadily."
 
 
+def _exercise_target_active(exercise_id: str, landmarks) -> bool:
+    nose = landmarks[NOSE]
+    left_shoulder = landmarks[LEFT_SHOULDER]
+    right_shoulder = landmarks[RIGHT_SHOULDER]
+    shoulder_width = abs(left_shoulder.x - right_shoulder.x)
+    shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
+    head_offset = shoulder_mid_y - nose.y
+    shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
+
+    if exercise_id == "chin-tuck":
+        return head_offset > shoulder_width * 0.28
+    if exercise_id == "scap-squeeze":
+        return shoulder_tilt < 0.1 and head_offset > shoulder_width * 0.24
+    if exercise_id == "thoracic-extension":
+        return head_offset > shoulder_width * 0.31
+    if exercise_id == "wall-angels":
+        return shoulder_tilt < 0.12
+    if exercise_id == "doorway-pec-stretch":
+        return shoulder_tilt < 0.16
+    if exercise_id == "seated-side-bend":
+        return shoulder_tilt > 0.1
+    return False
+
+
+def _exercise_target_reps(exercise_id: str) -> int:
+    if exercise_id in {"wall-angels", "thoracic-extension"}:
+        return 8
+    if exercise_id == "doorway-pec-stretch":
+        return 6
+    return 10
+
+
 def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: str | None) -> int:
     fps = max(1.0, min(30.0, fps))
     quality = max(40, min(95, jpeg_quality))
@@ -113,6 +145,13 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
         min_tracking_confidence=0.5,
         num_poses=1,
     )
+    exercise_state = {
+        "rep_count": 0,
+        "hold_seconds": 0.0,
+        "active_prev": False,
+        "quality_ema": 0.0,
+        "last_tick": time.perf_counter(),
+    }
 
     try:
         with vision.PoseLandmarker.create_from_options(options) as landmarker:
@@ -130,6 +169,7 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                 landmarks_payload = None
                 posture_score = 0.0
                 feedback = None
+                exercise_metrics = None
                 if result.pose_landmarks:
                     landmarks = result.pose_landmarks[0]
                     landmarks_payload = {
@@ -139,6 +179,36 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                     }
                     posture_score = _posture_score_from_landmarks(landmarks)
                     feedback = _exercise_feedback(exercise_id, landmarks, posture_score)
+                    if exercise_id:
+                        now_tick = time.perf_counter()
+                        elapsed = max(0.0, now_tick - float(exercise_state["last_tick"]))
+                        exercise_state["last_tick"] = now_tick
+
+                        active_now = _exercise_target_active(exercise_id, landmarks)
+                        if active_now and not exercise_state["active_prev"]:
+                            exercise_state["rep_count"] = int(exercise_state["rep_count"]) + 1
+                        if active_now:
+                            exercise_state["hold_seconds"] = float(exercise_state["hold_seconds"]) + elapsed
+                        exercise_state["active_prev"] = active_now
+
+                        previous_q = float(exercise_state["quality_ema"])
+                        exercise_state["quality_ema"] = (
+                            posture_score if previous_q <= 0 else previous_q * 0.9 + posture_score * 0.1
+                        )
+                        target_reps = _exercise_target_reps(exercise_id)
+                        rep_count = int(exercise_state["rep_count"])
+                        hold_seconds = round(float(exercise_state["hold_seconds"]), 1)
+                        progress_pct = min(100, int((rep_count / max(1, target_reps)) * 100))
+                        exercise_metrics = {
+                            "rep_count": rep_count,
+                            "target_reps": target_reps,
+                            "hold_seconds": hold_seconds,
+                            "quality_score": round(float(exercise_state["quality_ema"]), 3),
+                            "target_active": active_now,
+                            "progress_pct": progress_pct,
+                        }
+                elif exercise_id:
+                    exercise_state["active_prev"] = False
 
                 ok, encoded = cv2.imencode(
                     ".jpg",
@@ -154,6 +224,7 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                     "landmarks": landmarks_payload,
                     "posture_score": posture_score,
                     "exercise_feedback": feedback,
+                    "exercise_metrics": exercise_metrics,
                 }
                 print(json.dumps(payload), flush=True)
 

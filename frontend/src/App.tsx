@@ -69,6 +69,14 @@ type PostureStreamFrame = {
   landmarks: PostureLandmarks
   posture_score: number
   exercise_feedback?: string | null
+  exercise_metrics?: {
+    rep_count: number
+    target_reps: number
+    hold_seconds: number
+    quality_score: number
+    target_active: boolean
+    progress_pct: number
+  } | null
 }
 type Exercise = {
   id: string
@@ -280,6 +288,7 @@ function MainWindowShell({
   const [targetFilter, setTargetFilter] = useState<'all' | string>('all')
   const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
   const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
+  const [exerciseMetrics, setExerciseMetrics] = useState<PostureStreamFrame['exercise_metrics']>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
@@ -351,6 +360,7 @@ function MainWindowShell({
           setPostureLandmarks(payload.landmarks ?? null)
           setPostureScoreLive(payload.posture_score)
           setExerciseFeedback(payload.exercise_feedback ?? null)
+          setExerciseMetrics(payload.exercise_metrics ?? null)
           setPostureStreamState(payload.landmarks ? 'running' : 'no-pose')
         })
         unlistenEnded = await listen('posture-stream-ended', () => {
@@ -573,7 +583,11 @@ function MainWindowShell({
                   <button
                     key={exercise.id}
                     className={`exercise-card ${exercise.id === selectedExercise.id ? 'is-active' : ''}`}
-                    onClick={() => setSelectedExerciseId(exercise.id)}
+                    onClick={() => {
+                      setSelectedExerciseId(exercise.id)
+                      setExerciseFeedback(null)
+                      setExerciseMetrics(null)
+                    }}
                   >
                     <p className="exercise-name">{exercise.name}</p>
                     <p className="exercise-meta">{exercise.target}</p>
@@ -603,16 +617,38 @@ function MainWindowShell({
                       <button
                         className="btn-solid"
                         type="button"
-                        onClick={() => setExerciseGuidedActive((v) => !v)}
+                        onClick={() =>
+                          setExerciseGuidedActive((v) => {
+                            const next = !v
+                            if (!next) {
+                              setExerciseFeedback(null)
+                              setExerciseMetrics(null)
+                            }
+                            return next
+                          })
+                        }
                       >
                         {exerciseGuidedActive ? 'Stop guided set' : 'Start guided set'}
                       </button>
-                      {exerciseGuidedActive && (
-                        <span className="exercise-live-pill">
-                          {postureStreamState === 'running' ? 'Live' : postureStreamState === 'no-pose' ? 'No pose' : 'Connecting'}
-                        </span>
-                      )}
-                    </div>
+                    {exerciseGuidedActive && (
+                      <span className="exercise-live-pill">
+                        {postureStreamState === 'running' ? 'Live' : postureStreamState === 'no-pose' ? 'No pose' : 'Connecting'}
+                      </span>
+                    )}
+                  </div>
+                    {exerciseGuidedActive && exerciseMetrics && (
+                      <div className="exercise-metrics">
+                        <span>Reps {exerciseMetrics.rep_count}/{exerciseMetrics.target_reps}</span>
+                        <span>Hold {exerciseMetrics.hold_seconds}s</span>
+                        <span>Form {Math.round(exerciseMetrics.quality_score * 100)}</span>
+                        <span>{exerciseMetrics.target_active ? 'Position on' : 'Position off'}</span>
+                      </div>
+                    )}
+                    {exerciseGuidedActive && exerciseMetrics && (
+                      <div className="exercise-progress">
+                        <div className="exercise-progress-fill" style={{ width: `${exerciseMetrics.progress_pct}%` }} />
+                      </div>
+                    )}
                     {exerciseGuidedActive && postureFrame && (
                       <div className="exercise-live-preview">
                         <img src={postureFrame} className="posture-video" alt="Guided exercise stream" />

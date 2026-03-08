@@ -334,6 +334,36 @@
   aspect-ratio: 16 / 9;
 }
 
+.exercise-metrics {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exercise-metrics span {
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.exercise-progress {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.exercise-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7ec8a4 0%, #2d6a4f 100%);
+  border-radius: inherit;
+}
+
 .posture-preview {
   margin-top: 12px;
   border-radius: 12px;
