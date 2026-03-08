@@ -187,6 +187,9 @@ function App() {
   const [breathingCycle, setBreathingCycle] = useState(1)
   const [breathingStartHr, setBreathingStartHr] = useState<number | null>(null)
   const [breathingSummary, setBreathingSummary] = useState<string | null>(null)
+  const [breakActive, setBreakActive] = useState(false)
+  const [breakRemainingSec, setBreakRemainingSec] = useState(5 * 60)
+  const [breakSummary, setBreakSummary] = useState<string | null>(null)
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -221,6 +224,8 @@ function App() {
   const activePattern = BREATHING_PATTERNS[breathingPattern]
   const breathingPhase = activePattern.phases[breathingPhaseIndex] ?? activePattern.phases[0]
   const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
+  const breakMinutes = Math.floor(breakRemainingSec / 60)
+  const breakSeconds = breakRemainingSec % 60
 
   async function stopBreathing() {
     const hrEnd = result?.heart_rate_bpm ?? null
@@ -297,6 +302,28 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [breathingSummary])
 
+  useEffect(() => {
+    if (!breakActive) return
+    const timer = window.setInterval(() => {
+      setBreakRemainingSec((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer)
+          setBreakActive(false)
+          setBreakSummary('Break complete. Back to focus.')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [breakActive])
+
+  useEffect(() => {
+    if (!breakSummary) return
+    const timeout = window.setTimeout(() => setBreakSummary(null), 3000)
+    return () => window.clearTimeout(timeout)
+  }, [breakSummary])
+
   async function loadHistory() {
     try {
       const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history', { limit: 20 })
@@ -368,6 +395,17 @@ function App() {
   async function completeOnboarding() {
     await updateSettings({ onboarding_completed: true })
     setShowOnboarding(false)
+  }
+
+  function startBreak(durationSec = 5 * 60) {
+    setBreakActive(true)
+    setBreakRemainingSec(Math.max(60, durationSec))
+    setBreakSummary(null)
+  }
+
+  function stopBreak() {
+    setBreakActive(false)
+    setBreakSummary('Break ended early.')
   }
 
   async function clearAllData() {
@@ -515,6 +553,26 @@ function App() {
         </div>
       </header>
       <div className="content-scroll">
+        {breakSummary && activePage === 'home' && (
+          <section className="breathing-summary">
+            <p className="label">Break</p>
+            <p>{breakSummary}</p>
+          </section>
+        )}
+
+        {breakActive && activePage === 'home' && (
+          <section className="breathing-panel">
+            <div className="breathing-head">
+              <p className="label">Break timer</p>
+              <button className="icon-btn" onClick={stopBreak}>Stop</button>
+            </div>
+            <p className="breathing-hr">
+              {String(breakMinutes).padStart(2, '0')}:{String(breakSeconds).padStart(2, '0')}
+            </p>
+            <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
+          </section>
+        )}
+
         {breathingSummary && activePage === 'home' && (
           <section className="breathing-summary">
             <p className="label">Done</p>
@@ -522,7 +580,7 @@ function App() {
           </section>
         )}
 
-        {breathingActive && activePage === 'home' && (
+        {breathingActive && activePage === 'home' && !breakActive && (
           <section className="breathing-panel">
             <div className="breathing-head">
               <p className="label">{activePattern.name}</p>
@@ -539,7 +597,7 @@ function App() {
           </section>
         )}
 
-        {activePage === 'home' && !breathingActive && (
+        {activePage === 'home' && !breathingActive && !breakActive && (
           <>
             <section className="stress-card">
               <p className="label">stress index</p>
@@ -722,8 +780,14 @@ function App() {
               <button className="report-link" onClick={startBreathing}>Breathe</button>
             </>
           )}
+          {activePage === 'home' && settings?.focus_mode_active && !breakActive && (
+            <button className="report-link" onClick={() => startBreak(5 * 60)}>Break</button>
+          )}
           {activePage === 'home' && breathingActive && (
             <button className="report-link" onClick={() => void stopBreathing()}>Stop</button>
+          )}
+          {activePage === 'home' && breakActive && (
+            <button className="report-link" onClick={stopBreak}>End break</button>
           )}
           <button
             className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
@@ -742,8 +806,8 @@ function App() {
         </div>
       </footer>
 
-      {activePage === 'home' && !breathingActive && (
-        <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused}>
+      {activePage === 'home' && !breathingActive && !breakActive && (
+        <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused || breakActive}>
           {status === 'Running' ? 'Checking' : 'Check in'}
         </button>
       )}
