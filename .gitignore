@@ -1,3 +1,6 @@
 prd.md
 .venv/
 backend/models/
+.DS_Store
+__pycache__/
+backend/data/
