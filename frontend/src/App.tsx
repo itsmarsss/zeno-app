@@ -54,6 +54,7 @@ function App() {
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
   const breakActiveRef = useRef(false)
+  const finishBreakRef = useRef<(reason: 'complete' | 'early') => Promise<void>>(async () => {})
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -211,14 +212,14 @@ function App() {
         if (prev <= 1) {
           window.clearInterval(timer)
           setBreakActive(false)
-          void finishBreak('complete')
+          void finishBreakRef.current('complete')
           return 0
         }
         return prev - 1
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [breakActive, finishBreak])
+  }, [breakActive])
 
   useEffect(() => {
     if (!breakActive || !breakUseGenuinityChecks) return
@@ -341,7 +342,7 @@ function App() {
     setBreakSummary(null)
   }, [])
 
-  async function finishBreak(reason: 'complete' | 'early') {
+  const finishBreak = useCallback(async (reason: 'complete' | 'early') => {
     const elapsedRatio = breakTargetSec <= 0 ? 0 : (breakTargetSec - breakRemainingSec) / breakTargetSec
     const presenceBased = breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
     const durationBased = Math.max(0, Math.min(100, Math.round(elapsedRatio * 100)))
@@ -363,7 +364,11 @@ function App() {
     } else {
       setBreakSummary(`Break ended early. Score ${qualityScore}.`)
     }
-  }
+  }, [breakAwaySeconds, breakRemainingSec, breakTargetSec, breakUseGenuinityChecks])
+
+  useEffect(() => {
+    finishBreakRef.current = finishBreak
+  }, [finishBreak])
 
   function stopBreak() {
     setBreakActive(false)
