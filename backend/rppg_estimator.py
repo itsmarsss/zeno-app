@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+
+import cv2
+import numpy as np
+
+MIN_BPM = 48.0
+MAX_BPM = 180.0
+
+
+def _largest_face_box(face_boxes: np.ndarray | tuple | list) -> tuple[int, int, int, int] | None:
+    if face_boxes is None or len(face_boxes) == 0:
+        return None
+    x, y, w, h = max(face_boxes, key=lambda box: int(box[2]) * int(box[3]))
+    return int(x), int(y), int(w), int(h)
+
+
+def _forehead_roi(frame: np.ndarray, face_box: tuple[int, int, int, int]) -> np.ndarray:
+    x, y, w, h = face_box
+    # Upper-center region of the face is a stable rPPG area for quick estimates.
+    rx1 = x + int(w * 0.2)
+    rx2 = x + int(w * 0.8)
+    ry1 = y + int(h * 0.12)
+    ry2 = y + int(h * 0.38)
+
+    rx1 = max(0, rx1)
+    ry1 = max(0, ry1)
+    rx2 = min(frame.shape[1], rx2)
+    ry2 = min(frame.shape[0], ry2)
+
+    if rx2 <= rx1 or ry2 <= ry1:
+        return np.empty((0, 0, 3), dtype=frame.dtype)
+
+    return frame[ry1:ry2, rx1:rx2]
+
+
+def _estimate_bpm(signal: list[float], timestamps: list[float]) -> float:
+    if len(signal) < 90 or len(timestamps) < 90:
+        return 0.0
+
+    values = np.asarray(signal, dtype=np.float64)
+    times = np.asarray(timestamps, dtype=np.float64)
+
+    duration = times[-1] - times[0]
+    if duration <= 8.0:
+        return 0.0
+
+    sample_rate = (len(times) - 1) / duration
+    if sample_rate < 8.0:
+        return 0.0
+
+    values = values - np.mean(values)
+
+    # Remove slow illumination drift with a 1-second moving-average detrend.
+    window = max(3, int(sample_rate))
+    trend = np.convolve(values, np.ones(window) / window, mode="same")
+    detrended = values - trend
+
+    if np.std(detrended) < 1e-6:
+        return 0.0
+
+    fft = np.fft.rfft(detrended)
+    freqs = np.fft.rfftfreq(len(detrended), d=1.0 / sample_rate)
+
+    min_hz = MIN_BPM / 60.0
+    max_hz = MAX_BPM / 60.0
+    band_mask = (freqs >= min_hz) & (freqs <= max_hz)
+    if not np.any(band_mask):
+        return 0.0
+
+    band_power = np.abs(fft[band_mask]) ** 2
+    if band_power.size == 0 or float(np.sum(band_power)) <= 0.0:
+        return 0.0
+
+    peak_idx = int(np.argmax(band_power))
+    peak_freq = freqs[band_mask][peak_idx]
+
+    # Basic quality gate: dominant peak must have at least 12% of band power.
+    peak_ratio = float(band_power[peak_idx] / np.sum(band_power))
+    if peak_ratio < 0.12:
+        return 0.0
+
+    return round(float(peak_freq * 60.0), 1)
+
+
+def estimate_heart_rate(
+    camera_index: int = 0,
+    capture_seconds: float = 30.0,
+    warmup_seconds: float = 0.8,
+    preview: bool = False,
+) -> float:
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        return 0.0
+
+    face_detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+
+    signal: list[float] = []
+    timestamps: list[float] = []
+    last_face: tuple[int, int, int, int] | None = None
+
+    try:
+        if warmup_seconds > 0:
+            warmup_end = cv2.getTickCount() + int(warmup_seconds * cv2.getTickFrequency())
+            while cv2.getTickCount() < warmup_end:
+                cap.read()
+
+        start = cv2.getTickCount()
+        end = start + int(capture_seconds * cv2.getTickFrequency())
+        frame_count = 0
+
+        while cv2.getTickCount() < end:
+            ok, frame = cap.read()
+            if not ok:
+                continue
+
+            frame_count += 1
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            if frame_count % 3 == 1 or last_face is None:
+                faces = face_detector.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(60, 60),
+                )
+                found = _largest_face_box(faces)
+                if found is not None:
+                    last_face = found
+
+            if last_face is None:
+                if preview:
+                    cv2.imshow("Zeno rPPG Capture", frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                continue
+
+            roi = _forehead_roi(frame, last_face)
+            if roi.size > 0:
+                green_mean = float(np.mean(roi[:, :, 1]))
+                timestamp = (cv2.getTickCount() - start) / cv2.getTickFrequency()
+                signal.append(green_mean)
+                timestamps.append(timestamp)
+
+            if preview:
+                x, y, w, h = last_face
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 200, 0), 2)
+                remaining = max(0.0, capture_seconds - timestamps[-1] if timestamps else capture_seconds)
+                cv2.putText(
+                    frame,
+                    f"Capturing... {remaining:04.1f}s",
+                    (12, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 220, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.imshow("Zeno rPPG Capture", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+        return _estimate_bpm(signal, timestamps)
+    finally:
+        if preview:
+            cv2.destroyAllWindows()
+        cap.release()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="One-shot 30s rPPG heart rate estimator.")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Show live capture window while collecting rPPG signal.",
+    )
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=30.0,
+        help="Capture duration in seconds (default: 30).",
+    )
+    args = parser.parse_args()
+
+    bpm = estimate_heart_rate(capture_seconds=args.seconds, preview=args.preview)
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    if bpm > 0:
+        print(f"[{timestamp}] heart_rate_bpm={bpm:.1f}")
+    else:
+        print(f"[{timestamp}] heart_rate_bpm=unknown")
+
+
+if __name__ == "__main__":
+    main()
