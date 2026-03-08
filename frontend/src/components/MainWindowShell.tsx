@@ -282,6 +282,19 @@ export function MainWindowShell({
     })
   }
 
+  function openExercisesTab() {
+    setTab('exercises')
+  }
+
+  function startExerciseFromPosture(exerciseId: string) {
+    setSelectedExerciseId(exerciseId)
+    setPaywallMessage(null)
+    setExerciseFeedback(null)
+    setExerciseMetrics(null)
+    setExerciseGuidedActive(false)
+    setTab('exercises')
+  }
+
   useEffect(() => {
     const shouldStream = tab === 'posture' || (tab === 'exercises' && exerciseGuidedActive)
     if (!shouldStream) return
@@ -380,6 +393,9 @@ export function MainWindowShell({
             postureFrame={postureFrame}
             postureLandmarks={postureLandmarks}
             postureStreamError={postureStreamError}
+            history={history}
+            onSeeAllExercises={openExercisesTab}
+            onStartExercise={startExerciseFromPosture}
           />
         )}
 

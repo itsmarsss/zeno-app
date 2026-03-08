@@ -1,0 +1,362 @@
+.posture-live-grid {
+  margin-top: 12px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-surface);
+  display: grid;
+  grid-template-columns: 52% 48%;
+}
+
+.posture-feed-wrap {
+  position: relative;
+  background: #0d0d0d;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.posture-preview--live {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  margin-top: 0;
+}
+
+.posture-camera-off {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.posture-camera-off p {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.posture-live-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.posture-live-badge span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--state-elevated);
+  animation: pulse 2s infinite ease-in-out;
+}
+
+.posture-feed-gradient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 24px 16px 14px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+}
+
+.posture-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.posture-score-badge strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  color: #fff;
+}
+
+.posture-score-badge span {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.posture-coaching {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.posture-eyebrow {
+  margin: 0 0 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-tertiary);
+}
+
+.posture-status {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 26px;
+  transition: color 600ms ease;
+}
+
+.posture-status.is-good { color: var(--state-calm); }
+.posture-status.is-warn { color: var(--state-mild); }
+.posture-status.is-bad { color: var(--state-elevated); }
+
+.posture-status-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.posture-coaching hr {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 20px 0;
+}
+
+.posture-metric-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.posture-metric-row span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.posture-metric-row em {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: right;
+  font-style: normal;
+}
+
+.posture-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.posture-bar i {
+  height: 100%;
+  display: block;
+  background: var(--state-calm);
+  transition: width 600ms ease;
+}
+
+.posture-cta {
+  margin-top: 20px;
+  width: 100%;
+  padding: 10px 20px;
+}
+
+.posture-all-good {
+  margin: 20px auto 0;
+  color: var(--state-calm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.posture-card {
+  margin-bottom: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  padding: 16px;
+}
+
+.posture-card h3 {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+}
+
+.posture-period-toggle {
+  min-width: 210px;
+}
+
+.posture-history-chart {
+  margin-top: 16px;
+  position: relative;
+}
+
+.posture-history-chart svg {
+  width: 100%;
+  height: 130px;
+  display: block;
+}
+
+.posture-threshold {
+  stroke: var(--border-default);
+  stroke-dasharray: 4 4;
+}
+
+.posture-area {
+  fill: url(#postureGradient);
+}
+
+.posture-line {
+  fill: none;
+  stroke: var(--state-calm);
+  stroke-width: 2;
+}
+
+.posture-threshold-label {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.posture-empty {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.posture-issues {
+  margin-top: 12px;
+}
+
+.posture-issue-row {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.posture-issue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.posture-issue-dot.is-high { background: var(--state-mild); }
+.posture-issue-dot.is-mid { background: color-mix(in srgb, var(--state-mild) 60%, transparent); }
+.posture-issue-dot.is-low { background: var(--border-default); }
+
+.posture-issue-row strong {
+  flex: 1;
+  font-size: 13px;
+}
+
+.posture-issue-bar {
+  width: 100px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.posture-issue-bar i {
+  height: 100%;
+  display: block;
+  background: var(--state-mild);
+}
+
+.posture-issue-row em {
+  width: 36px;
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.posture-reco-card .main-panel-head {
+  align-items: center;
+}
+
+.posture-see-all {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.posture-reco-strip {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.posture-reco-strip::-webkit-scrollbar { display: none; }
+
+.posture-reco-item {
+  width: 180px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  padding: 12px;
+}
+
+.posture-reco-item > p {
+  margin: 0;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.posture-reco-item h4 {
+  margin: 8px 0 4px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 16px;
+}
+
+.posture-reco-item span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.posture-reco-item button {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+@media (max-width: 1100px) {
+  .posture-live-grid {
+    grid-template-columns: 1fr;
+  }
+}
