@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use std::sync::Mutex;
 
@@ -49,4 +50,9 @@ pub struct SettingsState {
 pub struct FocusTimerState {
     pub started_at_unix: AtomicU64,
     pub break_triggered_for_session: AtomicBool,
+}
+
+#[derive(Default)]
+pub struct PostureStreamState {
+    pub child: Mutex<Option<Child>>,
 }

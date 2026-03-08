@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -57,6 +57,18 @@ type AppSettings = {
 }
 
 type BreathingPatternId = 'box' | 'four-seven-eight'
+type PosturePoint = { x: number; y: number; visibility?: number }
+type PostureLandmarks = {
+  nose?: PosturePoint
+  left_shoulder?: PosturePoint
+  right_shoulder?: PosturePoint
+} | null
+type PostureStreamFrame = {
+  timestamp: string
+  frame_jpeg_b64: string
+  landmarks: PostureLandmarks
+  posture_score: number
+}
 
 const BREATHING_PATTERNS: Record<
   BreathingPatternId,
@@ -194,10 +206,13 @@ function MainWindowShell({
   clearAllData: () => Promise<void>
 }) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
-  const postureVideoRef = useRef<HTMLVideoElement | null>(null)
-  const postureStreamRef = useRef<MediaStream | null>(null)
-  const [postureCameraOn, setPostureCameraOn] = useState(false)
-  const [postureCameraError, setPostureCameraError] = useState<string | null>(null)
+  const [postureFrame, setPostureFrame] = useState<string | null>(null)
+  const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
+  const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
+  const [postureStreamState, setPostureStreamState] = useState<'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'>(
+    'stopped',
+  )
+  const [postureStreamError, setPostureStreamError] = useState<string | null>(null)
   const todayKey = new Date().toISOString().slice(0, 10)
   const todaySessions = useMemo(
     () =>
@@ -228,42 +243,40 @@ function MainWindowShell({
   const weeklyMax = Math.max(...weeklyValues, 1)
 
   useEffect(() => {
-    async function startCamera() {
-      if (tab !== 'posture') return
-      if (postureStreamRef.current) return
+    if (tab !== 'posture') {
+      return
+    }
+
+    let unlistenFrame: (() => void) | undefined
+    let unlistenEnded: (() => void) | undefined
+
+    async function startBackendPostureStream() {
+      setPostureStreamState('connecting')
+      setPostureStreamError(null)
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 960 },
-            height: { ideal: 540 },
-            frameRate: { ideal: 24, max: 30 },
-          },
-          audio: false,
+        await invoke('start_posture_stream', { fps: 8 })
+        unlistenFrame = await listen<PostureStreamFrame>('posture-stream-frame', (event) => {
+          const payload = event.payload
+          setPostureFrame(`data:image/jpeg;base64,${payload.frame_jpeg_b64}`)
+          setPostureLandmarks(payload.landmarks ?? null)
+          setPostureScoreLive(payload.posture_score)
+          setPostureStreamState(payload.landmarks ? 'running' : 'no-pose')
         })
-        postureStreamRef.current = stream
-        if (postureVideoRef.current) {
-          postureVideoRef.current.srcObject = stream
-          await postureVideoRef.current.play()
-        }
-        setPostureCameraOn(true)
-        setPostureCameraError(null)
+        unlistenEnded = await listen('posture-stream-ended', () => {
+          setPostureStreamState('stopped')
+        })
       } catch (err) {
-        setPostureCameraOn(false)
-        setPostureCameraError(err instanceof Error ? err.message : 'Unable to access camera.')
+        setPostureStreamState('error')
+        setPostureStreamError(err instanceof Error ? err.message : 'Unable to start posture stream.')
       }
     }
 
-    function stopCamera() {
-      postureStreamRef.current?.getTracks().forEach((track) => track.stop())
-      postureStreamRef.current = null
-      if (postureVideoRef.current) {
-        postureVideoRef.current.srcObject = null
-      }
-      setPostureCameraOn(false)
+    void startBackendPostureStream()
+    return () => {
+      if (unlistenFrame) unlistenFrame()
+      if (unlistenEnded) unlistenEnded()
+      void invoke('stop_posture_stream').catch(() => null)
     }
-
-    void startCamera()
-    return stopCamera
   }, [tab])
 
   return (
@@ -385,17 +398,42 @@ function MainWindowShell({
             <h1>Posture</h1>
             <div className="main-panel">
               <div className="main-panel-head">
-                <h3>Live camera</h3>
-                <span>{postureCameraOn ? 'Camera on' : 'Camera off'}</span>
+                <h3>Live posture stream</h3>
+                <span>
+                  {postureStreamState === 'connecting' && 'Connecting...'}
+                  {postureStreamState === 'running' && `Tracking • score ${Math.round((postureScoreLive ?? 0) * 100)}`}
+                  {postureStreamState === 'no-pose' && 'No pose'}
+                  {postureStreamState === 'stopped' && 'Stopped'}
+                  {postureStreamState === 'error' && 'Error'}
+                </span>
               </div>
               <div className="posture-preview">
-                <video ref={postureVideoRef} autoPlay muted playsInline className="posture-video" />
-                <div className="posture-overlay" />
+                {postureFrame ? <img src={postureFrame} className="posture-video" alt="Posture stream" /> : null}
+                {postureLandmarks?.nose && postureLandmarks.left_shoulder && postureLandmarks.right_shoulder ? (
+                  <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <line
+                      x1={postureLandmarks.left_shoulder.x * 100}
+                      y1={postureLandmarks.left_shoulder.y * 100}
+                      x2={postureLandmarks.right_shoulder.x * 100}
+                      y2={postureLandmarks.right_shoulder.y * 100}
+                    />
+                    <line
+                      x1={postureLandmarks.nose.x * 100}
+                      y1={postureLandmarks.nose.y * 100}
+                      x2={(postureLandmarks.left_shoulder.x * 100 + postureLandmarks.right_shoulder.x * 100) / 2}
+                      y2={(postureLandmarks.left_shoulder.y * 100 + postureLandmarks.right_shoulder.y * 100) / 2}
+                    />
+                    <circle cx={postureLandmarks.nose.x * 100} cy={postureLandmarks.nose.y * 100} r="1.4" />
+                    <circle cx={postureLandmarks.left_shoulder.x * 100} cy={postureLandmarks.left_shoulder.y * 100} r="1.4" />
+                    <circle cx={postureLandmarks.right_shoulder.x * 100} cy={postureLandmarks.right_shoulder.y * 100} r="1.4" />
+                  </svg>
+                ) : null}
+                <div className="posture-overlay-guide" />
               </div>
-              {postureCameraError ? (
-                <p className="main-empty">{postureCameraError}</p>
+              {postureStreamError ? (
+                <p className="main-empty">{postureStreamError}</p>
               ) : (
-                <p className="main-empty">Camera preview runs locally. Landmark overlay is next.</p>
+                <p className="main-empty">Backend Python stream with MediaPipe landmarks (on-device).</p>
               )}
             </div>
           </>

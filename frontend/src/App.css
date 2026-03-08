@@ -226,10 +226,26 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1);
 }
 
-.posture-overlay {
+.posture-landmark-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.posture-landmark-svg line {
+  stroke: rgba(45, 106, 79, 0.95);
+  stroke-width: 0.75;
+}
+
+.posture-landmark-svg circle {
+  fill: rgba(45, 106, 79, 0.95);
+}
+
+.posture-overlay-guide {
   position: absolute;
   inset: 0;
   pointer-events: none;
