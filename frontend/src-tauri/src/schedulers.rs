@@ -22,7 +22,7 @@ pub fn start_scheduler(app: &tauri::AppHandle) {
                 .map(|g| g.clone())
                 .unwrap_or_default();
 
-            if settings.monitoring_paused {
+            if settings.monitoring_paused || settings.focus_mode_active {
                 continue;
             }
 
@@ -42,7 +42,7 @@ pub fn start_scheduler(app: &tauri::AppHandle) {
                 continue;
             }
 
-            let session_result = run_python_session_blocking(None);
+            let session_result = run_python_session_blocking(None, false);
             state.running.store(false, Ordering::SeqCst);
 
             match session_result {
@@ -185,7 +185,7 @@ pub fn start_focus_mode_sampler(app: &tauri::AppHandle) {
                 continue;
             }
 
-            let session_result = run_python_session_blocking(None);
+            let session_result = run_python_session_blocking(None, true);
             state.running.store(false, Ordering::SeqCst);
 
             match session_result {

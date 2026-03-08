@@ -25,6 +25,7 @@ def fetch_history(db_path: Path, limit: int = 20) -> list[dict]:
                 emotion_score,
                 heart_rate_bpm,
                 emotion_backend,
+                focus_mode,
                 session_duration_seconds
             FROM sessions
             ORDER BY id DESC

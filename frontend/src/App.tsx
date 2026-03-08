@@ -24,6 +24,7 @@ type SessionHistoryItem = {
   emotion_score: number
   heart_rate_bpm: number | null
   emotion_backend: string
+  focus_mode?: number
   session_duration_seconds: number
 }
 

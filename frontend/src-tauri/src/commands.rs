@@ -13,13 +13,20 @@ pub async fn run_python_session(
     app: tauri::AppHandle,
     state: tauri::State<'_, SessionState>,
     notification_state: tauri::State<'_, NotificationState>,
+    settings_state: tauri::State<'_, SettingsState>,
 ) -> Result<Value, String> {
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A session is already running.".to_string());
     }
 
+    let focus_mode = settings_state
+        .inner
+        .lock()
+        .map(|g| g.focus_mode_active)
+        .unwrap_or(false);
+
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_python_session_blocking(emotion_backend)
+        run_python_session_blocking(emotion_backend, focus_mode)
     })
     .await
     .map_err(|e| format!("Session task join error: {e}"))?;

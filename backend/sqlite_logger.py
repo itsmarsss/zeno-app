@@ -25,11 +25,20 @@ def init_db(db_path: Path) -> None:
                 emotion_score REAL NOT NULL,
                 heart_rate_bpm REAL,
                 emotion_backend TEXT NOT NULL,
+                focus_mode INTEGER NOT NULL DEFAULT 0,
                 session_duration_seconds REAL NOT NULL,
                 raw_json TEXT NOT NULL
             )
             """
         )
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "focus_mode" not in columns:
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN focus_mode INTEGER NOT NULL DEFAULT 0"
+            )
         conn.commit()
 
 
@@ -46,9 +55,10 @@ def log_session(result: dict, db_path: Path) -> int:
                 emotion_score,
                 heart_rate_bpm,
                 emotion_backend,
+                focus_mode,
                 session_duration_seconds,
                 raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result["timestamp"],
@@ -58,6 +68,7 @@ def log_session(result: dict, db_path: Path) -> int:
                 float(result["emotion_score"]),
                 None if result["heart_rate_bpm"] is None else float(result["heart_rate_bpm"]),
                 str(result["emotion_backend"]),
+                1 if result.get("focus_mode") else 0,
                 float(result["session_duration_seconds"]),
                 json.dumps(result),
             ),
@@ -96,6 +107,11 @@ def main() -> None:
         default=None,
         help="Local HSEmotion .pt model path.",
     )
+    parser.add_argument(
+        "--focus-mode",
+        action="store_true",
+        help="Mark this session as captured during Focus Mode.",
+    )
     args = parser.parse_args()
 
     result = run_session(
@@ -104,6 +120,7 @@ def main() -> None:
         hsemotion_model=args.hsemotion_model,
         hsemotion_model_path=args.hsemotion_model_path,
     )
+    result["focus_mode"] = bool(args.focus_mode)
 
     db_path = Path(args.db_path).expanduser().resolve()
     row_id = log_session(result, db_path)

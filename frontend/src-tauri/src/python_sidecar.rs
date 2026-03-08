@@ -57,7 +57,10 @@ fn extract_session_from_logger_payload(payload: Value) -> Result<Value, String> 
     ))
 }
 
-pub fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value, String> {
+pub fn run_python_session_blocking(
+    emotion_backend: Option<String>,
+    focus_mode: bool,
+) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
     let logger_script = root.join("backend").join("sqlite_logger.py");
@@ -70,6 +73,9 @@ pub fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Va
     cmd.arg(logger_script)
         .arg("--emotion-backend")
         .arg(backend);
+    if focus_mode {
+        cmd.arg("--focus-mode");
+    }
 
     let hsemotion_model = root
         .join("backend")
