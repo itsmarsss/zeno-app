@@ -92,6 +92,37 @@ fn run_python_session_blocking(emotion_backend: Option<String>) -> Result<Value,
     parse_json_line(&stdout)
 }
 
+fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let history_script = root.join("backend").join("session_history.py");
+    if !history_script.is_file() {
+        return Err(format!("Missing script: {}", history_script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(history_script)
+        .arg("--limit")
+        .arg(limit.unwrap_or(20).clamp(1, 100).to_string());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to read session history: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Session history failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 fn stress_index_from_result(result: &Value) -> Option<u8> {
     let emotion = result
         .get("dominant_emotion")
@@ -186,6 +217,13 @@ async fn run_python_session(
     result
 }
 
+#[tauri::command]
+async fn run_session_history(limit: Option<u32>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_session_history_blocking(limit))
+        .await
+        .map_err(|e| format!("History task join error: {e}"))?
+}
+
 fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
     thread::spawn(move || {
@@ -232,7 +270,7 @@ fn start_scheduler(app: &tauri::AppHandle) {
 fn main() {
     let app_builder = tauri::Builder::default()
         .manage(SessionState::default())
-        .invoke_handler(tauri::generate_handler![run_python_session])
+        .invoke_handler(tauri::generate_handler![run_python_session, run_session_history])
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
