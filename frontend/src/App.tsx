@@ -85,6 +85,19 @@ function friendlyPosture(score: number): string {
   return 'poor'
 }
 
+function stressIndexFromHistory(item: SessionHistoryItem): number {
+  return stressIndex({
+    timestamp: item.created_at,
+    presence_detected: Boolean(item.presence_detected),
+    posture_score: item.posture_score,
+    dominant_emotion: item.dominant_emotion,
+    emotion_score: item.emotion_score,
+    heart_rate_bpm: item.heart_rate_bpm,
+    emotion_backend: item.emotion_backend,
+    session_duration_seconds: item.session_duration_seconds,
+  })
+}
+
 function sparklinePath(values: number[], width = 260, height = 74): string {
   if (!values.length) return ''
   const min = 0
@@ -96,6 +109,20 @@ function sparklinePath(values: number[], width = 260, height = 74): string {
     return `${x.toFixed(2)} ${y.toFixed(2)}`
   })
   return `M ${points.join(' L ')}`
+}
+
+function pointY(value: number, height = 74): number {
+  const clamped = Math.max(0, Math.min(100, value))
+  return height - (clamped / 100) * height
+}
+
+function trendStats(values: number[]): { latest: number; low: number; high: number } {
+  if (!values.length) return { latest: 0, low: 0, high: 0 }
+  return {
+    latest: values[values.length - 1] ?? 0,
+    low: Math.min(...values),
+    high: Math.max(...values),
+  }
 }
 
 function App() {
@@ -121,14 +148,26 @@ function App() {
     return history.filter((h) => new Date(h.created_at).toDateString() === today).length
   }, [history])
 
-  const postureTrend = useMemo(
-    () => (dailyReport?.posture_trend ?? []).slice(-12).map((item) => Math.round(item.score * 100)),
+  const postureTrendPoints = useMemo(
+    () =>
+      (dailyReport?.posture_trend ?? []).slice(-12).map((item) => ({
+        time: item.time,
+        value: Math.round(item.score * 100),
+      })),
     [dailyReport],
   )
-  const stressTrend = useMemo(
-    () => (dailyReport?.stress_trend ?? []).slice(-12).map((item) => item.score),
+  const stressTrendPoints = useMemo(
+    () =>
+      (dailyReport?.stress_trend ?? []).slice(-12).map((item) => ({
+        time: item.time,
+        value: item.score,
+      })),
     [dailyReport],
   )
+  const postureTrend = useMemo(() => postureTrendPoints.map((item) => item.value), [postureTrendPoints])
+  const stressTrend = useMemo(() => stressTrendPoints.map((item) => item.value), [stressTrendPoints])
+  const postureStats = useMemo(() => trendStats(postureTrend), [postureTrend])
+  const stressStats = useMemo(() => trendStats(stressTrend), [stressTrend])
 
   async function loadHistory() {
     try {
@@ -361,14 +400,46 @@ function App() {
                 </div>
                 <div className="chart-wrap">
                   <p>Posture trend</p>
+                  <div className="chart-stats">
+                    <span>Now {postureStats.latest}</span>
+                    <span>Low {postureStats.low}</span>
+                    <span>High {postureStats.high}</span>
+                  </div>
                   <svg viewBox="0 0 260 74" preserveAspectRatio="none">
                     <path className="line-posture" d={sparklinePath(postureTrend, 260, 74)} />
+                    {postureTrendPoints.map((point, index) => (
+                      <circle
+                        key={`${point.time}-posture`}
+                        className="trend-dot trend-dot--posture"
+                        cx={postureTrendPoints.length === 1 ? 130 : (index * 260) / (postureTrendPoints.length - 1)}
+                        cy={pointY(point.value, 74)}
+                        r="2.2"
+                      >
+                        <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • posture ${point.value}`}</title>
+                      </circle>
+                    ))}
                   </svg>
                 </div>
                 <div className="chart-wrap">
                   <p>Stress trend</p>
+                  <div className="chart-stats">
+                    <span>Now {stressStats.latest}</span>
+                    <span>Low {stressStats.low}</span>
+                    <span>High {stressStats.high}</span>
+                  </div>
                   <svg viewBox="0 0 260 74" preserveAspectRatio="none">
                     <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
+                    {stressTrendPoints.map((point, index) => (
+                      <circle
+                        key={`${point.time}-stress`}
+                        className="trend-dot trend-dot--stress"
+                        cx={stressTrendPoints.length === 1 ? 130 : (index * 260) / (stressTrendPoints.length - 1)}
+                        cy={pointY(point.value, 74)}
+                        r="2.2"
+                      >
+                        <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • stress ${point.value}`}</title>
+                      </circle>
+                    ))}
                   </svg>
                 </div>
                 <p className="recommendation">{dailyReport.recommendation}</p>
@@ -376,6 +447,23 @@ function App() {
             ) : (
               <p className="recommendation">No report yet. Run a check in first.</p>
             )}
+
+            <div className="history-block">
+              <p className="label">recent sessions</p>
+              {history.length === 0 ? (
+                <p className="recommendation">No historical sessions found in local database.</p>
+              ) : (
+                <ul className="history-list">
+                  {history.slice(0, 12).map((item) => (
+                    <li className="history-item" key={item.id}>
+                      <span className="history-time">{new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                      <span className="history-pill">S {stressIndexFromHistory(item)}</span>
+                      <span className="history-pill">P {friendlyPosture(item.posture_score)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </section>
         )}
 
