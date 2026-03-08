@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import './App.css'
 
 type SessionResult = {
@@ -106,8 +107,7 @@ function App() {
   const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [showReport, setShowReport] = useState(false)
-  const [showPrefs, setShowPrefs] = useState(false)
+  const [activePage, setActivePage] = useState<'home' | 'report' | 'settings'>('home')
   const [lastNudge, setLastNudge] = useState('No nudges yet.')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
 
@@ -187,6 +187,12 @@ function App() {
     await loadDailyReport()
     await loadCalibrationStatus()
     setResult(null)
+  }
+
+  function handleHeaderMouseDown(event: MouseEvent<HTMLElement>) {
+    const target = event.target as HTMLElement
+    if (target.closest('button, a, input, select, textarea')) return
+    void getCurrentWindow().startDragging()
   }
 
   function updateNudgeFromResult(session: SessionResult) {
@@ -295,50 +301,132 @@ function App() {
         </div>
       )}
 
-      <header className="headerbar">
-        <div className="brand">
+      <header className="headerbar" data-tauri-drag-region onMouseDown={handleHeaderMouseDown}>
+        <div className="brand" data-tauri-drag-region>
           <span className={`dot dot--${settings?.monitoring_paused ? 'paused' : status === 'Running' ? 'capturing' : 'active'}`} />
           <h1>zeno</h1>
         </div>
-        <button className="icon-btn" onClick={() => setShowPrefs((v) => !v)}>Prefs</button>
+        {activePage === 'home' ? (
+          <button className="icon-btn" onClick={() => setActivePage('settings')}>Settings</button>
+        ) : (
+          <button className="icon-btn" onClick={() => setActivePage('home')}>Back</button>
+        )}
       </header>
+      <div className="content-scroll">
+        {activePage === 'home' && (
+          <>
+            <section className="stress-card">
+              <p className="label">stress index</p>
+              <div className={`stress-value stress-value--${stressLabel}`}>{stress}</div>
+              <p className="stress-sub">{stressLabel}</p>
+              <div className="stress-bar"><div className={`stress-fill stress-fill--${stressLabel}`} style={{ width: stressFill }} /></div>
+            </section>
 
-      <section className="stress-card">
-        <p className="label">stress index</p>
-        <div className={`stress-value stress-value--${stressLabel}`}>{stress}</div>
-        <p className="stress-sub">{stressLabel}</p>
-        <div className="stress-bar"><div className={`stress-fill stress-fill--${stressLabel}`} style={{ width: stressFill }} /></div>
-      </section>
+            <div className="divider" />
 
-      <div className="divider" />
+            <section className="stats-row">
+              <article className="stat-cell">
+                <span className="stat-value">{result?.heart_rate_bpm == null ? '--' : `${result.heart_rate_bpm}`}</span>
+                <span className="stat-label">heart rate bpm</span>
+              </article>
+              <article className="stat-cell">
+                <span className="stat-value">{sessionCountToday}</span>
+                <span className="stat-label">sessions today</span>
+              </article>
+              <article className="stat-cell">
+                <span className="stat-value">{friendlyPosture(result?.posture_score ?? 0)}</span>
+                <span className="stat-label">posture</span>
+              </article>
+            </section>
 
-      <section className="stats-row">
-        <article className="stat-cell">
-          <span className="stat-value">{result?.heart_rate_bpm == null ? '--' : `${result.heart_rate_bpm}`}</span>
-          <span className="stat-label">heart rate bpm</span>
-        </article>
-        <article className="stat-cell">
-          <span className="stat-value">{sessionCountToday}</span>
-          <span className="stat-label">sessions today</span>
-        </article>
-        <article className="stat-cell">
-          <span className="stat-value">{friendlyPosture(result?.posture_score ?? 0)}</span>
-          <span className="stat-label">posture</span>
-        </article>
-      </section>
+            <div className="divider" />
 
-      <div className="divider" />
+            <section className={`nudge-row nudge-row--${stressLabel}`}>
+              <p className="label">last nudge</p>
+              <p className="nudge-msg">{lastNudge}</p>
+              <p className="nudge-time">{result ? prettyTime(result.timestamp) : '--:--'}</p>
+            </section>
+          </>
+        )}
 
-      <section className={`nudge-row nudge-row--${stressLabel}`}>
-        <p className="label">last nudge</p>
-        <p className="nudge-msg">{lastNudge}</p>
-        <p className="nudge-time">{result ? prettyTime(result.timestamp) : '--:--'}</p>
-      </section>
+        {activePage === 'report' && (
+          <section className="report-panel report-page">
+            {dailyReport ? (
+              <>
+                <h3>{new Date(dailyReport.date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+                <div className="report-kpis">
+                  <span>Avg stress {dailyReport.average_stress_index}</span>
+                  <span>Focused {dailyReport.focused_minutes} min</span>
+                  <span>{dailyReport.sessions} sessions</span>
+                </div>
+                <div className="chart-wrap">
+                  <p>Posture trend</p>
+                  <svg viewBox="0 0 260 74" preserveAspectRatio="none">
+                    <path className="line-posture" d={sparklinePath(postureTrend, 260, 74)} />
+                  </svg>
+                </div>
+                <div className="chart-wrap">
+                  <p>Stress trend</p>
+                  <svg viewBox="0 0 260 74" preserveAspectRatio="none">
+                    <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
+                  </svg>
+                </div>
+                <p className="recommendation">{dailyReport.recommendation}</p>
+              </>
+            ) : (
+              <p className="recommendation">No report yet. Run a check in first.</p>
+            )}
+          </section>
+        )}
 
-      <div className="divider" />
+        {activePage === 'settings' && (
+          <section className="prefs-panel prefs-page">
+            {!calibration?.calibrated && (
+              <p className="prefs-note">
+                Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.
+              </p>
+            )}
+            <div className="prefs-row">
+              <label>Session frequency</label>
+              <select
+                value={settings?.session_frequency_minutes ?? 10}
+                onChange={(e) => updateSettings({ session_frequency_minutes: Number(e.target.value) })}
+              >
+                <option value={5}>5 min</option>
+                <option value={10}>10 min</option>
+                <option value={15}>15 min</option>
+                <option value={30}>30 min</option>
+              </select>
+            </div>
+            <div className="prefs-row">
+              <label>Report time</label>
+              <input
+                type="time"
+                value={`${String(settings?.daily_report_hour ?? 21).padStart(2, '0')}:${String(
+                  settings?.daily_report_minute ?? 0,
+                ).padStart(2, '0')}`}
+                onChange={(e) => {
+                  const [hour, minute] = e.target.value.split(':').map(Number)
+                  updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
+                }}
+              />
+            </div>
+            <div className="prefs-actions">
+              <button className="btn-ghost" onClick={() => setShowOnboarding(true)}>Replay onboarding</button>
+              <button className="btn-danger" onClick={clearAllData}>Clear data</button>
+            </div>
+            <p className="prefs-meta">Last run: {lastRunSource ?? 'none'}</p>
+            {error && <p className="prefs-error">{error}</p>}
+          </section>
+        )}
+      </div>
 
       <footer className="footerbar">
-        <button className="report-link" onClick={() => setShowReport((v) => !v)}>{showReport ? 'Hide report' : 'View report'}</button>
+        {activePage === 'home' ? (
+          <button className="report-link" onClick={() => setActivePage('report')}>Report</button>
+        ) : (
+          <button className="report-link" onClick={() => setActivePage('home')}>Home</button>
+        )}
         <div className="toggle-wrap">
           <span>Pause</span>
           <button
@@ -351,74 +439,11 @@ function App() {
         </div>
       </footer>
 
-      {showReport && dailyReport && (
-        <section className="report-panel">
-          <h3>{new Date(dailyReport.date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-          <div className="report-kpis">
-            <span>Avg stress {dailyReport.average_stress_index}</span>
-            <span>Focused {dailyReport.focused_minutes} min</span>
-            <span>{dailyReport.sessions} sessions</span>
-          </div>
-          <div className="chart-wrap">
-            <p>Posture trend</p>
-            <svg viewBox="0 0 260 74" preserveAspectRatio="none">
-              <path className="line-posture" d={sparklinePath(postureTrend, 260, 74)} />
-            </svg>
-          </div>
-          <div className="chart-wrap">
-            <p>Stress trend</p>
-            <svg viewBox="0 0 260 74" preserveAspectRatio="none">
-              <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
-            </svg>
-          </div>
-          <p className="recommendation">{dailyReport.recommendation}</p>
-        </section>
+      {activePage === 'home' && (
+        <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused}>
+          {status === 'Running' ? 'Checking' : 'Check in'}
+        </button>
       )}
-
-      {showPrefs && (
-        <section className="prefs-panel">
-          {!calibration?.calibrated && (
-            <p className="prefs-note">
-              Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.
-            </p>
-          )}
-          <div className="prefs-row">
-            <label>Session frequency</label>
-            <select
-              value={settings?.session_frequency_minutes ?? 10}
-              onChange={(e) => updateSettings({ session_frequency_minutes: Number(e.target.value) })}
-            >
-              <option value={5}>5 min</option>
-              <option value={10}>10 min</option>
-              <option value={15}>15 min</option>
-              <option value={30}>30 min</option>
-            </select>
-          </div>
-          <div className="prefs-row">
-            <label>Report time</label>
-            <input
-              type="time"
-              value={`${String(settings?.daily_report_hour ?? 21).padStart(2, '0')}:${String(
-                settings?.daily_report_minute ?? 0,
-              ).padStart(2, '0')}`}
-              onChange={(e) => {
-                const [hour, minute] = e.target.value.split(':').map(Number)
-                updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
-              }}
-            />
-          </div>
-          <div className="prefs-actions">
-            <button className="btn-ghost" onClick={() => setShowOnboarding(true)}>Replay onboarding</button>
-            <button className="btn-danger" onClick={clearAllData}>Clear data</button>
-          </div>
-          <p className="prefs-meta">Last run: {lastRunSource ?? 'none'}</p>
-          {error && <p className="prefs-error">{error}</p>}
-        </section>
-      )}
-
-      <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused}>
-        {status === 'Running' ? 'Checking' : 'Check in'}
-      </button>
     </main>
   )
 }
