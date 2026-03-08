@@ -69,6 +69,14 @@ type PostureStreamFrame = {
   landmarks: PostureLandmarks
   posture_score: number
 }
+type Exercise = {
+  id: string
+  name: string
+  target: string
+  duration: string
+  difficulty: 'easy' | 'moderate'
+  steps: string[]
+}
 
 const BREATHING_PATTERNS: Record<
   BreathingPatternId,
@@ -94,6 +102,57 @@ const BREATHING_PATTERNS: Record<
     cycles: 4,
   },
 }
+
+const EXERCISE_LIBRARY: Exercise[] = [
+  {
+    id: 'chin-tuck',
+    name: 'Chin tucks',
+    target: 'Neck alignment',
+    duration: '2 min',
+    difficulty: 'easy',
+    steps: ['Sit tall and look forward.', 'Pull chin straight back (not down).', 'Hold 3 seconds, release, repeat 10 times.'],
+  },
+  {
+    id: 'wall-angels',
+    name: 'Wall angels',
+    target: 'Upper back mobility',
+    duration: '3 min',
+    difficulty: 'moderate',
+    steps: ['Stand against a wall with arms bent at 90°.', 'Slide arms up slowly while keeping contact.', 'Return down with control for 8-10 reps.'],
+  },
+  {
+    id: 'scap-squeeze',
+    name: 'Scapular squeeze',
+    target: 'Shoulder stability',
+    duration: '2 min',
+    difficulty: 'easy',
+    steps: ['Relax shoulders down.', 'Squeeze shoulder blades gently together.', 'Hold 4 seconds, repeat 12 times.'],
+  },
+  {
+    id: 'thoracic-extension',
+    name: 'Thoracic extension',
+    target: 'Spine extension',
+    duration: '3 min',
+    difficulty: 'moderate',
+    steps: ['Sit upright with hands behind head.', 'Lift chest and extend upper back slightly.', 'Return neutral and repeat 8-10 reps.'],
+  },
+  {
+    id: 'doorway-pec-stretch',
+    name: 'Doorway pec stretch',
+    target: 'Chest opening',
+    duration: '2 min',
+    difficulty: 'easy',
+    steps: ['Place forearm on door frame at shoulder height.', 'Step forward until chest stretch is felt.', 'Hold 20 seconds each side, 3 rounds.'],
+  },
+  {
+    id: 'seated-side-bend',
+    name: 'Seated side bend',
+    target: 'Lateral chain release',
+    duration: '2 min',
+    difficulty: 'easy',
+    steps: ['Sit with both feet grounded.', 'Reach one arm overhead and lean to opposite side.', 'Hold 15 seconds per side for 4 rounds.'],
+  },
+]
 
 function prettyTime(timestamp: string): string {
   const date = new Date(timestamp)
@@ -206,6 +265,7 @@ function MainWindowShell({
   clearAllData: () => Promise<void>
 }) {
   const [tab, setTab] = useState<'overview' | 'focus' | 'posture' | 'exercises' | 'settings'>('overview')
+  const [selectedExerciseId, setSelectedExerciseId] = useState(EXERCISE_LIBRARY[0]?.id ?? 'chin-tuck')
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
@@ -241,6 +301,8 @@ function MainWindowShell({
   }, [focusSessions])
   const weeklyValues = useMemo(() => weeklyFocusTotals.map((item) => item.minutes), [weeklyFocusTotals])
   const weeklyMax = Math.max(...weeklyValues, 1)
+  const selectedExercise =
+    EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0]
 
   useEffect(() => {
     if (tab !== 'posture') {
@@ -438,7 +500,45 @@ function MainWindowShell({
             </div>
           </>
         )}
-        {tab === 'exercises' && <h1>Exercises tab coming next phase.</h1>}
+        {tab === 'exercises' && (
+          <>
+            <h1>Exercises</h1>
+            <div className="exercise-grid">
+              <section className="exercise-list">
+                {EXERCISE_LIBRARY.map((exercise) => (
+                  <button
+                    key={exercise.id}
+                    className={`exercise-card ${exercise.id === selectedExercise.id ? 'is-active' : ''}`}
+                    onClick={() => setSelectedExerciseId(exercise.id)}
+                  >
+                    <p className="exercise-name">{exercise.name}</p>
+                    <p className="exercise-meta">{exercise.target}</p>
+                    <div className="exercise-tags">
+                      <span>{exercise.duration}</span>
+                      <span>{exercise.difficulty}</span>
+                    </div>
+                  </button>
+                ))}
+              </section>
+              <section className="exercise-detail">
+                <div className="main-panel-head">
+                  <h3>{selectedExercise.name}</h3>
+                  <span>{selectedExercise.duration}</span>
+                </div>
+                <p className="main-empty">Target: {selectedExercise.target}</p>
+                <ol className="exercise-steps">
+                  {selectedExercise.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <button className="btn-solid" type="button">
+                  Start guided set
+                </button>
+                <p className="exercise-note">Live form feedback connects in the next step.</p>
+              </section>
+            </div>
+          </>
+        )}
 
         {tab === 'settings' && (
           <>

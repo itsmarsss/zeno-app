@@ -211,6 +211,86 @@
   max-width: 560px;
 }
 
+.exercise-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+}
+
+.exercise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exercise-card {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.exercise-card:hover {
+  background: var(--bg-subtle);
+}
+
+.exercise-card.is-active {
+  border-color: #bdd8ca;
+  background: #eef6f1;
+}
+
+.exercise-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.exercise-meta {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.exercise-tags {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.exercise-tags span {
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.exercise-detail {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  padding: 14px;
+}
+
+.exercise-steps {
+  margin: 10px 0 14px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.exercise-steps li {
+  margin-bottom: 6px;
+}
+
+.exercise-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .posture-preview {
   margin-top: 12px;
   border-radius: 12px;
