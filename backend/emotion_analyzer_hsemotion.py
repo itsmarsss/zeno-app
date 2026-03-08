@@ -5,9 +5,11 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError
+import inspect
 
 import cv2
 import numpy as np
+import torch
 
 try:
     import hsemotion.facial_emotions as hsemotion_module
@@ -63,9 +65,26 @@ def _extract_score(scores, label: str) -> float:
 
 
 def _build_recognizer(model_name: str, model_path: str | None) -> HSEmotionRecognizer:
-    if not model_path:
+    def _init_with_torch_compat() -> HSEmotionRecognizer:
+        load_signature = inspect.signature(torch.load)
+        if "weights_only" not in load_signature.parameters:
+            return HSEmotionRecognizer(model_name=model_name, device="cpu")
+
+        original_torch_load = torch.load
+
+        def _torch_load_compat(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return original_torch_load(*args, **kwargs)
+
+        torch.load = _torch_load_compat
         try:
             return HSEmotionRecognizer(model_name=model_name, device="cpu")
+        finally:
+            torch.load = original_torch_load
+
+    if not model_path:
+        try:
+            return _init_with_torch_compat()
         except HTTPError as exc:
             if exc.code == 429:
                 raise RuntimeError(
@@ -81,7 +100,7 @@ def _build_recognizer(model_name: str, model_path: str | None) -> HSEmotionRecog
     original_get_model_path = hsemotion_module.get_model_path
     hsemotion_module.get_model_path = lambda _model_name: str(resolved_path)
     try:
-        return HSEmotionRecognizer(model_name=model_name, device="cpu")
+        return _init_with_torch_compat()
     finally:
         hsemotion_module.get_model_path = original_get_model_path
 
