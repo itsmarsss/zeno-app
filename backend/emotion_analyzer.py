@@ -4,7 +4,11 @@ import argparse
 from datetime import datetime
 
 import cv2
-from fer import FER
+
+try:
+    from fer import FER
+except ImportError:
+    from fer.fer import FER
 
 
 def _show_preview(cap: cv2.VideoCapture, seconds: float) -> None:
