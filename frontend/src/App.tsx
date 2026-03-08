@@ -33,6 +33,7 @@ type DailyReport = {
   focused_minutes: number
   peak_stress: { stress_index: number; time: string } | null
   posture_trend: { time: string; score: number }[]
+  stress_trend: { time: string; score: number }[]
   recommendation: string
 }
 
@@ -50,6 +51,7 @@ type AppSettings = {
   session_frequency_minutes: number
   daily_report_hour: number
   daily_report_minute: number
+  onboarding_completed: boolean
 }
 
 function prettyTime(timestamp: string): string {
@@ -60,11 +62,28 @@ function prettyTime(timestamp: string): string {
 
 function friendlyEmotion(label: string): string {
   const normalized = label.toLowerCase()
-  if (normalized === 'fear' || normalized === 'angry' || normalized === 'anger') return 'Stressed'
+  if (normalized === 'fear' || normalized === 'angry' || normalized === 'anger' || normalized === 'stressed') return 'Stressed'
   if (normalized === 'sad' || normalized === 'sadness') return 'Low energy'
   if (normalized === 'happy' || normalized === 'happiness') return 'Positive'
   if (normalized === 'neutral') return 'Neutral'
   return label
+}
+
+function sparklinePath(values: number[], width = 250, height = 64, minY = 0, maxY = 100): string {
+  if (!values.length) return ''
+  if (values.length === 1) {
+    const y = height - ((values[0] - minY) / (maxY - minY || 1)) * height
+    return `M 0 ${y.toFixed(2)} L ${width} ${y.toFixed(2)}`
+  }
+
+  const stepX = width / (values.length - 1)
+  const points = values.map((value, i) => {
+    const x = i * stepX
+    const clamped = Math.max(minY, Math.min(maxY, value))
+    const y = height - ((clamped - minY) / (maxY - minY || 1)) * height
+    return `${x.toFixed(2)} ${y.toFixed(2)}`
+  })
+  return `M ${points.join(' L ')}`
 }
 
 function App() {
@@ -75,6 +94,7 @@ function App() {
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null)
   const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const [schedulerState, setSchedulerState] = useState('Automatic check every 10 minutes')
   const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | null>(null)
 
@@ -93,6 +113,15 @@ function App() {
     const heart = result.heart_rate_bpm == null ? 'Heart rate unavailable' : `${result.heart_rate_bpm} bpm`
     return `${friendlyEmotion(result.dominant_emotion)} · ${heart}`
   }, [result])
+
+  const postureValues = useMemo(
+    () => (dailyReport?.posture_trend ?? []).slice(-12).map((item) => Math.round(item.score * 100)),
+    [dailyReport],
+  )
+  const stressValues = useMemo(
+    () => (dailyReport?.stress_trend ?? []).slice(-12).map((item) => item.score),
+    [dailyReport],
+  )
 
   async function loadHistory() {
     try {
@@ -127,6 +156,9 @@ function App() {
     try {
       const payload = await invoke<AppSettings>('run_get_settings')
       setSettings(payload)
+      if (!payload.onboarding_completed) {
+        setShowOnboarding(true)
+      }
     } catch {
       setSettings(null)
     }
@@ -139,6 +171,11 @@ function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
+  }
+
+  async function completeOnboarding() {
+    await updateSettings({ onboarding_completed: true })
+    setShowOnboarding(false)
   }
 
   async function clearAllData() {
@@ -236,6 +273,31 @@ function App() {
 
   return (
     <main className="panel">
+      {showOnboarding && (
+        <div className="onboarding-overlay">
+          <section className="onboarding-card">
+            <h2>Welcome to Zeno</h2>
+            <p>
+              Zeno runs quietly in your menubar, checks posture and stress locally, and gives
+              gentle nudges only when needed.
+            </p>
+            <ol>
+              <li>Press <strong>Check In</strong> for a quick snapshot.</li>
+              <li>Keep your face visible for the 30-second heart-rate capture.</li>
+              <li>Open the Daily Report to spot trends and recommendations.</li>
+            </ol>
+            <div className="onboarding-actions">
+              <button className="ghost" onClick={() => setShowOnboarding(false)}>
+                Close for now
+              </button>
+              <button className="primary" onClick={completeOnboarding}>
+                Got it
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <header className="header">
         <div>
           <h1>Zeno</h1>
@@ -346,12 +408,19 @@ function App() {
                 Peak stress {dailyReport.peak_stress.stress_index} at {prettyTime(dailyReport.peak_stress.time)}
               </p>
             )}
-            <div className="trend">
-              {dailyReport.posture_trend.slice(-10).map((point) => (
-                <div key={point.time} className="trend__bar-wrap" title={`${prettyTime(point.time)} · ${Math.round(point.score * 100)}%`}>
-                  <div className="trend__bar" style={{ height: `${Math.max(6, Math.round(point.score * 52))}px` }} />
-                </div>
-              ))}
+            <div className="chart-grid">
+              <article className="chart-card">
+                <h4>Posture Trend</h4>
+                <svg viewBox="0 0 250 64" preserveAspectRatio="none">
+                  <path d={sparklinePath(postureValues, 250, 64, 0, 100)} className="chart-line chart-line--posture" />
+                </svg>
+              </article>
+              <article className="chart-card">
+                <h4>Stress Trend</h4>
+                <svg viewBox="0 0 250 64" preserveAspectRatio="none">
+                  <path d={sparklinePath(stressValues, 250, 64, 0, 100)} className="chart-line chart-line--stress" />
+                </svg>
+              </article>
             </div>
             <p className="report__recommendation">{dailyReport.recommendation}</p>
           </>
@@ -361,6 +430,9 @@ function App() {
       <section className="card settings">
         <div className="history__head">
           <h3>Settings</h3>
+          <button className="ghost" onClick={() => setShowOnboarding(true)}>
+            Replay onboarding
+          </button>
         </div>
         <div className="settings__row">
           <label>Monitoring</label>

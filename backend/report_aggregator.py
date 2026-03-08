@@ -61,6 +61,7 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             "focused_minutes": 0,
             "peak_stress": None,
             "posture_trend": [],
+            "stress_trend": [],
             "recommendation": "No data yet. Run a few check-ins to generate insights.",
         }
 
@@ -92,6 +93,7 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             "focused_minutes": 0,
             "peak_stress": None,
             "posture_trend": [],
+            "stress_trend": [],
             "recommendation": "No data yet. Run a few check-ins to generate insights.",
         }
 
@@ -129,6 +131,13 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             {
                 "time": i["time"],
                 "score": round(i["posture_score"], 3),
+            }
+            for i in items
+        ],
+        "stress_trend": [
+            {
+                "time": i["time"],
+                "score": int(i["stress_index"]),
             }
             for i in items
         ],

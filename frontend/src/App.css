@@ -7,6 +7,52 @@
     radial-gradient(circle at 0% 100%, #dde9ff 0%, transparent 38%),
     linear-gradient(180deg, #f9fcff 0%, #eef4fa 100%);
   font-family: "Avenir Next", "Nunito", "SF Pro Text", sans-serif;
+  position: relative;
+}
+
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.onboarding-card {
+  width: min(460px, 100%);
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #dbe8f0;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+  padding: 16px;
+}
+
+.onboarding-card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.onboarding-card p {
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.onboarding-card ol {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .header {
@@ -273,6 +319,45 @@
   margin: 0;
   font-size: 12px;
   color: #0f172a;
+}
+
+.chart-grid {
+  margin: 10px 0 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.chart-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+}
+
+.chart-card h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.chart-card svg {
+  width: 100%;
+  height: 64px;
+  display: block;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.chart-line--posture {
+  stroke: #0ea5e9;
+}
+
+.chart-line--stress {
+  stroke: #f97316;
 }
 
 .footer {

@@ -10,6 +10,7 @@ DEFAULT_SETTINGS = {
     "session_frequency_minutes": 10,
     "daily_report_hour": 21,
     "daily_report_minute": 0,
+    "onboarding_completed": False,
 }
 
 
@@ -26,6 +27,7 @@ def _sanitize(settings: dict) -> dict:
 
     cleaned["daily_report_minute"] = int(cleaned.get("daily_report_minute", 0))
     cleaned["daily_report_minute"] = min(59, max(0, cleaned["daily_report_minute"]))
+    cleaned["onboarding_completed"] = bool(cleaned.get("onboarding_completed", False))
     return cleaned
 
 
