@@ -68,3 +68,8 @@ pub struct PostureStreamState {
 pub struct HrStreamState {
     pub child: Mutex<Option<Child>>,
 }
+
+#[derive(Default)]
+pub struct FocusStreamState {
+    pub child: Mutex<Option<Child>>,
+}

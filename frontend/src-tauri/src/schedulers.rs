@@ -11,46 +11,6 @@ use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
-fn stress_index_from_payload(payload: &serde_json::Value) -> Option<u64> {
-    if payload
-        .get("session_skipped")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return None;
-    }
-    let emotion = payload
-        .get("dominant_emotion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_lowercase();
-    let emotion_score = payload
-        .get("emotion_score")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let heart_rate = payload.get("heart_rate_bpm").and_then(|v| v.as_f64());
-
-    let emotion_points = match emotion.as_str() {
-        "fear" => 28.0,
-        "angry" | "anger" => 25.0,
-        "disgust" | "contempt" => 22.0,
-        "sad" | "sadness" => 16.0,
-        "neutral" => 8.0,
-        "surprise" => 12.0,
-        "happy" | "happiness" => 4.0,
-        _ => 10.0,
-    } * emotion_score.max(0.25);
-    let hr_points = match heart_rate {
-        Some(bpm) if bpm >= 105.0 => 52.0,
-        Some(bpm) if bpm >= 95.0 => 40.0,
-        Some(bpm) if bpm >= 85.0 => 28.0,
-        Some(bpm) if bpm >= 75.0 => 14.0,
-        Some(_) => 6.0,
-        None => 8.0,
-    };
-    Some((emotion_points + hr_points).round().clamp(0.0, 100.0) as u64)
-}
-
 pub fn start_scheduler(app: &tauri::AppHandle) {
     let app_handle = app.clone();
     thread::spawn(move || {
@@ -262,60 +222,6 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
             if let Some(tray) = app_handle.tray_by_id("zeno-tray") {
                 let _ = tray.set_title(Some(title.clone()));
                 last_title = title;
-            }
-        }
-    });
-}
-
-pub fn start_focus_mode_sampler(app: &tauri::AppHandle) {
-    let app_handle = app.clone();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(3));
-
-            let settings_state = app_handle.state::<SettingsState>();
-            let settings = settings_state
-                .inner
-                .lock()
-                .map(|g| g.clone())
-                .unwrap_or_default();
-
-            if settings.monitoring_paused || !settings.focus_mode_active {
-                continue;
-            }
-
-            let state = app_handle.state::<SessionState>();
-            if state.running.swap(true, Ordering::SeqCst) {
-                continue;
-            }
-
-            let session_result = run_python_session_blocking(None, true);
-            state.running.store(false, Ordering::SeqCst);
-
-            match session_result {
-                Ok(payload) => {
-                    if let Some(score) = stress_index_from_payload(&payload) {
-                        let timer_state = app_handle.state::<FocusTimerState>();
-                        timer_state.stress_sum.fetch_add(score, Ordering::SeqCst);
-                        timer_state.stress_samples.fetch_add(1, Ordering::SeqCst);
-                    }
-                    let _ = app_handle.emit(
-                        "session-result",
-                        serde_json::json!({
-                            "source": "focus-mode",
-                            "result": payload
-                        }),
-                    );
-                }
-                Err(err_msg) => {
-                    let _ = app_handle.emit(
-                        "session-error",
-                        serde_json::json!({
-                            "source": "focus-mode",
-                            "error": err_msg
-                        }),
-                    );
-                }
             }
         }
     });

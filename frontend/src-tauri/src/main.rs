@@ -10,13 +10,17 @@ use commands::{
     open_main_window, run_calibration_status, run_clear_data, run_daily_report, run_get_settings,
     run_export_sessions_csv, run_log_break_session, run_log_breathing_session,
     run_log_exercise_session, run_presence_check, run_python_session, run_session_history,
-    run_update_settings, start_hr_stream, start_posture_stream, stop_hr_stream, stop_posture_stream,
+    run_update_settings, start_focus_stream, start_hr_stream, start_posture_stream, stop_focus_stream,
+    stop_hr_stream, stop_posture_stream,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
-    start_daily_report_trigger, start_focus_mode_sampler, start_focus_mode_timer, start_scheduler,
+    start_daily_report_trigger, start_focus_mode_timer, start_scheduler,
 };
-use state::{FocusTimerState, HrStreamState, NotificationState, PostureStreamState, ReportState, SessionState, SettingsState};
+use state::{
+    FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
+    ReportState, SessionState, SettingsState,
+};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -135,6 +139,7 @@ fn main() {
         .manage(ReportState::default())
         .manage(SettingsState::default())
         .manage(FocusTimerState::default())
+        .manage(FocusStreamState::default())
         .manage(PostureStreamState::default())
         .manage(HrStreamState::default())
         .invoke_handler(tauri::generate_handler![
@@ -154,7 +159,9 @@ fn main() {
             start_posture_stream,
             stop_posture_stream,
             start_hr_stream,
-            stop_hr_stream
+            stop_hr_stream,
+            start_focus_stream,
+            stop_focus_stream
         ])
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -237,7 +244,6 @@ fn main() {
             start_scheduler(&app.app_handle());
             start_daily_report_trigger(&app.app_handle());
             start_focus_mode_timer(&app.app_handle());
-            start_focus_mode_sampler(&app.app_handle());
             check_for_updates_on_launch(&app.app_handle());
 
             Ok(())

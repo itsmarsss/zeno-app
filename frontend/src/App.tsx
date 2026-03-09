@@ -79,6 +79,7 @@ function App() {
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
   const breakActiveRef = useRef(false)
+  const breathingActiveRef = useRef(false)
   const breakReminderTwoSentRef = useRef(false)
   const breakReminderFourSentRef = useRef(false)
   const finishBreakRef = useRef<(reason: 'complete' | 'early') => Promise<void>>(async () => {})
@@ -188,6 +189,10 @@ function App() {
   }, [breakActive])
 
   useEffect(() => {
+    breathingActiveRef.current = breathingActive
+  }, [breathingActive])
+
+  useEffect(() => {
     if (!breathingActive) return
     const timeout = window.setTimeout(() => {
       if (breathingRemainingMs > 100) {
@@ -290,6 +295,51 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [breakSummary])
 
+  useEffect(() => {
+    if (!settings?.focus_mode_active) {
+      void invoke('stop_focus_stream').catch(() => null)
+      return
+    }
+
+    let unlistenUpdate: (() => void) | null = null
+    let unlistenEnded: (() => void) | null = null
+    let cancelled = false
+
+    const setup = async () => {
+      await invoke('start_focus_stream', { updateEvery: 5, maxSeconds: 0 })
+      if (cancelled) return
+      unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
+        const session = normalizeFocusStreamResult(event.payload)
+        if (session.session_skipped || !session.presence_detected) {
+          setLastNudge('No face detected, focus stream waiting.')
+          setStatus('Done')
+          return
+        }
+        setResult(session)
+        updateNudgeFromResult(session)
+        setLastRunSource('focus-mode')
+        setStatus('Done')
+        setError(null)
+
+        if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(session) > 60) {
+          setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
+          startBreathing('auto')
+        }
+      })
+      unlistenEnded = await listen('focus-stream-ended', () => {
+        // Silent by design.
+      })
+    }
+
+    void setup()
+    return () => {
+      cancelled = true
+      unlistenUpdate?.()
+      unlistenEnded?.()
+      void invoke('stop_focus_stream').catch(() => null)
+    }
+  }, [normalizeFocusStreamResult, settings?.focus_mode_active, startBreathing, updateNudgeFromResult])
+
   const updateNudgeFromResult = useCallback((session: SessionResult) => {
     if (session.posture_score < 0.45 || session.posture_is_poor) {
       setLastNudge('Straighten up and roll your shoulders back.')
@@ -305,6 +355,34 @@ function App() {
       return
     }
     setLastNudge('No nudge needed. You are in a good range.')
+  }, [])
+
+  const normalizeFocusStreamResult = useCallback((payload: Record<string, unknown>): SessionResult => {
+    const presenceDetected = Boolean(payload.presence_detected)
+    const analysisSkipped = Boolean(payload.analysis_skipped) || !presenceDetected
+    const postureScore = Number(payload.posture_score ?? 0)
+    const elapsedSeconds = Number(payload.elapsed_seconds ?? 0)
+    return {
+      timestamp: String(payload.timestamp ?? new Date().toISOString()),
+      presence_detected: presenceDetected,
+      analysis_skipped: analysisSkipped,
+      posture_score: Number.isFinite(postureScore) ? postureScore : 0,
+      baseline_posture_score: 0,
+      posture_deviation: 0,
+      posture_is_poor: Number.isFinite(postureScore) ? postureScore < 0.45 : false,
+      dominant_emotion: String(payload.dominant_emotion ?? 'unknown'),
+      emotion_score: Number(payload.emotion_score ?? 0) || 0,
+      heart_rate_bpm: payload.heart_rate_bpm == null ? null : Number(payload.heart_rate_bpm),
+      respiratory_rate: Number(payload.respiratory_rate ?? 0) || 0,
+      rr_confidence:
+        payload.rr_confidence === 'full' || payload.rr_confidence === 'partial' ? payload.rr_confidence : 'none',
+      emotion_backend: 'fer',
+      mode: 'focus',
+      focus_duration_seconds: Math.max(0, Math.round(Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0)),
+      session_id: null,
+      session_skipped: analysisSkipped,
+      session_duration_seconds: Math.max(0, Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0),
+    }
   }, [])
 
   const loadHistory = useCallback(async () => {
@@ -523,7 +601,7 @@ function App() {
         updateNudgeFromResult(event.payload.result)
         if (event.payload.source === 'focus-mode') {
           setLastRunSource('focus-mode')
-          if (!breathingActive && !breakActive && stressIndex(event.payload.result) > 60) {
+          if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(event.payload.result) > 60) {
             setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
             startBreathing('auto')
           }
@@ -569,8 +647,6 @@ function App() {
       unlistenBreakAuto?.()
     }
   }, [
-    breakActive,
-    breathingActive,
     loadCalibrationStatus,
     loadDailyReport,
     loadHistory,

@@ -6,7 +6,10 @@ use crate::python_sidecar::{
     run_presence_check_blocking, run_python_session_blocking, run_session_history_blocking,
     run_settings_blocking, run_update_session_notification_blocking,
 };
-use crate::state::{HrStreamState, NotificationState, PostureStreamState, SessionState, SettingsState};
+use crate::state::{
+    FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
+    SessionState, SettingsState,
+};
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -245,6 +248,73 @@ fn resolve_python_bin(root: &Path) -> String {
     }
 }
 
+fn stress_index_from_payload(payload: &Value) -> Option<u64> {
+    if payload
+        .get("analysis_skipped")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    let emotion = payload
+        .get("dominant_emotion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_lowercase();
+    let emotion_score = payload
+        .get("emotion_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let heart_rate = payload.get("heart_rate_bpm").and_then(|v| v.as_f64());
+    let rr = payload
+        .get("respiratory_rate")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let rr_conf = payload
+        .get("rr_confidence")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none");
+
+    let emotion_points = match emotion.as_str() {
+        "fear" => 28.0,
+        "angry" | "anger" => 25.0,
+        "disgust" | "contempt" => 22.0,
+        "sad" | "sadness" => 16.0,
+        "neutral" => 8.0,
+        "surprise" => 12.0,
+        "happy" | "happiness" => 4.0,
+        _ => 10.0,
+    } * emotion_score.max(0.25);
+    let hr_points = match heart_rate {
+        Some(bpm) if bpm >= 105.0 => 52.0,
+        Some(bpm) if bpm >= 95.0 => 40.0,
+        Some(bpm) if bpm >= 85.0 => 28.0,
+        Some(bpm) if bpm >= 75.0 => 14.0,
+        Some(_) => 6.0,
+        None => 8.0,
+    };
+    let rr_points = if rr <= 0.0 {
+        0.0
+    } else if rr >= 25.0 {
+        28.0
+    } else if rr >= 21.0 {
+        20.0
+    } else if rr >= 17.0 {
+        12.0
+    } else {
+        4.0
+    };
+    let rr_weight = match rr_conf {
+        "full" => 0.30,
+        "partial" => 0.15,
+        _ => 0.0,
+    };
+    let hr_weight = if rr_weight > 0.0 { 0.35 } else { 0.50 };
+    let emo_weight = 1.0 - hr_weight - rr_weight;
+    let weighted = hr_points * hr_weight + rr_points * rr_weight + emotion_points * emo_weight;
+    Some(weighted.round().clamp(0.0, 100.0) as u64)
+}
+
 #[tauri::command]
 pub async fn start_posture_stream(
     app: tauri::AppHandle,
@@ -394,6 +464,84 @@ pub async fn stop_hr_stream(state: tauri::State<'_, HrStreamState>) -> Result<()
         .child
         .lock()
         .map_err(|_| "Failed to lock HR stream state".to_string())?;
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_focus_stream(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FocusStreamState>,
+    update_every: Option<f64>,
+    max_seconds: Option<f64>,
+) -> Result<(), String> {
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "Failed to lock focus stream state".to_string())?;
+    if guard.is_some() {
+        return Ok(());
+    }
+
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("focus_stream.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut child = Command::new(python_bin)
+        .arg(script)
+        .arg("--update-every")
+        .arg(update_every.unwrap_or(5.0).clamp(1.0, 10.0).to_string())
+        .arg("--max-seconds")
+        .arg(max_seconds.unwrap_or(0.0).max(0.0).to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to start focus stream sidecar: {e}"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture focus stream stdout".to_string())?;
+    *guard = Some(child);
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let reader = BufReader::new(stdout);
+        for line_result in reader.lines() {
+            let Ok(line) = line_result else {
+                break;
+            };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
+                if let Some(score) = stress_index_from_payload(&payload) {
+                    let timer_state = app_handle.state::<FocusTimerState>();
+                    timer_state.stress_sum.fetch_add(score, Ordering::SeqCst);
+                    timer_state.stress_samples.fetch_add(1, Ordering::SeqCst);
+                }
+                let _ = app_handle.emit("focus-stream-update", payload);
+            }
+        }
+        let _ = app_handle.emit("focus-stream-ended", Value::Null);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_focus_stream(state: tauri::State<'_, FocusStreamState>) -> Result<(), String> {
+    let mut guard = state
+        .child
+        .lock()
+        .map_err(|_| "Failed to lock focus stream state".to_string())?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
         let _ = child.wait();
