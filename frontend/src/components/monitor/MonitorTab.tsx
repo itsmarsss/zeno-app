@@ -120,7 +120,7 @@ export function MonitorTab({
   const [recentFocusSummary, setRecentFocusSummary] = useState<{ endedAt: number; durationSeconds: number } | null>(
     null,
   )
-  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string } | null>(null)
+  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string; align: 'left' | 'center' | 'right' } | null>(null)
   const wasFocusActiveRef = useRef(focusModeActive)
 
   const monitorMode: MonitorMode = recentFocusSummary
@@ -568,28 +568,34 @@ export function MonitorTab({
           <div className="monitor-timeline-chart">
             <svg viewBox="0 0 100 36" preserveAspectRatio="none">
               {passiveMarkOffsets.map((mark, index) => (
-                <line
-                  key={`${mark.ts}-${index}`}
-                  x1={mark.xPct}
-                  y1={0}
-                  x2={mark.xPct}
-                  y2={36}
-                  className="monitor-passive-mark"
-                  onMouseEnter={() =>
-                    setHoveredPassiveMark({
-                      xPct: mark.xPct,
-                      label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
-                    })
-                  }
-                  onMouseLeave={() => setHoveredPassiveMark(null)}
-                />
+                <g key={`${mark.ts}-${index}`}>
+                  <line x1={mark.xPct} y1={0} x2={mark.xPct} y2={36} className="monitor-passive-mark" />
+                  <line
+                    x1={mark.xPct}
+                    y1={0}
+                    x2={mark.xPct}
+                    y2={36}
+                    className="monitor-passive-mark-hit"
+                    onMouseEnter={() =>
+                      setHoveredPassiveMark({
+                        xPct: mark.xPct,
+                        label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+                        align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
+                      })
+                    }
+                    onMouseLeave={() => setHoveredPassiveMark(null)}
+                  />
+                </g>
               ))}
               <path className="signal-stress" d={buildPath(timelinePoints.map((p) => p.stress), 0, 100, 100, 36)} />
               <path className="signal-hr" d={buildPath(timelinePoints.map((p) => p.hrNorm), 0, 100, 100, 36)} />
               <path className="signal-rr" d={buildPath(timelinePoints.map((p) => p.rrNorm), 0, 100, 100, 36)} />
             </svg>
             {hoveredPassiveMark && (
-              <div className="monitor-passive-tooltip" style={{ left: `${hoveredPassiveMark.xPct}%` }}>
+              <div
+                className={`monitor-passive-tooltip monitor-passive-tooltip--${hoveredPassiveMark.align}`}
+                style={{ left: `${hoveredPassiveMark.xPct}%` }}
+              >
                 {hoveredPassiveMark.label}
               </div>
             )}

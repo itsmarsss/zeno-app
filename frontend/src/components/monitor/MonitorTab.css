@@ -479,6 +479,12 @@
   stroke-width: 0.35;
 }
 
+.monitor-passive-mark-hit {
+  stroke: transparent;
+  stroke-width: 6;
+  pointer-events: stroke;
+}
+
 .monitor-delta {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
@@ -499,6 +505,14 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 5;
+}
+
+.monitor-passive-tooltip--left {
+  transform: translateX(0);
+}
+
+.monitor-passive-tooltip--right {
+  transform: translateX(-100%);
 }
 
 @media (min-width: 1000px) {
