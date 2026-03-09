@@ -124,6 +124,9 @@ pub async fn run_log_breathing_session(
     hr_start: Option<f64>,
     hr_end: Option<f64>,
     hr_delta: Option<f64>,
+    rr_start: Option<f64>,
+    rr_end: Option<f64>,
+    rr_delta: Option<f64>,
     triggered_by: Option<String>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -133,6 +136,9 @@ pub async fn run_log_breathing_session(
             hr_start,
             hr_end,
             hr_delta,
+            rr_start,
+            rr_end,
+            rr_delta,
             triggered_by.unwrap_or_else(|| "manual".to_string()),
         )
     })

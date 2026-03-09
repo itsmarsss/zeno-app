@@ -104,6 +104,7 @@ function App() {
   const [quickActionStep, setQuickActionStep] = useState<'menu' | 'breathe' | 'break'>('menu')
   const [breathingUseHrSensing, setBreathingUseHrSensing] = useState(true)
   const [breathingLiveHr, setBreathingLiveHr] = useState<number | null>(null)
+  const [breathingStartRr, setBreathingStartRr] = useState<number | null>(null)
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
   const breakActiveRef = useRef(false)
@@ -160,6 +161,9 @@ function App() {
     const hrEnd = breathingUseHrSensing ? breathingLiveHr : (result?.heart_rate_bpm ?? null)
     const hrStart = breathingStartHr
     const hrDelta = hrStart == null || hrEnd == null ? null : Math.round((hrEnd - hrStart) * 10) / 10
+    const rrStart = breathingStartRr
+    const rrEnd = result?.respiratory_rate && result.respiratory_rate > 0 ? result.respiratory_rate : null
+    const rrDelta = rrStart == null || rrEnd == null ? null : Math.round((rrEnd - rrStart) * 10) / 10
     const cyclesCompleted = Math.max(0, breathingCycle - 1)
 
     try {
@@ -169,6 +173,9 @@ function App() {
         hrStart,
         hrEnd,
         hrDelta,
+        rrStart,
+        rrEnd,
+        rrDelta,
         triggeredBy: breathingTriggeredBy,
       })
     } catch {
@@ -193,9 +200,11 @@ function App() {
     breathingLiveHr,
     breathingPattern,
     breathingStartHr,
+    breathingStartRr,
     breathingTriggeredBy,
     breathingUseHrSensing,
     result?.heart_rate_bpm,
+    result?.respiratory_rate,
   ])
 
   useEffect(() => {
@@ -435,10 +444,11 @@ function App() {
       setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
       setBreathingCycle(1)
       setBreathingStartHr(breathingUseHrSensing ? null : (result?.heart_rate_bpm ?? null))
+      setBreathingStartRr(result?.respiratory_rate && result.respiratory_rate > 0 ? result.respiratory_rate : null)
       setBreathingLiveHr(null)
       setBreathingSummary(null)
     },
-    [activePattern.phases, breathingUseHrSensing, result?.heart_rate_bpm],
+    [activePattern.phases, breathingUseHrSensing, result?.heart_rate_bpm, result?.respiratory_rate],
   )
 
   useEffect(() => {

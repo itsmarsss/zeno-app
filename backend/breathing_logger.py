@@ -21,10 +21,20 @@ def init_db(db_path: Path) -> None:
               hr_start REAL,
               hr_end REAL,
               hr_delta REAL,
+              rr_start REAL,
+              rr_end REAL,
+              rr_delta REAL,
               triggered_by TEXT
             )
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(breathing_sessions)").fetchall()}
+        if "rr_start" not in columns:
+            conn.execute("ALTER TABLE breathing_sessions ADD COLUMN rr_start REAL")
+        if "rr_end" not in columns:
+            conn.execute("ALTER TABLE breathing_sessions ADD COLUMN rr_end REAL")
+        if "rr_delta" not in columns:
+            conn.execute("ALTER TABLE breathing_sessions ADD COLUMN rr_delta REAL")
         conn.commit()
 
 
@@ -35,6 +45,9 @@ def log_breathing_session(
     hr_start: float | None,
     hr_end: float | None,
     hr_delta: float | None,
+    rr_start: float | None,
+    rr_end: float | None,
+    rr_delta: float | None,
     triggered_by: str,
 ) -> int:
     init_db(db_path)
@@ -47,8 +60,11 @@ def log_breathing_session(
               hr_start,
               hr_end,
               hr_delta,
+              rr_start,
+              rr_end,
+              rr_delta,
               triggered_by
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 exercise_type,
@@ -56,6 +72,9 @@ def log_breathing_session(
                 None if hr_start is None else float(hr_start),
                 None if hr_end is None else float(hr_end),
                 None if hr_delta is None else float(hr_delta),
+                None if rr_start is None else float(rr_start),
+                None if rr_end is None else float(rr_end),
+                None if rr_delta is None else float(rr_delta),
                 triggered_by,
             ),
         )
@@ -71,6 +90,9 @@ def main() -> None:
     parser.add_argument("--hr-start", type=float, default=None)
     parser.add_argument("--hr-end", type=float, default=None)
     parser.add_argument("--hr-delta", type=float, default=None)
+    parser.add_argument("--rr-start", type=float, default=None)
+    parser.add_argument("--rr-end", type=float, default=None)
+    parser.add_argument("--rr-delta", type=float, default=None)
     parser.add_argument("--triggered-by", default="manual")
     args = parser.parse_args()
 
@@ -82,6 +104,9 @@ def main() -> None:
         hr_start=args.hr_start,
         hr_end=args.hr_end,
         hr_delta=args.hr_delta,
+        rr_start=args.rr_start,
+        rr_end=args.rr_end,
+        rr_delta=args.rr_delta,
         triggered_by=args.triggered_by,
     )
     print(

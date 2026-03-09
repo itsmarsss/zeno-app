@@ -309,6 +309,9 @@ pub fn run_log_breathing_session_blocking(
     hr_start: Option<f64>,
     hr_end: Option<f64>,
     hr_delta: Option<f64>,
+    rr_start: Option<f64>,
+    rr_end: Option<f64>,
+    rr_delta: Option<f64>,
     triggered_by: String,
 ) -> Result<Value, String> {
     let root = project_root();
@@ -335,6 +338,15 @@ pub fn run_log_breathing_session_blocking(
     }
     if let Some(v) = hr_delta {
         cmd.arg("--hr-delta").arg(v.to_string());
+    }
+    if let Some(v) = rr_start {
+        cmd.arg("--rr-start").arg(v.to_string());
+    }
+    if let Some(v) = rr_end {
+        cmd.arg("--rr-end").arg(v.to_string());
+    }
+    if let Some(v) = rr_delta {
+        cmd.arg("--rr-delta").arg(v.to_string());
     }
 
     let output = cmd
