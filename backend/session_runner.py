@@ -33,7 +33,7 @@ def run_session(
             model_path=hsemotion_model_path,
         )
 
-    heart_rate_bpm = estimate_heart_rate(preview=preview, capture_seconds=30.0)
+    heart_rate_bpm = estimate_heart_rate(preview=preview, capture_seconds=10.0)
 
     completed_at = datetime.now()
     duration_seconds = round((completed_at - started_at).total_seconds(), 2)

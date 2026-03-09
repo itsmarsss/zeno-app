@@ -26,20 +26,40 @@ def init_db(db_path: Path) -> None:
                 heart_rate_bpm REAL,
                 emotion_backend TEXT NOT NULL,
                 session_duration_seconds REAL NOT NULL,
+                focus_mode INTEGER NOT NULL DEFAULT 0,
                 raw_json TEXT NOT NULL
             )
             """
         )
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "focus_mode" not in columns:
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN focus_mode INTEGER NOT NULL DEFAULT 0"
+            )
         conn.commit()
 
 
-def generate_session(ts: datetime) -> dict:
-    posture = round(random.uniform(0.35, 0.92), 3)
-    emotion = random.choices(
-        population=EMOTIONS,
-        weights=[30, 18, 22, 10, 12, 8],
-        k=1,
-    )[0]
+def generate_session(ts: datetime, focus_mode: bool) -> dict:
+    if focus_mode:
+        posture = round(random.uniform(0.56, 0.93), 3)
+        emotion = random.choices(
+            population=EMOTIONS,
+            weights=[30, 22, 24, 4, 12, 8],
+            k=1,
+        )[0]
+        duration_seconds = round(random.uniform(20 * 60, 55 * 60), 2)
+    else:
+        posture = round(random.uniform(0.35, 0.90), 3)
+        emotion = random.choices(
+            population=EMOTIONS,
+            weights=[34, 16, 21, 11, 10, 8],
+            k=1,
+        )[0]
+        duration_seconds = round(random.uniform(25.0, 65.0), 2)
+
     emotion_score = round(random.uniform(0.45, 0.97), 3)
 
     heart_rate = None
@@ -59,7 +79,8 @@ def generate_session(ts: datetime) -> dict:
         "emotion_score": emotion_score,
         "heart_rate_bpm": heart_rate,
         "emotion_backend": "hsemotion",
-        "session_duration_seconds": round(random.uniform(31.0, 39.0), 2),
+        "session_duration_seconds": duration_seconds,
+        "focus_mode": focus_mode,
     }
 
 
@@ -71,12 +92,16 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
     with sqlite3.connect(db_path) as conn:
         for day_offset in range(days):
             day = now - timedelta(days=(days - 1 - day_offset))
-            start_hour = random.randint(8, 10)
-            start = day.replace(hour=start_hour, minute=random.randint(0, 20))
+            short_checkins = max(2, sessions_per_day // 3)
+            focus_blocks = max(1, sessions_per_day - short_checkins)
 
-            for i in range(sessions_per_day):
-                ts = start + timedelta(minutes=i * random.choice([8, 10, 12]))
-                session = generate_session(ts)
+            # Short check-ins spread throughout work hours.
+            checkin_slots = sorted(
+                random.sample(range(8 * 60, 20 * 60), k=min(short_checkins, 12 * 60))
+            )
+            for minute_offset in checkin_slots:
+                ts = day.replace(hour=0, minute=0) + timedelta(minutes=minute_offset)
+                session = generate_session(ts, focus_mode=False)
                 conn.execute(
                     """
                     INSERT INTO sessions (
@@ -88,8 +113,9 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         heart_rate_bpm,
                         emotion_backend,
                         session_duration_seconds,
+                        focus_mode,
                         raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session["timestamp"],
@@ -100,6 +126,44 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         session["heart_rate_bpm"],
                         session["emotion_backend"],
                         session["session_duration_seconds"],
+                        0,
+                        json.dumps(session),
+                    ),
+                )
+                inserted += 1
+
+            # Focus sessions clustered in typical focus windows.
+            focus_minutes = sorted(
+                random.sample(range(9 * 60, 19 * 60), k=min(focus_blocks, 10 * 60))
+            )
+            for minute_offset in focus_minutes:
+                ts = day.replace(hour=0, minute=0) + timedelta(minutes=minute_offset)
+                session = generate_session(ts, focus_mode=True)
+                conn.execute(
+                    """
+                    INSERT INTO sessions (
+                        created_at,
+                        presence_detected,
+                        posture_score,
+                        dominant_emotion,
+                        emotion_score,
+                        heart_rate_bpm,
+                        emotion_backend,
+                        session_duration_seconds,
+                        focus_mode,
+                        raw_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session["timestamp"],
+                        1,
+                        session["posture_score"],
+                        session["dominant_emotion"],
+                        session["emotion_score"],
+                        session["heart_rate_bpm"],
+                        session["emotion_backend"],
+                        session["session_duration_seconds"],
+                        1,
                         json.dumps(session),
                     ),
                 )
@@ -116,11 +180,11 @@ def main() -> None:
         default=str(DEFAULT_DB_PATH),
         help="SQLite database path (default: backend/data/zeno_sessions.db).",
     )
-    parser.add_argument("--days", type=int, default=4, help="Number of days to seed.")
+    parser.add_argument("--days", type=int, default=30, help="Number of days to seed.")
     parser.add_argument(
         "--sessions-per-day",
         type=int,
-        default=14,
+        default=10,
         help="Synthetic sessions per day.",
     )
     args = parser.parse_args()
