@@ -11,59 +11,15 @@ from presence_detector import PresenceDetector
 from stress_analyzer import StressAnalyzer
 
 
-def run_passive_checkin(duration_seconds: float = 30.0) -> dict:
-    duration_seconds = max(3.0, float(duration_seconds))
-    manager = CameraManager()
-    presence = PresenceDetector()
-    posture = PostureAnalyzer()
-    stress = StressAnalyzer(hr_window_seconds=min(20.0, duration_seconds))
-    started = time.perf_counter()
-    started_at = datetime.now()
-
-    try:
-        presence.start_live(manager)
-        posture.start_live(manager)
-        stress.start_live(manager)
-        time.sleep(duration_seconds)
-    except RuntimeError:
-        return {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "presence_detected": False,
-            "analysis_skipped": True,
-            "posture_score": 0.0,
-            "baseline_posture_score": 0.0,
-            "posture_deviation": 0.0,
-            "posture_is_poor": False,
-            "dominant_emotion": "unknown",
-            "emotion_score": 0.0,
-            "heart_rate_bpm": None,
-            "respiratory_rate": 0.0,
-            "rr_confidence": "none",
-            "emotion_backend": "fer",
-            "mode": "passive",
-            "focus_duration_seconds": 0,
-            "session_duration_seconds": round(time.perf_counter() - started, 2),
-            "capture_window_seconds": duration_seconds,
-            "started_at": started_at.isoformat(timespec="seconds"),
-        }
-    finally:
-        stress.stop_live(manager)
-        posture.stop_live(manager)
-        presence.stop_live(manager)
-        manager.stop()
-
-    duration = round(time.perf_counter() - started, 2)
-    presence_detected = bool(presence.latest_result())
-    stress_result = stress.latest_result()
-    if not presence_detected:
-        return {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "presence_detected": False,
-            "analysis_skipped": True,
-            "posture_score": 0.0,
-            "baseline_posture_score": 0.0,
-            "posture_deviation": 0.0,
-            "posture_is_poor": False,
+def _skipped_payload(duration: float, duration_seconds: float, started_at: datetime) -> dict:
+    return {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "presence_detected": False,
+        "analysis_skipped": True,
+        "posture_score": 0.0,
+        "baseline_posture_score": 0.0,
+        "posture_deviation": 0.0,
+        "posture_is_poor": False,
         "dominant_emotion": "unknown",
         "emotion_score": 0.0,
         "heart_rate_bpm": None,
@@ -75,7 +31,53 @@ def run_passive_checkin(duration_seconds: float = 30.0) -> dict:
         "session_duration_seconds": duration,
         "capture_window_seconds": duration_seconds,
         "started_at": started_at.isoformat(timespec="seconds"),
-        }
+    }
+
+
+def run_passive_checkin(duration_seconds: float = 30.0) -> dict:
+    duration_seconds = max(3.0, float(duration_seconds))
+    presence_gate_seconds = min(3.0, duration_seconds)
+    manager = CameraManager()
+    presence = PresenceDetector()
+    posture = PostureAnalyzer()
+    stress = StressAnalyzer(hr_window_seconds=min(20.0, duration_seconds))
+    started = time.perf_counter()
+    started_at = datetime.now()
+    presence_confirmed = False
+
+    try:
+        # Phase 1: presence gate. Do not start heavy analyzers until a face is confirmed.
+        presence.start_live(manager)
+        gate_deadline = started + presence_gate_seconds
+        while time.perf_counter() < gate_deadline:
+            if bool(presence.latest_result()):
+                presence_confirmed = True
+                break
+            time.sleep(0.05)
+        if not presence_confirmed:
+            duration = round(time.perf_counter() - started, 2)
+            return _skipped_payload(duration, duration_seconds, started_at)
+
+        # Phase 2: run posture + stress only after presence is confirmed.
+        posture.start_live(manager)
+        stress.start_live(manager)
+        remaining = max(0.0, duration_seconds - (time.perf_counter() - started))
+        if remaining > 0.0:
+            time.sleep(remaining)
+    except RuntimeError:
+        duration = round(time.perf_counter() - started, 2)
+        return _skipped_payload(duration, duration_seconds, started_at)
+    finally:
+        stress.stop_live(manager)
+        posture.stop_live(manager)
+        presence.stop_live(manager)
+        manager.stop()
+
+    duration = round(time.perf_counter() - started, 2)
+    presence_detected = bool(presence.latest_result()) or presence_confirmed
+    stress_result = stress.latest_result()
+    if not presence_detected:
+        return _skipped_payload(duration, duration_seconds, started_at)
     return {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "presence_detected": presence_detected,
