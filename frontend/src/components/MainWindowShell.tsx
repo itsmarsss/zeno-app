@@ -517,14 +517,20 @@ export function MainWindowShell({
             <p>{tabSubline}</p>
           </div>
           <div className="desktop-topbar-status">
-            <span className={`desktop-pill ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}>
+            <button
+              className={`desktop-pill desktop-pill--toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
+              onClick={() => void updateSettings({ focus_mode_active: !settings?.focus_mode_active })}
+            >
               <Target size={12} />
               Focus {settings?.focus_mode_active ? 'On' : 'Off'}
-            </span>
-            <span className={`desktop-pill ${settings?.monitoring_paused ? 'is-off' : 'is-on'}`}>
+            </button>
+            <button
+              className={`desktop-pill desktop-pill--toggle ${settings?.monitoring_paused ? 'is-off' : 'is-on'}`}
+              onClick={() => void updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
+            >
               {settings?.monitoring_paused ? <Pause size={12} /> : <Play size={12} />}
               {settings?.monitoring_paused ? 'Paused' : 'Monitoring'}
-            </span>
+            </button>
           </div>
         </div>
         <div className="desktop-topbar-actions">
@@ -535,18 +541,6 @@ export function MainWindowShell({
           >
             <Zap size={14} />
             {isCheckInRunning ? 'Checking…' : 'Check in'}
-          </button>
-          <button
-            className="desktop-action-btn"
-            onClick={() => void updateSettings({ focus_mode_active: !settings?.focus_mode_active })}
-          >
-            Focus {settings?.focus_mode_active ? 'Off' : 'On'}
-          </button>
-          <button
-            className="desktop-action-btn"
-            onClick={() => void updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
-          >
-            {settings?.monitoring_paused ? 'Resume' : 'Pause'}
           </button>
         </div>
       </header>

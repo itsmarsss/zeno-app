@@ -12,7 +12,6 @@
 .posture-feed-wrap {
   position: relative;
   background: #0d0d0d;
-  aspect-ratio: 4 / 3;
   overflow: hidden;
 }
 
@@ -216,11 +215,13 @@
 
 .posture-all-good {
   margin: 12px auto 0;
+  padding: 10px 12px;
   color: var(--state-calm);
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
+  height: 34px;
 }
 
 .posture-all-good--muted {
