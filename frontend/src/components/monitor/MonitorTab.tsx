@@ -919,7 +919,13 @@ export function MonitorTab({
                     <div className="interactive-chart-tooltip-row">
                       <strong>
                         <AnimatedTickerText
-                          value={row.respiratoryRate == null ? '--' : `${Math.round(row.respiratoryRate)}`}
+                          value={
+                            row.respiratoryRate == null
+                              ? '--'
+                              : row.rrConfidence === 'partial'
+                                ? `~${Math.round(row.respiratoryRate)}`
+                                : `${Math.round(row.respiratoryRate)}`
+                          }
                           direction={direction}
                         />
                       </strong>

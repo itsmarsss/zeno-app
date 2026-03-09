@@ -17,22 +17,6 @@
   transition: background 400ms ease;
 }
 
-.monitor-tab--phase-banner .monitor-banner,
-.monitor-tab--phase-camera .monitor-banner,
-.monitor-tab--phase-cards .monitor-banner {
-  animation: bannerReveal 260ms ease both;
-}
-
-@keyframes bannerReveal {
-  from {
-    opacity: 0.82;
-    transform: translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .monitor-banner--idle {
   background: var(--bg-subtle);
@@ -129,24 +113,6 @@
 
 .monitor-camera-shell {
   min-width: 0;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
-}
-
-.monitor-tab--phase-banner .monitor-camera-shell {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.monitor-tab--phase-camera .monitor-camera-shell,
-.monitor-tab--phase-cards .monitor-camera-shell,
-.monitor-tab--phase-settled .monitor-camera-shell,
-.monitor-camera-shell.is-stage-active {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .monitor-camera-shell--focus .monitor-camera-live {
@@ -296,22 +262,12 @@
   gap: 12px;
   min-height: 0;
   min-width: 0;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
 }
 
 .monitor-vitals {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
 }
 
 .monitor-vital {
@@ -346,31 +302,6 @@
   color: var(--text-secondary);
 }
 
-.monitor-tab--phase-banner .monitor-signals,
-.monitor-tab--phase-camera .monitor-signals {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.monitor-tab--phase-banner .monitor-vitals,
-.monitor-tab--phase-camera .monitor-vitals {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.monitor-tab--phase-cards .monitor-signals,
-.monitor-tab--phase-settled .monitor-signals,
-.monitor-signals.is-stage-active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.monitor-tab--phase-cards .monitor-vitals,
-.monitor-tab--phase-settled .monitor-vitals,
-.monitor-vitals.is-stage-active {
-  opacity: 1;
-  transform: translateY(0);
-}
 
 .monitor-card {
   background: var(--bg-surface);

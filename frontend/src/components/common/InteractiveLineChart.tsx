@@ -72,15 +72,18 @@ export function InteractiveLineChart({
   const areaPath = buildAreaPath(areaValues, yMin, yMax, 100, 100)
 
   const hoveredPoint = hoverIndex != null ? points[hoverIndex] : null
-  const hoverRatio = hoverIndex == null ? 0 : hoverIndex / Math.max(points.length - 1, 1)
-  const fallbackXPx = chartWidthPx > 0 ? chartLeftPx + hoverRatio * chartWidthPx : 0
-  const cursorXPx = hoverXPx ?? fallbackXPx
 
+  // Calculate cursor position in SVG viewBox coordinates (0-100)
+  const cursorXPx = hoverXPx ?? 0
+  const cursorXInViewBox = chartWidthPx > 0 ? (cursorXPx / chartWidthPx) * 100 : 0
+
+  // Tooltip is positioned relative to canvas, so add SVG offset
   const tooltipWidthPx = tooltipWidth
-  const tooltipPaddingPx = 8
+  const tooltipPaddingPx = 4
+  const tooltipCursorX = chartLeftPx + cursorXPx
   const tooltipMinLeft = chartLeftPx + tooltipPaddingPx
-  const tooltipMaxLeft = chartLeftPx + Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx)
-  const tooltipLeftPx = clamp(cursorXPx - tooltipWidthPx / 2, tooltipMinLeft, tooltipMaxLeft)
+  const tooltipMaxLeft = chartLeftPx + chartWidthPx - tooltipWidthPx - tooltipPaddingPx
+  const tooltipLeftPx = clamp(tooltipCursorX - tooltipWidthPx / 2, tooltipMinLeft, tooltipMaxLeft)
 
   const thresholdY =
     thresholdValue == null ? null : 100 - clamp((thresholdValue - yMin) / Math.max(yMax - yMin, 1), 0, 1) * 100
@@ -98,11 +101,13 @@ export function InteractiveLineChart({
       }}
       onPointerMove={(event) => {
         const canvasRect = event.currentTarget.getBoundingClientRect()
-        const svgRect = svgRef.current?.getBoundingClientRect() ?? canvasRect
-        const localLeft = Math.max(0, svgRect.left - canvasRect.left)
-        const localWidth = Math.max(svgRect.width, 1)
-        const xWithinSvg = clamp(event.clientX - svgRect.left, 0, localWidth)
-        const ratio = clamp(xWithinSvg / localWidth, 0, 1)
+        const svgRect = svgRef.current?.getBoundingClientRect()
+        if (!svgRect) return
+
+        const svgLeftOffset = svgRect.left - canvasRect.left
+        const svgWidth = Math.max(svgRect.width, 1)
+        const xWithinSvg = clamp(event.clientX - svgRect.left, 0, svgWidth)
+        const ratio = clamp(xWithinSvg / svgWidth, 0, 1)
         const nextIndex = Math.round(ratio * (points.length - 1))
         const prev = previousHoverIndexRef.current
         let nextDirection = hoverDirection
@@ -111,9 +116,9 @@ export function InteractiveLineChart({
           setHoverDirection(nextDirection)
         }
         previousHoverIndexRef.current = nextIndex
-        setChartLeftPx(localLeft)
-        setChartWidthPx(localWidth)
-        setHoverXPx(localLeft + xWithinSvg)
+        setChartLeftPx(svgLeftOffset)
+        setChartWidthPx(svgWidth)
+        setHoverXPx(xWithinSvg)
         setHoverIndex(nextIndex)
         if (onHoverChange) onHoverChange(nextIndex, nextDirection)
       }}
@@ -160,12 +165,20 @@ export function InteractiveLineChart({
             />
           )
         })}
+        {hoveredPoint && (
+          <line
+            x1={cursorXInViewBox}
+            x2={cursorXInViewBox}
+            y1="0"
+            y2="100"
+            className="interactive-chart-cursor"
+            style={{ opacity: 1 }}
+          />
+        )}
       </svg>
 
-      {hoveredPoint && <div className="interactive-chart-cursor" style={{ left: `${cursorXPx}px`, opacity: 1 }} />}
-
       {showTooltip && hoveredPoint && hoverIndex !== null && (
-        <div className="interactive-chart-tooltip" style={{ left: `${tooltipLeftPx}px`, opacity: 1 }}>
+        <div className="interactive-chart-tooltip" style={{ left: `${tooltipLeftPx}px`, width: `${tooltipWidthPx}px`, opacity: 1 }}>
           {renderTooltip ? (
             renderTooltip({ point: hoveredPoint, index: hoverIndex as number, direction: hoverDirection })
           ) : (

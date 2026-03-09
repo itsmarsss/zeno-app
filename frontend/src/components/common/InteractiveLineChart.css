@@ -80,21 +80,15 @@
 }
 
 .interactive-chart-cursor {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(45, 106, 79, 0), rgba(45, 106, 79, 0.75), rgba(45, 106, 79, 0));
+  stroke: rgba(45, 106, 79, 0.75);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
   pointer-events: none;
-  will-change: left;
 }
 
 .interactive-chart-tooltip {
   position: absolute;
   top: 8px;
-  width: 188px;
-  max-width: calc(100% - 16px);
   border: 1px solid rgba(45, 106, 79, 0.22);
   border-radius: 12px;
   background: color-mix(in srgb, var(--bg-surface) 92%, #ffffff 8%);
