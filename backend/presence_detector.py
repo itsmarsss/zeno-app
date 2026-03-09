@@ -19,6 +19,7 @@ TASK_MODEL_URL = (
 TASK_MODEL_PATH = (
     Path(__file__).resolve().parent / "models" / "blaze_face_short_range.tflite"
 )
+FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 
 def _ensure_task_model() -> Path:
@@ -47,6 +48,13 @@ def _show_preview(cap: cv2.VideoCapture, seconds: float) -> None:
                 break
     finally:
         cv2.destroyWindow(window_name)
+
+
+def _largest_face_box(boxes) -> tuple[int, int, int, int] | None:
+    if boxes is None or len(boxes) == 0:
+        return None
+    x, y, w, h = max(boxes, key=lambda b: int(b[2]) * int(b[3]))
+    return int(x), int(y), int(w), int(h)
 
 
 def _detect_with_tasks(rgb_frame, min_detection_confidence: float) -> bool:
@@ -135,11 +143,18 @@ def detect_presence(
     min_detection_confidence: float = 0.5,
     warmup_seconds: float = 0.6,
     preview_seconds: float = 0.0,
+    live_check_seconds: float = 0.8,
+    min_face_frames: int = 3,
+    liveness_diff_threshold: float = 1.2,
+    allow_static_face: bool = False,
 ) -> bool:
     detector = PresenceDetector(min_detection_confidence=min_detection_confidence)
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return False
+    face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
+    if face_cascade.empty():
+        allow_static_face = True
 
     try:
         _show_preview(cap, preview_seconds)
@@ -148,11 +163,61 @@ def detect_presence(
             while cv2.getTickCount() < end_ticks:
                 cap.read()
 
-        ok, frame = cap.read()
-        if not ok:
+        live_check_seconds = max(0.2, float(live_check_seconds))
+        min_face_frames = max(1, int(min_face_frames))
+        deadline = cv2.getTickCount() + int(live_check_seconds * cv2.getTickFrequency())
+        face_frames = 0
+        liveness_diffs: list[float] = []
+        previous_face_patch: np.ndarray | None = None
+
+        while cv2.getTickCount() < deadline:
+            ok, frame = cap.read()
+            if not ok:
+                continue
+
+            if detector.analyze_frame(frame):
+                face_frames += 1
+
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                boxes = face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(60, 60),
+                )
+                box = _largest_face_box(boxes)
+                if box is None:
+                    continue
+                x, y, w, h = box
+                patch = gray[y : y + h, x : x + w]
+                if patch.size == 0:
+                    continue
+                patch = cv2.resize(patch, (64, 64), interpolation=cv2.INTER_AREA)
+
+                if previous_face_patch is not None:
+                    diff = float(
+                        np.mean(
+                            cv2.absdiff(
+                                patch.astype(np.float32),
+                                previous_face_patch.astype(np.float32),
+                            )
+                        )
+                    )
+                    liveness_diffs.append(diff)
+                previous_face_patch = patch
+
+            if face_frames >= min_face_frames and allow_static_face:
+                return True
+
+        if face_frames < min_face_frames:
             return False
 
-        return detector.analyze_frame(frame)
+        if allow_static_face:
+            return True
+
+        if not liveness_diffs:
+            return False
+        return float(np.mean(liveness_diffs)) >= float(liveness_diff_threshold)
     finally:
         cap.release()
 
@@ -164,9 +229,17 @@ def main() -> None:
         action="store_true",
         help="Show a 1-second camera preview before detection.",
     )
+    parser.add_argument(
+        "--allow-static-face",
+        action="store_true",
+        help="Disable micro-motion liveness guard (useful for debugging only).",
+    )
     args = parser.parse_args()
 
-    presence = detect_presence(preview_seconds=1.0 if args.preview else 0.0)
+    presence = detect_presence(
+        preview_seconds=1.0 if args.preview else 0.0,
+        allow_static_face=bool(args.allow_static_face),
+    )
     timestamp = datetime.now().isoformat(timespec="seconds")
     print(f"[{timestamp}] presence_detected={str(presence).lower()}")
 
