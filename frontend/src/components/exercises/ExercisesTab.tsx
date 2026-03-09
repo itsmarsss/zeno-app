@@ -104,85 +104,104 @@ export function ExercisesTab({
           exit={{ opacity: 0 }}
           transition={easeOut}
         >
-        <div className="exercise-active-feed">
-          <PostureFrame frame={postureFrame} landmarks={postureLandmarks} alt="Active exercise stream" className="exercise-active-video" />
+          <div className="exercise-active-feed">
+            <PostureFrame
+              frame={postureFrame}
+              landmarks={postureLandmarks}
+              alt="Active exercise stream"
+              className="exercise-active-video"
+            />
 
-          <div className="exercise-phase-badge">{exerciseMetrics?.target_active ? 'Hold still' : 'Adjust posture'}</div>
-          <div className="exercise-rep-badge">Rep {repCount} of {repTarget}</div>
-
-          <div className="exercise-overlay-bottom">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.p
-                key={activeInstruction}
-                className="exercise-overlay-msg"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {activeInstruction}
-              </motion.p>
-            </AnimatePresence>
-            <div className="exercise-overlay-progress">
-              <motion.i style={{ width: `${progressPct}%` }} transition={springToggle} />
+            <div className="exercise-phase-badge">
+              {exerciseMetrics?.target_active ? 'Hold still' : 'Adjust posture'}
             </div>
-          </div>
-        </div>
+            <div className="exercise-rep-badge">
+              Rep {repCount} of {repTarget}
+            </div>
 
-        <aside className="exercise-coach-panel">
-          <button className="exercise-back-link" onClick={() => toggleGuided()}><ArrowLeft size={14} /> Back to exercises</button>
-          <h2>{selectedExercise.name}</h2>
-          <p className="exercise-tag">{selectedExercise.target}</p>
-          <hr />
-
-          <div className="exercise-phase-hero">
-            <p className="exercise-phase-label">Current phase</p>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.p
-                key={`phase-${activeInstruction}`}
-                className="exercise-phase-text"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                {activeInstruction}
-              </motion.p>
-            </AnimatePresence>
-
-            <div className="exercise-timer-row">
-              <p className="exercise-timer">{phaseSeconds}</p>
-              <span>seconds</span>
-              <svg viewBox="0 0 40 40" className="exercise-ring">
-                <circle cx="20" cy="20" r="16" className="ring-base" />
-                <circle cx="20" cy="20" r="16" className="ring-progress" style={{ strokeDashoffset: `${100 - progressPct}` }} />
-              </svg>
+            <div className="exercise-overlay-bottom">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.p
+                  key={activeInstruction}
+                  className="exercise-overlay-msg"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {activeInstruction}
+                </motion.p>
+              </AnimatePresence>
+              <div className="exercise-overlay-progress">
+                <motion.i style={{ width: `${progressPct}%` }} transition={springToggle} />
+              </div>
             </div>
           </div>
 
-          <hr />
-          <div className="exercise-overall-progress">
-            <p>Exercise progress</p>
-            <div className="exercise-phase-dots">
-              {selectedExercise.steps.map((step, index) => (
-                <motion.i
-                  key={step}
-                  className={index <= Math.floor((progressPct / 100) * (selectedExercise.steps.length - 1)) ? 'is-done' : ''}
-                  layout
-                  transition={springToggle}
-                />
-              ))}
-            </div>
-          </div>
+          <aside className="exercise-coach-panel">
+            <button className="exercise-back-link" onClick={() => toggleGuided()}>
+              <ArrowLeft size={14} /> Back to exercises
+            </button>
+            <h2>{selectedExercise.name}</h2>
+            <p className="exercise-tag">{selectedExercise.target}</p>
+            <hr />
 
-          <p className="exercise-active-note">
-            {postureStreamState === 'running'
-              ? 'Live coaching active'
-              : postureStreamState === 'connecting'
-                ? 'Connecting to camera...'
-                : paywallMessage ?? 'Waiting for camera feed...'}
-          </p>
-        </aside>
+            <div className="exercise-phase-hero">
+              <p className="exercise-phase-label">Current phase</p>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.p
+                  key={`phase-${activeInstruction}`}
+                  className="exercise-phase-text"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {activeInstruction}
+                </motion.p>
+              </AnimatePresence>
+
+              <div className="exercise-timer-row">
+                <p className="exercise-timer">{phaseSeconds}</p>
+                <span>seconds</span>
+                <svg viewBox="0 0 40 40" className="exercise-ring">
+                  <circle cx="20" cy="20" r="16" className="ring-base" />
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="16"
+                    className="ring-progress"
+                    style={{ strokeDashoffset: `${100 - progressPct}` }}
+                  />
+                </svg>
+              </div>
+            </div>
+
+            <hr />
+            <div className="exercise-overall-progress">
+              <p>Exercise progress</p>
+              <div className="exercise-phase-dots">
+                {selectedExercise.steps.map((step, index) => (
+                  <motion.i
+                    key={step}
+                    className={
+                      index <= Math.floor((progressPct / 100) * (selectedExercise.steps.length - 1)) ? 'is-done' : ''
+                    }
+                    layout
+                    transition={springToggle}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <p className="exercise-active-note">
+              {postureStreamState === 'running'
+                ? 'Live coaching active'
+                : postureStreamState === 'connecting'
+                  ? 'Connecting to camera...'
+                  : (paywallMessage ?? 'Waiting for camera feed...')}
+            </p>
+          </aside>
         </motion.section>
       ) : (
         <motion.div
@@ -192,66 +211,76 @@ export function ExercisesTab({
           exit={{ opacity: 0, scale: 0.98 }}
           transition={easeOut}
         >
-      <header className="exercise-header">
-        <h1>Exercises</h1>
-        <p>Simple movements for desk workers</p>
+          <header className="exercise-header">
+            <h1>Exercises</h1>
+            <p>Simple movements for desk workers</p>
 
-        <label className="exercise-search">
-          <Search size={14} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search exercises..." />
-        </label>
-      </header>
+            <label className="exercise-search">
+              <Search size={14} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search exercises..."
+              />
+            </label>
+          </header>
 
-      <div className="exercise-pill-row">
-        {CATEGORIES.map((pill) => (
-          <button key={pill.key} className={category === pill.key ? 'is-active' : ''} onClick={() => setCategory(pill.key)}>
-            {pill.label}
-          </button>
-        ))}
-      </div>
+          <div className="exercise-pill-row">
+            {CATEGORIES.map((pill) => (
+              <button
+                key={pill.key}
+                className={category === pill.key ? 'is-active' : ''}
+                onClick={() => setCategory(pill.key)}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
 
-      <section className="exercise-grid-v2">
-        {filteredExercises.map((exercise) => {
-          const isSuggested = SUGGESTED_IDS.has(exercise.id)
-          const isSelected = selectedExercise?.id === exercise.id
-          return (
-            <article key={exercise.id} className={`exercise-v2-card ${isSelected ? 'is-selected' : ''}`}>
-              <div className="exercise-v2-illustration">
-                <svg viewBox="0 0 100 100">
-                  <path d={exerciseLineArt(exercise.id)} />
-                </svg>
-                {isSuggested && <span className="exercise-v2-suggested">For you</span>}
-              </div>
+          <section className="exercise-grid-v2">
+            {filteredExercises.map((exercise) => {
+              const isSuggested = SUGGESTED_IDS.has(exercise.id)
+              const isSelected = selectedExercise?.id === exercise.id
+              return (
+                <article key={exercise.id} className={`exercise-v2-card ${isSelected ? 'is-selected' : ''}`}>
+                  <div className="exercise-v2-illustration">
+                    <svg viewBox="0 0 100 100">
+                      <path d={exerciseLineArt(exercise.id)} />
+                    </svg>
+                    {isSuggested && <span className="exercise-v2-suggested">For you</span>}
+                  </div>
 
-              <div className="exercise-v2-body">
-                <p className="exercise-v2-tag">{exercise.target}</p>
-                <h3>{exercise.name}</h3>
+                  <div className="exercise-v2-body">
+                    <p className="exercise-v2-tag">{exercise.target}</p>
+                    <h3>{exercise.name}</h3>
 
-                <div className="exercise-v2-meta">
-                  <span><Clock3 size={12} /> {exercise.duration_minutes}m</span>
-                  <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(exercise)} of 3`}>
-                    <i className={difficultyLevel(exercise) >= 1 ? 'is-on' : ''} />
-                    <i className={difficultyLevel(exercise) >= 2 ? 'is-on' : ''} />
-                    <i className={difficultyLevel(exercise) >= 3 ? 'is-on' : ''} />
-                  </span>
-                </div>
+                    <div className="exercise-v2-meta">
+                      <span>
+                        <Clock3 size={12} /> {exercise.duration_minutes}m
+                      </span>
+                      <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(exercise)} of 3`}>
+                        <i className={difficultyLevel(exercise) >= 1 ? 'is-on' : ''} />
+                        <i className={difficultyLevel(exercise) >= 2 ? 'is-on' : ''} />
+                        <i className={difficultyLevel(exercise) >= 3 ? 'is-on' : ''} />
+                      </span>
+                    </div>
 
-                <p className="exercise-v2-description">{exercise.steps[0]}</p>
+                    <p className="exercise-v2-description">{exercise.steps[0]}</p>
 
-                <button
-                  className="exercise-v2-start"
-                  onClick={() => {
-                    setSelectedExerciseId(exercise.id)
-                    toggleGuided(exercise.id)
-                  }}
-                >
-                  <Play size={12} /> Begin exercise
-                </button>
-              </div>
-            </article>
-          )
-        })}
-      </section>
+                    <button
+                      className="exercise-v2-start"
+                      onClick={() => {
+                        setSelectedExerciseId(exercise.id)
+                        toggleGuided(exercise.id)
+                      }}
+                    >
+                      <Play size={12} /> Begin exercise
+                    </button>
+                  </div>
+                </article>
+              )
+            })}
+          </section>
         </motion.div>
       )}
     </AnimatePresence>

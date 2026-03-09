@@ -64,9 +64,7 @@ export function InteractiveLineChart({
   const tooltipLeftPx = clamp(cursorXPx - tooltipWidthPx / 2, tooltipMinLeft, tooltipMaxLeft)
 
   const thresholdY =
-    thresholdValue == null
-      ? null
-      : 100 - clamp((thresholdValue - yMin) / Math.max(yMax - yMin, 1), 0, 1) * 100
+    thresholdValue == null ? null : 100 - clamp((thresholdValue - yMin) / Math.max(yMax - yMin, 1), 0, 1) * 100
 
   const axisStep = Math.max(1, Math.ceil(points.length / 8))
 
@@ -107,7 +105,13 @@ export function InteractiveLineChart({
           </defs>
         ) : null}
         {thresholdY != null && (
-          <line x1="0" x2="100" y1={thresholdY} y2={thresholdY} className={`interactive-chart-threshold ${thresholdClassName}`.trim()} />
+          <line
+            x1="0"
+            x2="100"
+            y1={thresholdY}
+            y2={thresholdY}
+            className={`interactive-chart-threshold ${thresholdClassName}`.trim()}
+          />
         )}
         <path
           d={areaPath}
@@ -152,10 +156,17 @@ export function InteractiveLineChart({
       </AnimatePresence>
 
       {thresholdLabel ? <span className="interactive-chart-threshold-label">{thresholdLabel}</span> : null}
-      <div className="interactive-chart-axis" style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}>
-        {points.map((point, index) => (
-          index % axisStep === 0 || index === points.length - 1 ? <span key={point.id}>{point.label}</span> : <span key={point.id} />
-        ))}
+      <div
+        className="interactive-chart-axis"
+        style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
+      >
+        {points.map((point, index) =>
+          index % axisStep === 0 || index === points.length - 1 ? (
+            <span key={point.id}>{point.label}</span>
+          ) : (
+            <span key={point.id} />
+          ),
+        )}
       </div>
     </div>
   )

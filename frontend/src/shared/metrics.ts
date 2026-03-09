@@ -10,9 +10,19 @@ export function stressIndex(result: SessionResult | null): number {
   if (!result) return 0
   const emotion = result.dominant_emotion.toLowerCase()
   const emotionPoints =
-    ({ fear: 28, angry: 25, anger: 25, disgust: 22, contempt: 22, sad: 16, sadness: 16, neutral: 8, surprise: 12, happy: 4, happiness: 4 }[
-      emotion as keyof Record<string, number>
-    ] ?? 10) * Math.max(result.emotion_score, 0.25)
+    ({
+      fear: 28,
+      angry: 25,
+      anger: 25,
+      disgust: 22,
+      contempt: 22,
+      sad: 16,
+      sadness: 16,
+      neutral: 8,
+      surprise: 12,
+      happy: 4,
+      happiness: 4,
+    }[emotion as keyof Record<string, number>] ?? 10) * Math.max(result.emotion_score, 0.25)
 
   const hr = result.heart_rate_bpm
   const hrPoints = hr == null ? 8 : hr >= 105 ? 52 : hr >= 95 ? 40 : hr >= 85 ? 28 : hr >= 75 ? 14 : 6
@@ -69,19 +79,25 @@ export function sparklinePath(values: number[], width = 260, height = 74): strin
     return { x, y }
   })
   if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-  if (points.length === 2) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`
+  if (points.length === 2)
+    return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`
 
   let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const c = points[i]
-    const n = points[i + 1]
-    const midX = (c.x + n.x) / 2
-    const midY = (c.y + n.y) / 2
-    path += ` Q ${c.x.toFixed(2)} ${c.y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[i + 2] ?? p2
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    let cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    let cp2y = p2.y - (p3.y - p1.y) / 6
+    const segMinY = Math.min(p1.y, p2.y)
+    const segMaxY = Math.max(p1.y, p2.y)
+    cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y))
+    cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y))
+    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
   }
-  const penultimate = points[points.length - 2]
-  const last = points[points.length - 1]
-  path += ` Q ${penultimate.x.toFixed(2)} ${penultimate.y.toFixed(2)} ${last.x.toFixed(2)} ${last.y.toFixed(2)}`
   return path
 }
 

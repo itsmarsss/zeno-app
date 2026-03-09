@@ -290,16 +290,10 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 1100px) {
-  .settings-page {
-    padding-bottom: 24px;
+  from {
+    transform: rotate(0deg);
   }
-
-  .settings-inline-actions {
-    flex-direction: column;
+  to {
+    transform: rotate(360deg);
   }
 }

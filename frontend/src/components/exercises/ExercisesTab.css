@@ -24,7 +24,9 @@
   border-radius: 8px;
   background: var(--bg-subtle);
   padding: 9px 14px;
-  transition: box-shadow 150ms ease, border-color 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    border-color 150ms ease;
 }
 
 .exercise-search:focus-within {
@@ -57,7 +59,9 @@
   scrollbar-width: none;
 }
 
-.exercise-pill-row::-webkit-scrollbar { display: none; }
+.exercise-pill-row::-webkit-scrollbar {
+  display: none;
+}
 
 .exercise-pill-row button {
   border: 1px solid var(--border-subtle);
@@ -94,7 +98,10 @@
   border-radius: 14px;
   overflow: hidden;
   background: var(--bg-surface);
-  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .exercise-v2-card:hover {
@@ -322,7 +329,9 @@
   cursor: pointer;
 }
 
-.exercise-back-link:hover { color: var(--text-secondary); }
+.exercise-back-link:hover {
+  color: var(--text-secondary);
+}
 
 .exercise-coach-panel h2 {
   margin: 0;

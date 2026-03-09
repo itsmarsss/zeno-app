@@ -65,24 +65,32 @@ fn check_for_updates_on_launch(app: &tauri::AppHandle) {
     });
 }
 
-fn tray_anchor_point(rect: &Rect, click_position: &PhysicalPosition<f64>) -> (f64, f64) {
+fn rect_as_physical(rect: &Rect, scale_factor: f64) -> (f64, f64, f64, f64) {
     let x = match rect.position {
         Position::Physical(pos) => pos.x as f64,
-        Position::Logical(pos) => pos.x,
+        Position::Logical(pos) => pos.x * scale_factor,
     };
     let y = match rect.position {
         Position::Physical(pos) => pos.y as f64,
-        Position::Logical(pos) => pos.y,
+        Position::Logical(pos) => pos.y * scale_factor,
     };
     let width = match rect.size {
         Size::Physical(size) => size.width as f64,
-        Size::Logical(size) => size.width,
+        Size::Logical(size) => size.width * scale_factor,
     };
     let height = match rect.size {
         Size::Physical(size) => size.height as f64,
-        Size::Logical(size) => size.height,
+        Size::Logical(size) => size.height * scale_factor,
     };
+    (x, y, width, height)
+}
 
+fn tray_anchor_point(
+    rect: &Rect,
+    click_position: &PhysicalPosition<f64>,
+    scale_factor: f64,
+) -> (f64, f64) {
+    let (x, y, width, height) = rect_as_physical(rect, scale_factor);
     if width > 0.0 && height > 0.0 {
         (x + width / 2.0, y + height + 8.0)
     } else {
@@ -105,25 +113,15 @@ fn position_popover_window(
         return;
     }
 
-    let (anchor_x, anchor_y) = tray_anchor_point(tray_rect, click_position);
-    let mut target_x = (anchor_x.round() as i32) - width / 2;
-    let mut target_y = anchor_y.round() as i32;
-
-    let monitor = window
-        .monitor_from_point(anchor_x, anchor_y)
+    let scale_factor = window
+        .monitor_from_point(click_position.x, click_position.y)
         .ok()
         .flatten()
-        .or_else(|| window.primary_monitor().ok().flatten());
-
-    if let Some(monitor) = monitor {
-        let area = monitor.work_area();
-        let left = area.position.x;
-        let top = area.position.y;
-        let right = left + area.size.width as i32;
-        let bottom = top + area.size.height as i32;
-        target_x = target_x.clamp(left + 8, right - width - 8);
-        target_y = target_y.clamp(top + 8, bottom - height - 8);
-    }
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let (anchor_x, anchor_y) = tray_anchor_point(tray_rect, click_position, scale_factor);
+    let target_x = (anchor_x.round() as i32) - width / 2;
+    let target_y = anchor_y.round() as i32;
 
     let _ = window.set_position(Position::Physical(PhysicalPosition::new(
         target_x, target_y,
@@ -218,7 +216,6 @@ fn main() {
                             } else {
                                 position_popover_window(&window, &position, &rect);
                                 let _ = window.show();
-                                let _ = window.set_focus();
                             }
                         }
                     }

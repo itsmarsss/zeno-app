@@ -9,13 +9,7 @@ type AppSettingsContextValue = {
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 
-export function AppSettingsProvider({
-  value,
-  children,
-}: {
-  value: AppSettingsContextValue
-  children: ReactNode
-}) {
+export function AppSettingsProvider({ value, children }: { value: AppSettingsContextValue; children: ReactNode }) {
   return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>
 }
 

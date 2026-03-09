@@ -8,7 +8,17 @@ import { MainWindowShell } from './components/MainWindowShell'
 import { QuickActionsPopover } from './components/QuickActionsPopover'
 import { AppSettingsProvider } from './context/AppSettingsContext'
 import { BREATHING_PATTERNS } from './shared/constants'
-import { friendlyPosture, pointY, prettyTime, sessionFromHistory, sparklinePath, stressIndex, stressIndexFromHistory, stressState, trendStats } from './shared/metrics'
+import {
+  friendlyPosture,
+  pointY,
+  prettyTime,
+  sessionFromHistory,
+  sparklinePath,
+  stressIndex,
+  stressIndexFromHistory,
+  stressState,
+  trendStats,
+} from './shared/metrics'
 import type {
   AppSettings,
   BreathingPatternId,
@@ -101,7 +111,7 @@ function App() {
   }
 
   const stopBreathing = useCallback(async () => {
-    const hrEnd = breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm ?? null
+    const hrEnd = breathingUseHrSensing ? breathingLiveHr : (result?.heart_rate_bpm ?? null)
     const hrStart = breathingStartHr
     const hrDelta = hrStart == null || hrEnd == null ? null : Math.round((hrEnd - hrStart) * 10) / 10
     const cyclesCompleted = Math.max(0, breathingCycle - 1)
@@ -128,11 +138,18 @@ function App() {
             : 'Heart rate unchanged'
       setBreathingSummary(summary)
     } else {
-    setBreathingSummary('Session complete')
+      setBreathingSummary('Session complete')
     }
     setBreathingActive(false)
     setBreathingLiveHr(null)
-  }, [breathingCycle, breathingLiveHr, breathingPattern, breathingStartHr, breathingUseHrSensing, result?.heart_rate_bpm])
+  }, [
+    breathingCycle,
+    breathingLiveHr,
+    breathingPattern,
+    breathingStartHr,
+    breathingUseHrSensing,
+    result?.heart_rate_bpm,
+  ])
 
   useEffect(() => {
     let rafId = 0
@@ -323,7 +340,7 @@ function App() {
     setBreathingPhaseIndex(0)
     setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
     setBreathingCycle(1)
-    setBreathingStartHr(breathingUseHrSensing ? null : result?.heart_rate_bpm ?? null)
+    setBreathingStartHr(breathingUseHrSensing ? null : (result?.heart_rate_bpm ?? null))
     setBreathingLiveHr(null)
     setBreathingSummary(null)
   }
@@ -342,29 +359,33 @@ function App() {
     setBreakSummary(null)
   }, [])
 
-  const finishBreak = useCallback(async (reason: 'complete' | 'early') => {
-    const elapsedRatio = breakTargetSec <= 0 ? 0 : (breakTargetSec - breakRemainingSec) / breakTargetSec
-    const presenceBased = breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
-    const durationBased = Math.max(0, Math.min(100, Math.round(elapsedRatio * 100)))
-    const qualityScore = breakUseGenuinityChecks ? presenceBased : durationBased
-    const genuineBreak = breakUseGenuinityChecks ? qualityScore >= 60 : reason === 'complete'
-    try {
-      await invoke('run_log_break_session', {
-        breakSeconds: breakTargetSec,
-        awaySeconds: breakAwaySeconds,
-        qualityScore,
-        genuineBreak,
-        triggeredBy: 'manual',
-      })
-    } catch {
-      // Silent fallback.
-    }
-    if (reason === 'complete') {
-      setBreakSummary(`${genuineBreak ? 'Genuine break.' : 'Mostly at desk.'} Score ${qualityScore}.`)
-    } else {
-      setBreakSummary(`Break ended early. Score ${qualityScore}.`)
-    }
-  }, [breakAwaySeconds, breakRemainingSec, breakTargetSec, breakUseGenuinityChecks])
+  const finishBreak = useCallback(
+    async (reason: 'complete' | 'early') => {
+      const elapsedRatio = breakTargetSec <= 0 ? 0 : (breakTargetSec - breakRemainingSec) / breakTargetSec
+      const presenceBased =
+        breakTargetSec <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((breakAwaySeconds / breakTargetSec) * 100)))
+      const durationBased = Math.max(0, Math.min(100, Math.round(elapsedRatio * 100)))
+      const qualityScore = breakUseGenuinityChecks ? presenceBased : durationBased
+      const genuineBreak = breakUseGenuinityChecks ? qualityScore >= 60 : reason === 'complete'
+      try {
+        await invoke('run_log_break_session', {
+          breakSeconds: breakTargetSec,
+          awaySeconds: breakAwaySeconds,
+          qualityScore,
+          genuineBreak,
+          triggeredBy: 'manual',
+        })
+      } catch {
+        // Silent fallback.
+      }
+      if (reason === 'complete') {
+        setBreakSummary(`${genuineBreak ? 'Genuine break.' : 'Mostly at desk.'} Score ${qualityScore}.`)
+      } else {
+        setBreakSummary(`Break ended early. Score ${qualityScore}.`)
+      }
+    },
+    [breakAwaySeconds, breakRemainingSec, breakTargetSec, breakUseGenuinityChecks],
+  )
 
   useEffect(() => {
     finishBreakRef.current = finishBreak
@@ -476,11 +497,14 @@ function App() {
         setLastNudge(`Gesture dismiss detected. Nudges snoozed for ${event.payload.snooze_minutes} minutes.`)
       })
 
-      unlistenBreakAuto = await listen<{ break_seconds: number; elapsed_minutes: number }>('break-auto-trigger', (event) => {
-        if (breakActiveRef.current) return
-        startBreak(event.payload?.break_seconds ?? 300)
-        setBreakSummary(`Auto break after ${event.payload?.elapsed_minutes ?? 90}m focus.`)
-      })
+      unlistenBreakAuto = await listen<{ break_seconds: number; elapsed_minutes: number }>(
+        'break-auto-trigger',
+        (event) => {
+          if (breakActiveRef.current) return
+          startBreak(event.payload?.break_seconds ?? 300)
+          setBreakSummary(`Auto break after ${event.payload?.elapsed_minutes ?? 90}m focus.`)
+        },
+      )
     }
 
     void setup()
@@ -508,330 +532,416 @@ function App() {
           isCheckInRunning={status === 'Running'}
         />
       ) : (
-    <main className="popover">
-      <AnimatePresence>
-        {showOnboarding && (
-        <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <motion.section className="onboarding" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-            <h2>Welcome to Zeno</h2>
-            <p>Zeno runs quietly in your menubar and checks your posture and stress privately on-device.</p>
-            <ol>
-              <li>Use <strong>Check In</strong> for an immediate snapshot.</li>
-              <li>First 3 sessions establish your personal baseline.</li>
-              <li>Open <strong>View report</strong> to see daily trends.</li>
-            </ol>
-            <div className="row-end">
-              <button className="btn-ghost" onClick={() => setShowOnboarding(false)}>Later</button>
-              <button className="btn-solid" onClick={completeOnboarding}>Got it</button>
-            </div>
-          </motion.section>
-        </motion.div>
-      )}
-      </AnimatePresence>
-
-      <header className="headerbar" onMouseDown={handleHeaderMouseDown}>
-        <div className="brand">
-          <span className={`dot dot--${settings?.monitoring_paused ? 'paused' : status === 'Running' ? 'capturing' : 'active'}`} />
-          <h1>zeno</h1>
-        </div>
-        <div className="header-actions">
-          {activePage === 'home' ? (
-            <button className="icon-btn" onClick={() => void openMainWindow()}>Open app</button>
-          ) : (
-            <button className="icon-btn" onClick={() => setActivePage('home')}>Back</button>
-          )}
-          <button className="icon-btn icon-btn-close" aria-label="Close window" title="Close" onClick={closeWindow}>×</button>
-        </div>
-      </header>
-      <div className="content-scroll">
-        <AnimatePresence initial={false}>
-        {breakSummary && activePage === 'home' && (
-          <motion.section className="breathing-summary" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <p className="label">Break</p>
-            <p>{breakSummary}</p>
-          </motion.section>
-        )}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-        {breakActive && activePage === 'home' && (
-          <motion.section className="breathing-panel" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <div className="breathing-head">
-              <p className="label">Break timer</p>
-              <button className="icon-btn" onClick={stopBreak}>Stop</button>
-            </div>
-            <p className="breathing-hr">
-              {String(breakMinutes).padStart(2, '0')}:{String(breakSeconds).padStart(2, '0')}
-            </p>
-            <p className="breathing-countdown">
-              {breakUseGenuinityChecks ? `away ${breakAwaySeconds}s / ${breakTargetSec}s` : 'genuinity checks off'}
-            </p>
-            <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
-          </motion.section>
-        )}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-        {breathingSummary && activePage === 'home' && (
-          <motion.section className="breathing-summary" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <p className="label">Done</p>
-            <p>{breathingSummary}</p>
-          </motion.section>
-        )}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-        {breathingActive && activePage === 'home' && !breakActive && (
-          <motion.section className="breathing-panel" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <div className="breathing-head">
-              <p className="label">{activePattern.name}</p>
-              <button className="icon-btn" onClick={() => void stopBreathing()}>Stop</button>
-            </div>
-            <p className="breathing-hr">
-              {((breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) == null)
-                ? '--'
-                : Math.round((breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) as number)}{' '}
-              <span>bpm</span>
-            </p>
-            <div className={`breathing-circle ${breathingPhase.label.toLowerCase()}`}>
-              <span>{breathingPhase.label}</span>
-            </div>
-            <p className="breathing-countdown">{breathingRemainingSeconds}s</p>
-            <p className="breathing-cycle">Cycle {breathingCycle} of {activePattern.cycles}</p>
-          </motion.section>
-        )}
-        </AnimatePresence>
-
-        <AnimatePresence mode="wait" initial={false}>
-        {activePage === 'home' && !breathingActive && !breakActive && (
-          <motion.div key="popover-home" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <section className="stress-card">
-              <p className="label">stress index</p>
-              <div className={`stress-value stress-value--${stressLabel}`}>{Math.round(displayedStress)}</div>
-              <p className="stress-sub">{stressLabel}</p>
-              <div className="stress-bar"><div className={`stress-fill stress-fill--${stressLabel}`} style={{ width: stressFill }} /></div>
-            </section>
-
-            <div className="divider" />
-
-            <section className="stats-row">
-              <article className="stat-cell">
-                <span className="stat-value">{result?.heart_rate_bpm == null ? '--' : `${result.heart_rate_bpm}`}</span>
-                <span className="stat-label">heart rate bpm</span>
-              </article>
-              <article className="stat-cell">
-                <span className="stat-value">{sessionCountToday}</span>
-                <span className="stat-label">sessions today</span>
-              </article>
-              <article className="stat-cell">
-                <span className="stat-value">{friendlyPosture(result?.posture_score ?? 0)}</span>
-                <span className="stat-label">posture</span>
-              </article>
-            </section>
-
-            <div className="divider" />
-
-            <section className={`nudge-row nudge-row--${stressLabel}`}>
-              <p className="label">last nudge</p>
-              <p className="nudge-msg">{lastNudge}</p>
-              <p className="nudge-time">{result ? prettyTime(result.timestamp) : '--:--'}</p>
-            </section>
-          </motion.div>
-        )}
-        </AnimatePresence>
-
-        <AnimatePresence mode="wait" initial={false}>
-        {activePage === 'report' && (
-          <motion.section key="popover-report" className="report-panel report-page" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-            {dailyReport ? (
-              <>
-                <h3>{new Date(dailyReport.date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-                <div className="report-kpis">
-                  <span>Avg stress {dailyReport.average_stress_index}</span>
-                  <span>Focused {dailyReport.focused_minutes} min</span>
-                  <span>{dailyReport.sessions} sessions</span>
-                </div>
-                <div className="chart-wrap">
-                  <p>Posture trend</p>
-                  <div className="chart-stats">
-                    <span>Now {postureStats.latest}</span>
-                    <span>Low {postureStats.low}</span>
-                    <span>High {postureStats.high}</span>
-                  </div>
-                  <svg viewBox="0 0 260 74" preserveAspectRatio="none">
-                    <path className="line-posture" d={sparklinePath(postureTrend, 260, 74)} />
-                    {postureTrendPoints.map((point, index) => (
-                      <circle
-                        key={`${point.time}-posture`}
-                        className="trend-dot trend-dot--posture"
-                        cx={postureTrendPoints.length === 1 ? 130 : (index * 260) / (postureTrendPoints.length - 1)}
-                        cy={pointY(point.value, 74)}
-                        r="2.2"
-                      >
-                        <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • posture ${point.value}`}</title>
-                      </circle>
-                    ))}
-                  </svg>
-                </div>
-                <div className="chart-wrap">
-                  <p>Stress trend</p>
-                  <div className="chart-stats">
-                    <span>Now {stressStats.latest}</span>
-                    <span>Low {stressStats.low}</span>
-                    <span>High {stressStats.high}</span>
-                  </div>
-                  <svg viewBox="0 0 260 74" preserveAspectRatio="none">
-                    <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
-                    {stressTrendPoints.map((point, index) => (
-                      <circle
-                        key={`${point.time}-stress`}
-                        className="trend-dot trend-dot--stress"
-                        cx={stressTrendPoints.length === 1 ? 130 : (index * 260) / (stressTrendPoints.length - 1)}
-                        cy={pointY(point.value, 74)}
-                        r="2.2"
-                      >
-                        <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • stress ${point.value}`}</title>
-                      </circle>
-                    ))}
-                  </svg>
-                </div>
-                <p className="recommendation">{dailyReport.recommendation}</p>
-              </>
-            ) : (
-              <p className="recommendation">No report yet. Run a check in first.</p>
-            )}
-
-            <div className="history-block">
-              <p className="label">recent sessions</p>
-              {history.length === 0 ? (
-                <p className="recommendation">No historical sessions found in local database.</p>
-              ) : (
-                <ul className="history-list">
-                  {history.slice(0, 12).map((item) => (
-                    <li className="history-item" key={item.id}>
-                      <span className="history-time">{new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                      <span className="history-pill">S {stressIndexFromHistory(item)}</span>
-                      <span className="history-pill">P {friendlyPosture(item.posture_score)}</span>
+        <main className="popover">
+          <AnimatePresence>
+            {showOnboarding && (
+              <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <motion.section
+                  className="onboarding"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                >
+                  <h2>Welcome to Zeno</h2>
+                  <p>Zeno runs quietly in your menubar and checks your posture and stress privately on-device.</p>
+                  <ol>
+                    <li>
+                      Use <strong>Check In</strong> for an immediate snapshot.
                     </li>
-                  ))}
-                </ul>
-              )}
+                    <li>First 3 sessions establish your personal baseline.</li>
+                    <li>
+                      Open <strong>View report</strong> to see daily trends.
+                    </li>
+                  </ol>
+                  <div className="row-end">
+                    <button className="btn-ghost" onClick={() => setShowOnboarding(false)}>
+                      Later
+                    </button>
+                    <button className="btn-solid" onClick={completeOnboarding}>
+                      Got it
+                    </button>
+                  </div>
+                </motion.section>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <header className="headerbar" onMouseDown={handleHeaderMouseDown}>
+            <div className="brand">
+              <span
+                className={`dot dot--${settings?.monitoring_paused ? 'paused' : status === 'Running' ? 'capturing' : 'active'}`}
+              />
+              <h1>zeno</h1>
             </div>
-          </motion.section>
-        )}
-        </AnimatePresence>
+            <div className="header-actions">
+              {activePage === 'home' ? (
+                <button className="icon-btn" onClick={() => void openMainWindow()}>
+                  Open app
+                </button>
+              ) : (
+                <button className="icon-btn" onClick={() => setActivePage('home')}>
+                  Back
+                </button>
+              )}
+              <button className="icon-btn icon-btn-close" aria-label="Close window" title="Close" onClick={closeWindow}>
+                ×
+              </button>
+            </div>
+          </header>
+          <div className="content-scroll">
+            <AnimatePresence initial={false}>
+              {breakSummary && activePage === 'home' && (
+                <motion.section
+                  className="breathing-summary"
+                  variants={fadeSlide}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <p className="label">Break</p>
+                  <p>{breakSummary}</p>
+                </motion.section>
+              )}
+            </AnimatePresence>
 
-      </div>
+            <AnimatePresence initial={false}>
+              {breakActive && activePage === 'home' && (
+                <motion.section
+                  className="breathing-panel"
+                  variants={fadeSlide}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <div className="breathing-head">
+                    <p className="label">Break timer</p>
+                    <button className="icon-btn" onClick={stopBreak}>
+                      Stop
+                    </button>
+                  </div>
+                  <p className="breathing-hr">
+                    {String(breakMinutes).padStart(2, '0')}:{String(breakSeconds).padStart(2, '0')}
+                  </p>
+                  <p className="breathing-countdown">
+                    {breakUseGenuinityChecks
+                      ? `away ${breakAwaySeconds}s / ${breakTargetSec}s`
+                      : 'genuinity checks off'}
+                  </p>
+                  <p className="breathing-cycle">Step away from the screen for a few minutes.</p>
+                </motion.section>
+              )}
+            </AnimatePresence>
 
-      <AnimatePresence>
-      {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-        <QuickActionsPopover
-          quickActionStep={quickActionStep}
-          setQuickActionStep={setQuickActionStep}
-          breathingPattern={breathingPattern}
-          setBreathingPattern={setBreathingPattern}
-          breathingUseHrSensing={breathingUseHrSensing}
-          setBreathingUseHrSensing={setBreathingUseHrSensing}
-          breakUseGenuinityChecks={breakUseGenuinityChecks}
-          setBreakUseGenuinityChecks={setBreakUseGenuinityChecks}
-          breakPlannedMinutes={breakPlannedMinutes}
-          setBreakPlannedMinutes={setBreakPlannedMinutes}
-          onStartBreathing={() => {
-            setShowQuickActions(false)
-            setQuickActionStep('menu')
-            startBreathing()
-          }}
-          onStartBreak={(seconds) => {
-            setShowQuickActions(false)
-            setQuickActionStep('menu')
-            startBreak(seconds)
-          }}
-          onClose={() => {
-            setShowQuickActions(false)
-            setQuickActionStep('menu')
-          }}
-        />
-        </motion.div>
+            <AnimatePresence initial={false}>
+              {breathingSummary && activePage === 'home' && (
+                <motion.section
+                  className="breathing-summary"
+                  variants={fadeSlide}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <p className="label">Done</p>
+                  <p>{breathingSummary}</p>
+                </motion.section>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence initial={false}>
+              {breathingActive && activePage === 'home' && !breakActive && (
+                <motion.section
+                  className="breathing-panel"
+                  variants={fadeSlide}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <div className="breathing-head">
+                    <p className="label">{activePattern.name}</p>
+                    <button className="icon-btn" onClick={() => void stopBreathing()}>
+                      Stop
+                    </button>
+                  </div>
+                  <p className="breathing-hr">
+                    {(breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) == null
+                      ? '--'
+                      : Math.round((breathingUseHrSensing ? breathingLiveHr : result?.heart_rate_bpm) as number)}{' '}
+                    <span>bpm</span>
+                  </p>
+                  <div className={`breathing-circle ${breathingPhase.label.toLowerCase()}`}>
+                    <span>{breathingPhase.label}</span>
+                  </div>
+                  <p className="breathing-countdown">{breathingRemainingSeconds}s</p>
+                  <p className="breathing-cycle">
+                    Cycle {breathingCycle} of {activePattern.cycles}
+                  </p>
+                </motion.section>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait" initial={false}>
+              {activePage === 'home' && !breathingActive && !breakActive && (
+                <motion.div key="popover-home" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+                  <section className="stress-card">
+                    <p className="label">stress index</p>
+                    <div className={`stress-value stress-value--${stressLabel}`}>{Math.round(displayedStress)}</div>
+                    <p className="stress-sub">{stressLabel}</p>
+                    <div className="stress-bar">
+                      <div className={`stress-fill stress-fill--${stressLabel}`} style={{ width: stressFill }} />
+                    </div>
+                  </section>
+
+                  <div className="divider" />
+
+                  <section className="stats-row">
+                    <article className="stat-cell">
+                      <span className="stat-value">
+                        {result?.heart_rate_bpm == null ? '--' : `${result.heart_rate_bpm}`}
+                      </span>
+                      <span className="stat-label">heart rate bpm</span>
+                    </article>
+                    <article className="stat-cell">
+                      <span className="stat-value">{sessionCountToday}</span>
+                      <span className="stat-label">sessions today</span>
+                    </article>
+                    <article className="stat-cell">
+                      <span className="stat-value">{friendlyPosture(result?.posture_score ?? 0)}</span>
+                      <span className="stat-label">posture</span>
+                    </article>
+                  </section>
+
+                  <div className="divider" />
+
+                  <section className={`nudge-row nudge-row--${stressLabel}`}>
+                    <p className="label">last nudge</p>
+                    <p className="nudge-msg">{lastNudge}</p>
+                    <p className="nudge-time">{result ? prettyTime(result.timestamp) : '--:--'}</p>
+                  </section>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait" initial={false}>
+              {activePage === 'report' && (
+                <motion.section
+                  key="popover-report"
+                  className="report-panel report-page"
+                  variants={fadeSlide}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  {dailyReport ? (
+                    <>
+                      <h3>
+                        {new Date(dailyReport.date).toLocaleDateString([], {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </h3>
+                      <div className="report-kpis">
+                        <span>Avg stress {dailyReport.average_stress_index}</span>
+                        <span>Focused {dailyReport.focused_minutes} min</span>
+                        <span>{dailyReport.sessions} sessions</span>
+                      </div>
+                      <div className="chart-wrap">
+                        <p>Posture trend</p>
+                        <div className="chart-stats">
+                          <span>Now {postureStats.latest}</span>
+                          <span>Low {postureStats.low}</span>
+                          <span>High {postureStats.high}</span>
+                        </div>
+                        <svg viewBox="0 0 260 74" preserveAspectRatio="none">
+                          <path className="line-posture" d={sparklinePath(postureTrend, 260, 74)} />
+                          {postureTrendPoints.map((point, index) => (
+                            <circle
+                              key={`${point.time}-posture`}
+                              className="trend-dot trend-dot--posture"
+                              cx={
+                                postureTrendPoints.length === 1 ? 130 : (index * 260) / (postureTrendPoints.length - 1)
+                              }
+                              cy={pointY(point.value, 74)}
+                              r="2.2"
+                            >
+                              <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • posture ${point.value}`}</title>
+                            </circle>
+                          ))}
+                        </svg>
+                      </div>
+                      <div className="chart-wrap">
+                        <p>Stress trend</p>
+                        <div className="chart-stats">
+                          <span>Now {stressStats.latest}</span>
+                          <span>Low {stressStats.low}</span>
+                          <span>High {stressStats.high}</span>
+                        </div>
+                        <svg viewBox="0 0 260 74" preserveAspectRatio="none">
+                          <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
+                          {stressTrendPoints.map((point, index) => (
+                            <circle
+                              key={`${point.time}-stress`}
+                              className="trend-dot trend-dot--stress"
+                              cx={stressTrendPoints.length === 1 ? 130 : (index * 260) / (stressTrendPoints.length - 1)}
+                              cy={pointY(point.value, 74)}
+                              r="2.2"
+                            >
+                              <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • stress ${point.value}`}</title>
+                            </circle>
+                          ))}
+                        </svg>
+                      </div>
+                      <p className="recommendation">{dailyReport.recommendation}</p>
+                    </>
+                  ) : (
+                    <p className="recommendation">No report yet. Run a check in first.</p>
+                  )}
+
+                  <div className="history-block">
+                    <p className="label">recent sessions</p>
+                    {history.length === 0 ? (
+                      <p className="recommendation">No historical sessions found in local database.</p>
+                    ) : (
+                      <ul className="history-list">
+                        {history.slice(0, 12).map((item) => (
+                          <li className="history-item" key={item.id}>
+                            <span className="history-time">
+                              {new Date(item.created_at).toLocaleString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            <span className="history-pill">S {stressIndexFromHistory(item)}</span>
+                            <span className="history-pill">P {friendlyPosture(item.posture_score)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </motion.section>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <AnimatePresence>
+            {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
+                <QuickActionsPopover
+                  quickActionStep={quickActionStep}
+                  setQuickActionStep={setQuickActionStep}
+                  breathingPattern={breathingPattern}
+                  setBreathingPattern={setBreathingPattern}
+                  breathingUseHrSensing={breathingUseHrSensing}
+                  setBreathingUseHrSensing={setBreathingUseHrSensing}
+                  breakUseGenuinityChecks={breakUseGenuinityChecks}
+                  setBreakUseGenuinityChecks={setBreakUseGenuinityChecks}
+                  breakPlannedMinutes={breakPlannedMinutes}
+                  setBreakPlannedMinutes={setBreakPlannedMinutes}
+                  onStartBreathing={() => {
+                    setShowQuickActions(false)
+                    setQuickActionStep('menu')
+                    startBreathing()
+                  }}
+                  onStartBreak={(seconds) => {
+                    setShowQuickActions(false)
+                    setQuickActionStep('menu')
+                    startBreak(seconds)
+                  }}
+                  onClose={() => {
+                    setShowQuickActions(false)
+                    setQuickActionStep('menu')
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <footer className="footerbar">
+            {activePage === 'home' ? (
+              <button
+                className="icon-action-btn"
+                onClick={() => setActivePage('report')}
+                aria-label="Open report"
+                title="Report"
+              >
+                <ChartNoAxesCombined className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+              </button>
+            ) : (
+              <button
+                className="icon-action-btn"
+                onClick={() => setActivePage('home')}
+                aria-label="Go to home"
+                title="Home"
+              >
+                <House className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+              </button>
+            )}
+            <button
+              className="icon-action-btn"
+              onClick={() => void openMainWindow()}
+              aria-label="Open main app window"
+              title="Open app"
+            >
+              <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+            </button>
+            {activePage === 'home' && !breathingActive && !breakActive && (
+              <button
+                className="icon-action-btn"
+                onClick={() =>
+                  setShowQuickActions((v) => {
+                    const next = !v
+                    if (next) setQuickActionStep('menu')
+                    return next
+                  })
+                }
+                aria-label="Open quick actions"
+                title="Actions"
+              >
+                <Ellipsis className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+                <span className="sr-only">Actions</span>
+              </button>
+            )}
+            {activePage === 'home' && breathingActive && (
+              <button className="report-link" onClick={() => void stopBreathing()}>
+                Stop
+              </button>
+            )}
+            {activePage === 'home' && breakActive && (
+              <button className="report-link" onClick={stopBreak}>
+                End break
+              </button>
+            )}
+            <div className="toggle-wrap">
+              <button
+                className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
+                onClick={toggleFocusMode}
+              >
+                {settings?.focus_mode_active ? 'Focus on' : 'Focus off'}
+              </button>
+              <span>Pause</span>
+              <button
+                className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}
+                onClick={() => updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
+                aria-label="Toggle monitoring"
+              >
+                <span className="knob" />
+              </button>
+            </div>
+          </footer>
+
+          {activePage === 'home' && !breathingActive && !breakActive && (
+            <button
+              className="checkin-fab"
+              onClick={runSession}
+              disabled={!canRun || settings?.monitoring_paused || breakActive}
+            >
+              {status === 'Running' ? 'Checking' : 'Check in'}
+            </button>
+          )}
+        </main>
       )}
-      </AnimatePresence>
-
-      <footer className="footerbar">
-        {activePage === 'home' ? (
-          <button
-            className="icon-action-btn"
-            onClick={() => setActivePage('report')}
-            aria-label="Open report"
-            title="Report"
-          >
-            <ChartNoAxesCombined className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-          </button>
-        ) : (
-          <button
-            className="icon-action-btn"
-            onClick={() => setActivePage('home')}
-            aria-label="Go to home"
-            title="Home"
-          >
-            <House className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-          </button>
-        )}
-        <button
-          className="icon-action-btn"
-          onClick={() => void openMainWindow()}
-          aria-label="Open main app window"
-          title="Open app"
-        >
-          <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-        </button>
-        {activePage === 'home' && !breathingActive && !breakActive && (
-          <button
-            className="icon-action-btn"
-            onClick={() =>
-              setShowQuickActions((v) => {
-                const next = !v
-                if (next) setQuickActionStep('menu')
-                return next
-              })
-            }
-            aria-label="Open quick actions"
-            title="Actions"
-          >
-            <Ellipsis className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-            <span className="sr-only">Actions</span>
-          </button>
-        )}
-        {activePage === 'home' && breathingActive && (
-          <button className="report-link" onClick={() => void stopBreathing()}>Stop</button>
-        )}
-        {activePage === 'home' && breakActive && (
-          <button className="report-link" onClick={stopBreak}>End break</button>
-        )}
-        <div className="toggle-wrap">
-          <button
-            className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
-            onClick={toggleFocusMode}
-          >
-            {settings?.focus_mode_active ? 'Focus on' : 'Focus off'}
-          </button>
-          <span>Pause</span>
-          <button
-            className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}
-            onClick={() => updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
-            aria-label="Toggle monitoring"
-          >
-            <span className="knob" />
-          </button>
-        </div>
-      </footer>
-
-      {activePage === 'home' && !breathingActive && !breakActive && (
-        <button className="checkin-fab" onClick={runSession} disabled={!canRun || settings?.monitoring_paused || breakActive}>
-          {status === 'Running' ? 'Checking' : 'Check in'}
-        </button>
-      )}
-    </main>
-    )}
     </AppSettingsProvider>
   )
 }

@@ -11,9 +11,13 @@ const NAV_ITEMS: Array<{ id: MainTab; label: string }> = [
 export function SidebarNav({ tab, setTab }: { tab: MainTab; setTab: (tab: MainTab) => void }) {
   return (
     <aside className="main-sidebar">
-      <h2>Zeno</h2>
+      <h2>zeno</h2>
       {NAV_ITEMS.map((item) => (
-        <button key={item.id} className={tab === item.id ? 'main-nav is-active' : 'main-nav'} onClick={() => setTab(item.id)}>
+        <button
+          key={item.id}
+          className={tab === item.id ? 'main-nav is-active' : 'main-nav'}
+          onClick={() => setTab(item.id)}
+        >
           {item.label}
         </button>
       ))}

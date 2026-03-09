@@ -158,14 +158,26 @@ export function SettingsTab({
               <strong>Passive monitoring</strong>
               <p>Check in every few minutes while you work</p>
             </div>
-            <button className={`toggle ${passiveMonitoring ? 'is-active' : 'is-paused'}`} onClick={() => void updateSettings({ monitoring_paused: passiveMonitoring })} aria-label="Toggle passive monitoring">
+            <button
+              className={`toggle ${passiveMonitoring ? 'is-active' : 'is-paused'}`}
+              onClick={() => void updateSettings({ monitoring_paused: passiveMonitoring })}
+              aria-label="Toggle passive monitoring"
+            >
               <span className="knob" />
             </button>
           </div>
 
-          <button className={`settings-row settings-row--select ${!passiveMonitoring ? 'is-disabled' : ''}`} disabled={!passiveMonitoring} onClick={() => setActiveSheet('frequency')}>
-            <div><strong>Check-in frequency</strong></div>
-            <span>{selectLabel('frequency')} <ChevronRight size={14} /></span>
+          <button
+            className={`settings-row settings-row--select ${!passiveMonitoring ? 'is-disabled' : ''}`}
+            disabled={!passiveMonitoring}
+            onClick={() => setActiveSheet('frequency')}
+          >
+            <div>
+              <strong>Check-in frequency</strong>
+            </div>
+            <span>
+              {selectLabel('frequency')} <ChevronRight size={14} />
+            </span>
           </button>
 
           <button className="settings-row settings-row--select" onClick={() => setActiveSheet('focus_warning')}>
@@ -173,7 +185,9 @@ export function SettingsTab({
               <strong>Focus session warning</strong>
               <p>Alert me when a session runs long</p>
             </div>
-            <span>{selectLabel('focus_warning')} <ChevronRight size={14} /></span>
+            <span>
+              {selectLabel('focus_warning')} <ChevronRight size={14} />
+            </span>
           </button>
 
           <div className="settings-row settings-row--toggle">
@@ -181,14 +195,22 @@ export function SettingsTab({
               <strong>Show camera indicator</strong>
               <p>Green dot in menubar when camera is active</p>
             </div>
-            <button className={`toggle ${cameraIndicator ? 'is-active' : 'is-paused'}`} onClick={() => setCameraIndicator((value) => !value)} aria-label="Toggle camera indicator">
+            <button
+              className={`toggle ${cameraIndicator ? 'is-active' : 'is-paused'}`}
+              onClick={() => setCameraIndicator((value) => !value)}
+              aria-label="Toggle camera indicator"
+            >
               <span className="knob" />
             </button>
           </div>
 
           <button className="settings-row settings-row--select" onClick={() => setActiveSheet('start_mode')}>
-            <div><strong>Start Zeno</strong></div>
-            <span>{selectLabel('start_mode')} <ChevronRight size={14} /></span>
+            <div>
+              <strong>Start Zeno</strong>
+            </div>
+            <span>
+              {selectLabel('start_mode')} <ChevronRight size={14} />
+            </span>
           </button>
         </div>
       </section>
@@ -197,28 +219,64 @@ export function SettingsTab({
         <p className="settings-section-title">When Zeno speaks up</p>
         <div className="settings-card">
           <div className="settings-row settings-row--toggle">
-            <div><strong>Posture nudges</strong><p>Tell me when I'm slouching</p></div>
-            <button className={`toggle ${postureNudges ? 'is-active' : 'is-paused'}`} onClick={() => setPostureNudges((value) => !value)} aria-label="Toggle posture nudges"><span className="knob" /></button>
+            <div>
+              <strong>Posture nudges</strong>
+              <p>Tell me when I'm slouching</p>
+            </div>
+            <button
+              className={`toggle ${postureNudges ? 'is-active' : 'is-paused'}`}
+              onClick={() => setPostureNudges((value) => !value)}
+              aria-label="Toggle posture nudges"
+            >
+              <span className="knob" />
+            </button>
           </div>
 
           <div className="settings-row settings-row--toggle">
-            <div><strong>Stress nudges</strong><p>Suggest breaks when stress is elevated</p></div>
-            <button className={`toggle ${stressNudges ? 'is-active' : 'is-paused'}`} onClick={() => setStressNudges((value) => !value)} aria-label="Toggle stress nudges"><span className="knob" /></button>
+            <div>
+              <strong>Stress nudges</strong>
+              <p>Suggest breaks when stress is elevated</p>
+            </div>
+            <button
+              className={`toggle ${stressNudges ? 'is-active' : 'is-paused'}`}
+              onClick={() => setStressNudges((value) => !value)}
+              aria-label="Toggle stress nudges"
+            >
+              <span className="knob" />
+            </button>
           </div>
 
           <div className="settings-row settings-row--toggle">
-            <div><strong>Break reminders</strong><p>Remind me to step away after long sessions</p></div>
-            <button className={`toggle ${breakReminders ? 'is-active' : 'is-paused'}`} onClick={() => setBreakReminders((value) => !value)} aria-label="Toggle break reminders"><span className="knob" /></button>
+            <div>
+              <strong>Break reminders</strong>
+              <p>Remind me to step away after long sessions</p>
+            </div>
+            <button
+              className={`toggle ${breakReminders ? 'is-active' : 'is-paused'}`}
+              onClick={() => setBreakReminders((value) => !value)}
+              aria-label="Toggle break reminders"
+            >
+              <span className="knob" />
+            </button>
           </div>
 
           <button className="settings-row settings-row--select" onClick={() => setActiveSheet('nudge_gap')}>
-            <div><strong>Minimum time between nudges</strong><p>Avoid being interrupted too often</p></div>
-            <span>{selectLabel('nudge_gap')} <ChevronRight size={14} /></span>
+            <div>
+              <strong>Minimum time between nudges</strong>
+              <p>Avoid being interrupted too often</p>
+            </div>
+            <span>
+              {selectLabel('nudge_gap')} <ChevronRight size={14} />
+            </span>
           </button>
 
           <button className="settings-row settings-row--select" onClick={() => setActiveSheet('report_time')}>
-            <div><strong>Daily report time</strong></div>
-            <span>{selectLabel('report_time')} <ChevronRight size={14} /></span>
+            <div>
+              <strong>Daily report time</strong>
+            </div>
+            <span>
+              {selectLabel('report_time')} <ChevronRight size={14} />
+            </span>
           </button>
         </div>
       </section>
@@ -227,13 +285,24 @@ export function SettingsTab({
         <p className="settings-section-title">Your data</p>
         <div className="settings-card">
           <button className="settings-row settings-row--action">
-            <div><strong>Export my data</strong><p>Download everything as CSV</p></div>
-            <span className="settings-action-cta"><Download size={14} /> Export</span>
+            <div>
+              <strong>Export my data</strong>
+              <p>Download everything as CSV</p>
+            </div>
+            <span className="settings-action-cta">
+              <Download size={14} /> Export
+            </span>
           </button>
 
           <button className="settings-row settings-row--select" onClick={() => setLicenseExpanded((value) => !value)}>
-            <div><strong>License key</strong><p>Enter your Zeno Pro key</p></div>
-            <span className={isPro ? 'settings-license-ok' : ''}>{isPro ? 'Pro · Active' : 'Not activated'} {isPro ? <CheckCircle2 size={14} /> : <ChevronRight size={14} />}</span>
+            <div>
+              <strong>License key</strong>
+              <p>Enter your Zeno Pro key</p>
+            </div>
+            <span className={isPro ? 'settings-license-ok' : ''}>
+              {isPro ? 'Pro · Active' : 'Not activated'}{' '}
+              {isPro ? <CheckCircle2 size={14} /> : <ChevronRight size={14} />}
+            </span>
           </button>
 
           <AnimatePresence initial={false}>
@@ -254,18 +323,31 @@ export function SettingsTab({
                       placeholder="ZENO-XXXX-XXXX-XXXX"
                     />
                     {licenseError ? <p className="settings-inline-error">{licenseError}</p> : null}
-                    <button className="btn-solid" disabled={licenseInput.trim().length === 0} onClick={() => void activateLicense()}>Activate</button>
+                    <button
+                      className="btn-solid"
+                      disabled={licenseInput.trim().length === 0}
+                      onClick={() => void activateLicense()}
+                    >
+                      Activate
+                    </button>
                   </>
                 ) : (
-                  <p className="settings-license-success"><CheckCircle2 size={16} /> Zeno Pro activated</p>
+                  <p className="settings-license-success">
+                    <CheckCircle2 size={16} /> Zeno Pro activated
+                  </p>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
 
           <button className="settings-row settings-row--danger" onClick={() => setClearExpanded((value) => !value)}>
-            <div><strong>Clear all data</strong><p>Permanently delete your history and baseline</p></div>
-            <span><Trash2 size={14} /></span>
+            <div>
+              <strong>Clear all data</strong>
+              <p>Permanently delete your history and baseline</p>
+            </div>
+            <span>
+              <Trash2 size={14} />
+            </span>
           </button>
 
           <AnimatePresence initial={false}>
@@ -277,10 +359,16 @@ export function SettingsTab({
                 exit={{ height: 0, opacity: 0 }}
                 transition={easeOut}
               >
-                <p>This will delete all session history, posture data, and your personal baseline. This cannot be undone.</p>
+                <p>
+                  This will delete all session history, posture data, and your personal baseline. This cannot be undone.
+                </p>
                 <div className="settings-inline-actions">
-                  <button className="btn-ghost" onClick={() => setClearExpanded(false)}>Cancel</button>
-                  <button className="btn-danger" onClick={() => void clearAllData()}>Delete everything</button>
+                  <button className="btn-ghost" onClick={() => setClearExpanded(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn-danger" onClick={() => void clearAllData()}>
+                    Delete everything
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -291,25 +379,50 @@ export function SettingsTab({
       <section className="settings-section">
         <p className="settings-section-title">About</p>
         <div className="settings-card">
-          <div className="settings-row settings-row--info"><strong>Version</strong><span>0.2.0</span></div>
+          <div className="settings-row settings-row--info">
+            <strong>Version</strong>
+            <span>0.2.0</span>
+          </div>
 
           <button className="settings-row settings-row--select" onClick={() => void checkUpdates()}>
-            <div><strong>Check for updates</strong></div>
+            <div>
+              <strong>Check for updates</strong>
+            </div>
             <span>
-              {checkingUpdates === 'loading' && <><Loader2 size={14} className="spin" /> Checking...</>}
-              {checkingUpdates === 'updated' && <><Check size={14} className="ok" /> Up to date</>}
-              {checkingUpdates === 'idle' && <><ChevronRight size={14} /></>}
+              {checkingUpdates === 'loading' && (
+                <>
+                  <Loader2 size={14} className="spin" /> Checking...
+                </>
+              )}
+              {checkingUpdates === 'updated' && (
+                <>
+                  <Check size={14} className="ok" /> Up to date
+                </>
+              )}
+              {checkingUpdates === 'idle' && (
+                <>
+                  <ChevronRight size={14} />
+                </>
+              )}
             </span>
           </button>
 
           <button className="settings-row settings-row--select">
-            <div><strong>Privacy policy</strong></div>
-            <span><ExternalLink size={12} /> <ChevronRight size={14} /></span>
+            <div>
+              <strong>Privacy policy</strong>
+            </div>
+            <span>
+              <ExternalLink size={12} /> <ChevronRight size={14} />
+            </span>
           </button>
 
           <button className="settings-row settings-row--select" onClick={replayOnboarding}>
-            <div><strong>Replay onboarding</strong></div>
-            <span><ChevronRight size={14} /></span>
+            <div>
+              <strong>Replay onboarding</strong>
+            </div>
+            <span>
+              <ChevronRight size={14} />
+            </span>
           </button>
 
           <div className="settings-row settings-row--info">
@@ -319,7 +432,11 @@ export function SettingsTab({
         </div>
       </section>
 
-      {!calibration?.calibrated && <p className="settings-footer-note">Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.</p>}
+      {!calibration?.calibrated && (
+        <p className="settings-footer-note">
+          Baseline in progress: {calibration?.sessions_remaining ?? 0} check-ins remaining.
+        </p>
+      )}
       <p className="settings-footer-note">Last run: {lastRunSource ?? 'none'}</p>
       {error && <p className="settings-footer-error">{error}</p>}
 
@@ -354,7 +471,9 @@ export function SettingsTab({
                   )
                 })}
               </div>
-              <button className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>Cancel</button>
+              <button className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>
+                Cancel
+              </button>
             </motion.div>
           </motion.div>
         )}

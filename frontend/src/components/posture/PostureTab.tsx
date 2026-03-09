@@ -53,40 +53,45 @@ export function PostureTab({
     return date
   }, [period])
 
-  const postureHistory = useMemo(
-    () => history.filter((item) => new Date(item.created_at) >= cutoff),
-    [history, cutoff],
-  )
+  const postureHistory = useMemo(() => history.filter((item) => new Date(item.created_at) >= cutoff), [history, cutoff])
 
   const postureChartPoints = useMemo(
     () =>
-      postureHistory.slice(0, 24).reverse().map((item, index) => {
-        const at = new Date(item.created_at)
-        return {
-          id: `${item.id}-${index}`,
-          label: at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-          value: Math.round(item.posture_score * 100),
-        }
-      }),
+      postureHistory
+        .slice(0, 24)
+        .reverse()
+        .map((item, index) => {
+          const at = new Date(item.created_at)
+          return {
+            id: `${item.id}-${index}`,
+            label: at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+            value: Math.round(item.posture_score * 100),
+          }
+        }),
     [postureHistory],
   )
 
   const latestHistoryScore = postureHistory[0] ? Math.round(postureHistory[0].posture_score * 100) : 0
   const isStarting = postureStreamState === 'connecting'
-  const liveScore = isStarting ? null : postureScoreLive == null ? latestHistoryScore : Math.round(postureScoreLive * 100)
-
-  const status = liveScore == null
+  const liveScore = isStarting
     ? null
-    :
-    liveScore >= 75
-      ? { title: 'Good alignment', detail: 'Your shoulders are level and spine neutral.', tone: 'good' as const }
-      : liveScore >= 58
-        ? { title: 'Chin forward', detail: 'Bring your chin back toward your neck.', tone: 'warn' as const }
-        : { title: 'Slouching', detail: 'Roll shoulders back and lift through your chest.', tone: 'bad' as const }
+    : postureScoreLive == null
+      ? latestHistoryScore
+      : Math.round(postureScoreLive * 100)
 
-  const shoulderDelta = postureLandmarks?.left_shoulder && postureLandmarks?.right_shoulder
-    ? Math.round((postureLandmarks.left_shoulder.y - postureLandmarks.right_shoulder.y) * 40)
-    : 0
+  const status =
+    liveScore == null
+      ? null
+      : liveScore >= 75
+        ? { title: 'Good alignment', detail: 'Your shoulders are level and spine neutral.', tone: 'good' as const }
+        : liveScore >= 58
+          ? { title: 'Chin forward', detail: 'Bring your chin back toward your neck.', tone: 'warn' as const }
+          : { title: 'Slouching', detail: 'Roll shoulders back and lift through your chest.', tone: 'bad' as const }
+
+  const shoulderDelta =
+    postureLandmarks?.left_shoulder && postureLandmarks?.right_shoulder
+      ? Math.round((postureLandmarks.left_shoulder.y - postureLandmarks.right_shoulder.y) * 40)
+      : 0
   const spineAngle = liveScore == null ? 0 : Math.max(6, Math.round((100 - liveScore) * 0.22 + 8))
 
   const issueCounts = useMemo(() => {
@@ -125,7 +130,12 @@ export function PostureTab({
 
       <motion.section className="posture-live-grid" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div className="posture-feed-wrap">
-          <PostureFrame frame={postureFrame} landmarks={postureLandmarks} alt="Posture stream" className="posture-preview posture-preview--live" />
+          <PostureFrame
+            frame={postureFrame}
+            landmarks={postureLandmarks}
+            alt="Posture stream"
+            className="posture-preview posture-preview--live"
+          />
           {!postureFrame && (
             <div className="posture-camera-off">
               <CameraOff size={24} />
@@ -149,7 +159,13 @@ export function PostureTab({
             <p className="posture-eyebrow">right now</p>
             <AnimatePresence mode="wait" initial={false}>
               {isStarting ? (
-                <motion.div key="loading-title" className="posture-status-loader posture-status-loader--title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+                <motion.div
+                  key="loading-title"
+                  className="posture-status-loader posture-status-loader--title"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                />
               ) : (
                 <motion.h2
                   key={status?.title ?? 'ready'}
@@ -165,7 +181,13 @@ export function PostureTab({
             </AnimatePresence>
             <AnimatePresence mode="wait" initial={false}>
               {isStarting ? (
-                <motion.div key="loading-sub" className="posture-status-loader posture-status-loader--sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+                <motion.div
+                  key="loading-sub"
+                  className="posture-status-loader posture-status-loader--sub"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                />
               ) : (
                 <motion.p
                   key={status?.detail ?? 'ready-sub'}
@@ -184,27 +206,42 @@ export function PostureTab({
 
             <div className="posture-metric-row">
               <span>Head position</span>
-              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(12, liveScore ?? 0)}%` }} /></div>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}>
+                <i style={{ width: `${Math.max(12, liveScore ?? 0)}%` }} />
+              </div>
               <em>{isStarting ? '...' : (liveScore ?? 0) >= 75 ? 'Good' : 'Adjust'}</em>
             </div>
             <div className="posture-metric-row">
               <span>Shoulder level</span>
-              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(8, 100 - Math.min(40, Math.abs(shoulderDelta) * 2))}%` }} /></div>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}>
+                <i style={{ width: `${Math.max(8, 100 - Math.min(40, Math.abs(shoulderDelta) * 2))}%` }} />
+              </div>
               <em>{isStarting ? '...' : `${shoulderDelta >= 0 ? '+' : ''}${shoulderDelta}°`}</em>
             </div>
             <div className="posture-metric-row">
               <span>Spine angle</span>
-              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}><i style={{ width: `${Math.max(8, 100 - spineAngle)}%` }} /></div>
+              <div className={`posture-bar ${isStarting ? 'is-loading' : ''}`}>
+                <i style={{ width: `${Math.max(8, 100 - spineAngle)}%` }} />
+              </div>
               <em>{isStarting ? '...' : `${spineAngle}°`}</em>
             </div>
           </div>
 
           {!isStarting && (liveScore ?? 0) < 75 ? (
-            <button className="btn-solid posture-cta" onClick={() => onStartExercise(recommended[0]?.id ?? 'chin-tuck')}>
-              {topIssue?.key === 'chin-forward' ? 'Fix chin position' : topIssue?.key === 'rounded-shoulders' ? 'Open your chest' : 'Relax shoulders'}
+            <button
+              className="btn-solid posture-cta"
+              onClick={() => onStartExercise(recommended[0]?.id ?? 'chin-tuck')}
+            >
+              {topIssue?.key === 'chin-forward'
+                ? 'Fix chin position'
+                : topIssue?.key === 'rounded-shoulders'
+                  ? 'Open your chest'
+                  : 'Relax shoulders'}
             </button>
           ) : !isStarting ? (
-            <p className="posture-all-good"><Check size={16} /> Looking good</p>
+            <p className="posture-all-good">
+              <Check size={16} /> Looking good
+            </p>
           ) : (
             <p className="posture-all-good posture-all-good--muted">Starting camera...</p>
           )}
@@ -223,7 +260,9 @@ export function PostureTab({
           </div>
         </div>
         {postureChartPoints.length === 0 ? (
-          <p className="posture-empty"><CheckCircle size={16} /> Not enough posture history yet</p>
+          <p className="posture-empty">
+            <CheckCircle size={16} /> Not enough posture history yet
+          </p>
         ) : (
           <InteractiveLineChart
             className="posture-history-chart"
@@ -246,14 +285,20 @@ export function PostureTab({
       <motion.section className="posture-card" variants={staggerItem(0.08)} initial="hidden" animate="visible">
         <h3>Common issues</h3>
         {issueCounts.total === 0 ? (
-          <p className="posture-empty"><CheckCircle size={16} /> No recurring issues detected</p>
+          <p className="posture-empty">
+            <CheckCircle size={16} /> No recurring issues detected
+          </p>
         ) : (
           <div className="posture-issues">
             {issueRows.map((issue) => (
               <div key={issue.key} className="posture-issue-row">
-                <span className={`posture-issue-dot ${issue.pct > 50 ? 'is-high' : issue.pct >= 20 ? 'is-mid' : 'is-low'}`} />
+                <span
+                  className={`posture-issue-dot ${issue.pct > 50 ? 'is-high' : issue.pct >= 20 ? 'is-mid' : 'is-low'}`}
+                />
                 <strong>{issue.label}</strong>
-                <div className="posture-issue-bar"><i style={{ width: `${issue.pct}%` }} /></div>
+                <div className="posture-issue-bar">
+                  <i style={{ width: `${issue.pct}%` }} />
+                </div>
                 <em>{issue.pct}%</em>
               </div>
             ))}
@@ -261,16 +306,27 @@ export function PostureTab({
         )}
       </motion.section>
 
-      <motion.section className="posture-card posture-reco-card" variants={staggerItem(0.12)} initial="hidden" animate="visible">
+      <motion.section
+        className="posture-card posture-reco-card"
+        variants={staggerItem(0.12)}
+        initial="hidden"
+        animate="visible"
+      >
         <div className="main-panel-head">
           <h3>Recommended for you</h3>
-          <button className="posture-see-all" onClick={onSeeAllExercises}>See all <ChevronRight size={12} /></button>
+          <button className="posture-see-all" onClick={onSeeAllExercises}>
+            See all <ChevronRight size={12} />
+          </button>
         </div>
         <div className="posture-reco-strip">
           {recommended.map((exercise) => (
             <article key={exercise.id} className="posture-reco-item">
               <p className="posture-reco-kicker">
-                {topIssue?.key === 'chin-forward' ? 'For chin forward' : topIssue?.key === 'rounded-shoulders' ? 'For rounded shoulders' : 'For posture balance'}
+                {topIssue?.key === 'chin-forward'
+                  ? 'For chin forward'
+                  : topIssue?.key === 'rounded-shoulders'
+                    ? 'For rounded shoulders'
+                    : 'For posture balance'}
               </p>
               <h4>{exercise.name}</h4>
               <p className="posture-reco-target">{exercise.target}</p>
@@ -279,7 +335,9 @@ export function PostureTab({
                 <span>{exercise.difficulty}</span>
                 <span>{exercise.space}</span>
               </div>
-              <button className="posture-reco-cta" onClick={() => onStartExercise(exercise.id)}>Start exercise</button>
+              <button className="posture-reco-cta" onClick={() => onStartExercise(exercise.id)}>
+                Start exercise
+              </button>
             </article>
           ))}
         </div>

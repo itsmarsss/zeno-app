@@ -11,7 +11,13 @@ import { SettingsTab } from './settings/SettingsTab'
 import { SidebarNav, type MainTab } from './common/SidebarNav'
 import { EXERCISE_LIBRARY, FREE_EXERCISE_IDS } from '../shared/constants'
 import { stressIndexFromHistory } from '../shared/metrics'
-import type { CalibrationStatus, DailyReport, PostureLandmarks, PostureStreamFrame, SessionHistoryItem } from '../shared/types'
+import type {
+  CalibrationStatus,
+  DailyReport,
+  PostureLandmarks,
+  PostureStreamFrame,
+  SessionHistoryItem,
+} from '../shared/types'
 import {
   buildAreaPath,
   buildInsights,
@@ -69,7 +75,9 @@ export function MainWindowShell({
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
-  const [postureStreamState, setPostureStreamState] = useState<'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'>('stopped')
+  const [postureStreamState, setPostureStreamState] = useState<
+    'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
+  >('stopped')
   const [postureStreamError, setPostureStreamError] = useState<string | null>(null)
   const [focusPeriod, setFocusPeriod] = useState<FocusPeriod>('week')
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
@@ -83,7 +91,9 @@ export function MainWindowShell({
   yesterday.setDate(now.getDate() - 1)
   const yesterdayKey = localDateKey(yesterday)
 
-  const sessionsSortedAsc = [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  const sessionsSortedAsc = [...history].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )
   const todaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === todayKey)
   const yesterdaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === yesterdayKey)
 
@@ -94,10 +104,14 @@ export function MainWindowShell({
   const avgStressYesterday = Math.round(mean(yesterdayStressValues))
   const stressDeltaVsYesterday = avgStressToday - avgStressYesterday
 
-  const todayFocusedSeconds = todaySessions.filter((item) => Boolean(item.focus_mode)).reduce((sum, item) => sum + item.session_duration_seconds, 0)
+  const todayFocusedSeconds = todaySessions
+    .filter((item) => Boolean(item.focus_mode))
+    .reduce((sum, item) => sum + item.session_duration_seconds, 0)
   const todayFocusedMinutes = Math.round(todayFocusedSeconds / 60)
   const todayBreakCount = todaySessions.filter((item) => !item.focus_mode).length
-  const todayHeartRates = todaySessions.map((item) => item.heart_rate_bpm).filter((value): value is number => value != null)
+  const todayHeartRates = todaySessions
+    .map((item) => item.heart_rate_bpm)
+    .filter((value): value is number => value != null)
   const avgHrToday = Math.round(mean(todayHeartRates))
 
   const baselineHrPool = history
@@ -110,13 +124,25 @@ export function MainWindowShell({
   const heroSubline = `Average stress ${avgStressToday || 0} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
   const heroTrendTone = trendTone(stressDeltaVsYesterday)
 
-  const timelineData: Array<{ slotStartIso: string; slotEndIso: string; label: string; stress: number | null; heartRate: number | null; focusActive: boolean; breathing: boolean }> = []
+  const timelineData: Array<{
+    slotStartIso: string
+    slotEndIso: string
+    label: string
+    stress: number | null
+    heartRate: number | null
+    focusActive: boolean
+    breathing: boolean
+  }> = []
   const timelineStart = new Date(now)
   timelineStart.setHours(HOUR_START, 0, 0, 0)
   const timelineEnd = new Date(now)
   timelineEnd.setHours(HOUR_END, 59, 59, 999)
   const clampedEnd = now < timelineEnd ? now : timelineEnd
-  for (let slot = new Date(timelineStart); slot <= clampedEnd; slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)) {
+  for (
+    let slot = new Date(timelineStart);
+    slot <= clampedEnd;
+    slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
+  ) {
     const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
     const slice = todaySessions.filter((item) => {
       const at = new Date(item.created_at)
@@ -199,7 +225,10 @@ export function MainWindowShell({
       `${periodStart.toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString([], { month: 'short', day: 'numeric' })}`,
     [periodEnd, periodStart],
   )
-  const currentPeriodFocus = useMemo(() => focusSessions.filter((item) => new Date(item.created_at) >= periodStart), [focusSessions, periodStart])
+  const currentPeriodFocus = useMemo(
+    () => focusSessions.filter((item) => new Date(item.created_at) >= periodStart),
+    [focusSessions, periodStart],
+  )
 
   const previousPeriodFocus = useMemo(() => {
     const end = new Date(periodStart)
@@ -213,23 +242,36 @@ export function MainWindowShell({
     })
   }, [focusPeriod, focusSessions, periodStart])
 
-  const periodFocusedMinutes = Math.round(currentPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
+  const periodFocusedMinutes = Math.round(
+    currentPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60,
+  )
   const periodAvgStress = Math.round(mean(currentPeriodFocus.map((item) => stressIndexFromHistory(item))))
   const periodSessionCount = currentPeriodFocus.length
   const hasEnoughPatternData = periodSessionCount >= PATTERN_MIN_SESSIONS
   const patternSessionsNeeded = Math.max(0, PATTERN_MIN_SESSIONS - periodSessionCount)
-  const previousFocusedMinutes = Math.round(previousPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
+  const previousFocusedMinutes = Math.round(
+    previousPeriodFocus.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60,
+  )
   const previousAvgStress = Math.round(mean(previousPeriodFocus.map((item) => stressIndexFromHistory(item))))
   const previousSessionCount = previousPeriodFocus.length
 
-  const focusHeroDeltaTime = previousFocusedMinutes === 0 ? 0 : Math.round(((periodFocusedMinutes - previousFocusedMinutes) / previousFocusedMinutes) * 100)
-  const focusHeroDeltaStress = previousAvgStress === 0 ? 0 : Math.round(((periodAvgStress - previousAvgStress) / previousAvgStress) * 100)
-  const focusHeroDeltaSessions = previousSessionCount === 0 ? 0 : Math.round(((periodSessionCount - previousSessionCount) / previousSessionCount) * 100)
+  const focusHeroDeltaTime =
+    previousFocusedMinutes === 0
+      ? 0
+      : Math.round(((periodFocusedMinutes - previousFocusedMinutes) / previousFocusedMinutes) * 100)
+  const focusHeroDeltaStress =
+    previousAvgStress === 0 ? 0 : Math.round(((periodAvgStress - previousAvgStress) / previousAvgStress) * 100)
+  const focusHeroDeltaSessions =
+    previousSessionCount === 0
+      ? 0
+      : Math.round(((periodSessionCount - previousSessionCount) / previousSessionCount) * 100)
 
   const heatmapData = useMemo(() => {
     const rows = 7
     const cols = HEATMAP_END - HEATMAP_START + 1
-    const matrix = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ avgStress: null as number | null, count: 0 })))
+    const matrix = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => ({ avgStress: null as number | null, count: 0 })),
+    )
     currentPeriodFocus.forEach((item) => {
       const date = new Date(item.created_at)
       const weekday = (date.getDay() + 6) % 7
@@ -353,31 +395,44 @@ export function MainWindowShell({
       rhythmStressMax = clamp(Math.round(center + 10), 0, 100)
     }
   }
-  const rhythmStressPath = buildPath(rhythmData.map((item) => item.avgStress), rhythmStressMin, rhythmStressMax, 100, 64)
-  const rhythmBestIndex = rhythmData.reduce((best, item, index, arr) => (item.focusedMinutes > arr[best].focusedMinutes ? index : best), 0)
+  const rhythmStressPath = buildPath(
+    rhythmData.map((item) => item.avgStress),
+    rhythmStressMin,
+    rhythmStressMax,
+    100,
+    64,
+  )
+  const rhythmBestIndex = rhythmData.reduce(
+    (best, item, index, arr) => (item.focusedMinutes > arr[best].focusedMinutes ? index : best),
+    0,
+  )
 
   const focusSessionsSorted = useMemo(() => {
-    const ordered = [...currentPeriodFocus].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    const ordered = [...currentPeriodFocus].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    )
     return sortNewestFirst ? ordered.reverse() : ordered
   }, [currentPeriodFocus, sortNewestFirst])
 
-  const selectedExercise = EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
+  const selectedExercise =
+    EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
   const isPro = settings?.plan_tier === 'pro'
-  const tabTitle = tab === 'overview'
-    ? 'Overview'
-    : tab === 'focus'
-      ? 'Focus History'
-      : tab === 'posture'
-        ? 'Posture'
-        : tab === 'exercises'
-          ? 'Exercises'
-          : 'Settings'
+  const tabTitle =
+    tab === 'overview'
+      ? 'Overview'
+      : tab === 'focus'
+        ? 'Focus History'
+        : tab === 'posture'
+          ? 'Posture'
+          : tab === 'exercises'
+            ? 'Exercises'
+            : 'Settings'
   const tabSubline = `Today ${todaySessions.length} sessions · ${formatMinutes(todayFocusedMinutes)} focused`
 
   function toggleGuidedExercise(exerciseId?: string) {
-    const targetExercise = (exerciseId
-      ? EXERCISE_LIBRARY.find((exercise) => exercise.id === exerciseId)
-      : selectedExercise) ?? selectedExercise
+    const targetExercise =
+      (exerciseId ? EXERCISE_LIBRARY.find((exercise) => exercise.id === exerciseId) : selectedExercise) ??
+      selectedExercise
 
     if (!isPro) {
       setPaywallMessage('Guided sets are a Pro feature. Add your license key in Settings.')
@@ -427,7 +482,7 @@ export function MainWindowShell({
       setPostureStreamState('connecting')
       setPostureStreamError(null)
       try {
-        const exerciseIdArg = tab === 'exercises' ? selectedExercise?.id ?? null : null
+        const exerciseIdArg = tab === 'exercises' ? (selectedExercise?.id ?? null) : null
         await invoke('start_posture_stream', { fps: 8, exerciseId: exerciseIdArg })
         unlistenFrame = await listen<PostureStreamFrame>('posture-stream-frame', (event) => {
           const payload = event.payload

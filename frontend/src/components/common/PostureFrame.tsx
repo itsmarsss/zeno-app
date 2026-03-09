@@ -17,8 +17,18 @@ export function PostureFrame({
       {frame ? <img src={frame} className="posture-video" alt={alt} /> : null}
       {landmarks?.nose && landmarks.left_shoulder && landmarks.right_shoulder ? (
         <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <line x1={landmarks.left_shoulder.x * 100} y1={landmarks.left_shoulder.y * 100} x2={landmarks.right_shoulder.x * 100} y2={landmarks.right_shoulder.y * 100} />
-          <line x1={landmarks.nose.x * 100} y1={landmarks.nose.y * 100} x2={(landmarks.left_shoulder.x * 100 + landmarks.right_shoulder.x * 100) / 2} y2={(landmarks.left_shoulder.y * 100 + landmarks.right_shoulder.y * 100) / 2} />
+          <line
+            x1={landmarks.left_shoulder.x * 100}
+            y1={landmarks.left_shoulder.y * 100}
+            x2={landmarks.right_shoulder.x * 100}
+            y2={landmarks.right_shoulder.y * 100}
+          />
+          <line
+            x1={landmarks.nose.x * 100}
+            y1={landmarks.nose.y * 100}
+            x2={(landmarks.left_shoulder.x * 100 + landmarks.right_shoulder.x * 100) / 2}
+            y2={(landmarks.left_shoulder.y * 100 + landmarks.right_shoulder.y * 100) / 2}
+          />
           <circle cx={landmarks.nose.x * 100} cy={landmarks.nose.y * 100} r="1.4" />
           <circle cx={landmarks.left_shoulder.x * 100} cy={landmarks.left_shoulder.y * 100} r="1.4" />
           <circle cx={landmarks.right_shoulder.x * 100} cy={landmarks.right_shoulder.y * 100} r="1.4" />

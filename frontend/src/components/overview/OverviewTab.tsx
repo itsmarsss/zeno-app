@@ -97,9 +97,11 @@ export function OverviewTab({
   const previousHoverIndexRef = useRef<number | null>(null)
   const hoveredPoint = chartHoverIndex != null ? timelineData[chartHoverIndex] : null
   const fallbackRatio = chartHoverIndex == null ? 0 : chartHoverIndex / Math.max(timelineData.length - 1, 1)
-  const hoverXPercent = hoverPercent ?? (fallbackRatio * 100)
+  const hoverXPercent = hoverPercent ?? fallbackRatio * 100
   const chartStartMs = timelineData[0] ? new Date(timelineData[0].slotStartIso).getTime() : 0
-  const chartEndMs = timelineData[timelineData.length - 1] ? new Date(timelineData[timelineData.length - 1].slotEndIso).getTime() : 0
+  const chartEndMs = timelineData[timelineData.length - 1]
+    ? new Date(timelineData[timelineData.length - 1].slotEndIso).getTime()
+    : 0
   const chartSpanMs = Math.max(chartEndMs - chartStartMs, 1)
   const fallbackXPx = chartWidthPx > 0 ? chartLeftPx + (hoverXPercent / 100) * chartWidthPx : 0
   const cursorXPx = hoverXPx ?? fallbackXPx
@@ -107,17 +109,20 @@ export function OverviewTab({
   const tooltipPaddingPx = 8
   const tooltipMinLeft = chartLeftPx + tooltipPaddingPx
   const tooltipMaxLeft = chartLeftPx + Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx)
-  const tooltipLeftPx = clamp(
-    cursorXPx - tooltipWidthPx / 2,
-    tooltipMinLeft,
-    tooltipMaxLeft,
-  )
+  const tooltipLeftPx = clamp(cursorXPx - tooltipWidthPx / 2, tooltipMinLeft, tooltipMaxLeft)
 
   return (
     <>
-      <motion.section className="overview-section hero-band" variants={staggerItem(0)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section hero-band"
+        variants={staggerItem(0)}
+        initial="hidden"
+        animate="visible"
+      >
         <div className="hero-left">
-          <p className="hero-date">{now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}</p>
+          <p className="hero-date">
+            {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}
+          </p>
           <h1>{heroHeadline}</h1>
           <p className="hero-subline">{heroSubline}</p>
         </div>
@@ -129,14 +134,23 @@ export function OverviewTab({
         </div>
       </motion.section>
 
-      <motion.section className="overview-section narrative-strip" variants={staggerItem(0.04)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section narrative-strip"
+        variants={staggerItem(0.04)}
+        initial="hidden"
+        animate="visible"
+      >
         <article className="narrative-tile">
           <p className="narrative-value">{formatMinutes(todayFocusedMinutes)}</p>
           <p className="narrative-label">Focused Time</p>
-          <p className="narrative-context is-positive">{todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'}</p>
+          <p className="narrative-context is-positive">
+            {todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'}
+          </p>
         </article>
         <article className="narrative-tile">
-          <p className="narrative-value">{avgHrToday || '--'} <span>bpm</span></p>
+          <p className="narrative-value">
+            {avgHrToday || '--'} <span>bpm</span>
+          </p>
           <p className="narrative-label">Avg Heart Rate</p>
           <p className={`narrative-context ${hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
             {Number.isFinite(hrDeltaBaseline)
@@ -153,7 +167,12 @@ export function OverviewTab({
         </article>
       </motion.section>
 
-      <motion.section className="overview-section primary-chart" variants={staggerItem(0.08)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section primary-chart"
+        variants={staggerItem(0.08)}
+        initial="hidden"
+        animate="visible"
+      >
         <div className="main-panel-head">
           <h3>Today</h3>
           <div className="overview-chart-controls">
@@ -221,7 +240,16 @@ export function OverviewTab({
                 const xStart = clamp(((startMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
                 const xEnd = clamp(((endMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
                 const width = Math.max(0.2, xEnd - xStart)
-                return <rect key={`${point.slotStartIso}-focus`} x={xStart} y={0} width={width} height={100} className="focus-band" />
+                return (
+                  <rect
+                    key={`${point.slotStartIso}-focus`}
+                    x={xStart}
+                    y={0}
+                    width={width}
+                    height={100}
+                    className="focus-band"
+                  />
+                )
               })}
               <path d={timelineAreaPath} className="timeline-area" />
               <path d={timelineStressPath} className="timeline-stress" />
@@ -229,7 +257,16 @@ export function OverviewTab({
               {timelineData.map((point, index) => {
                 if (!point.breathing) return null
                 const x = timelineData.length === 1 ? 50 : (index / (timelineData.length - 1)) * 100
-                return <line key={`${point.slotStartIso}-breath`} x1={x} x2={x} y1={0} y2={100} className="timeline-breath" />
+                return (
+                  <line
+                    key={`${point.slotStartIso}-breath`}
+                    x1={x}
+                    x2={x}
+                    y1={0}
+                    y2={100}
+                    className="timeline-breath"
+                  />
+                )
               })}
             </svg>
             <AnimatePresence initial={false}>
@@ -260,7 +297,11 @@ export function OverviewTab({
                     </div>
                     <div className="timeline-tooltip-row">
                       <strong>
-                        <AnimatedTickerText value={`${hoveredPoint.heartRate ?? '--'}`} staticSuffix="bpm" direction={hoverDirection} />
+                        <AnimatedTickerText
+                          value={`${hoveredPoint.heartRate ?? '--'}`}
+                          staticSuffix="bpm"
+                          direction={hoverDirection}
+                        />
                       </strong>
                       <span>Heart rate</span>
                     </div>
@@ -269,21 +310,33 @@ export function OverviewTab({
                 </>
               )}
             </AnimatePresence>
-            <div className="timeline-axis" style={{ gridTemplateColumns: `repeat(${timelineData.length}, minmax(0, 1fr))` }}>
+            <div
+              className="timeline-axis"
+              style={{ gridTemplateColumns: `repeat(${timelineData.length}, minmax(0, 1fr))` }}
+            >
               {/*
                 Keep axis readable as granularity increases.
               */}
               {(() => {
                 const labelStep = Math.max(1, Math.ceil(timelineData.length / 8))
-                return timelineData.map((point, index) => (
-                  index % labelStep === 0 || index === timelineData.length - 1 ? <span key={point.slotStartIso}>{point.label}</span> : <span key={point.slotStartIso} />
-                ))
+                return timelineData.map((point, index) =>
+                  index % labelStep === 0 || index === timelineData.length - 1 ? (
+                    <span key={point.slotStartIso}>{point.label}</span>
+                  ) : (
+                    <span key={point.slotStartIso} />
+                  ),
+                )
               })()}
             </div>
           </div>
         )}
       </motion.section>
-      <motion.section className="overview-section insight-cards" variants={staggerItem(0.12)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section insight-cards"
+        variants={staggerItem(0.12)}
+        initial="hidden"
+        animate="visible"
+      >
         {insights.map((card) => {
           const Icon = card.icon === 'trending' ? TrendingUp : card.icon === 'activity' ? Activity : User
           return (
@@ -297,30 +350,56 @@ export function OverviewTab({
         })}
       </motion.section>
 
-      <motion.section className="overview-section secondary-metrics" variants={staggerItem(0.16)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section secondary-metrics"
+        variants={staggerItem(0.16)}
+        initial="hidden"
+        animate="visible"
+      >
         <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d={`M ${secondaryMetricSeries.peakStress.map((v, i) => `${(i / Math.max(secondaryMetricSeries.peakStress.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`} /></svg>
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <path
+              d={`M ${secondaryMetricSeries.peakStress.map((v, i) => `${(i / Math.max(secondaryMetricSeries.peakStress.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`}
+            />
+          </svg>
           <strong>{dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}</strong>
           <span>Today's peak stress</span>
         </article>
         <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d={`M ${secondaryMetricSeries.avgFocusSession.map((v, i) => `${(i / Math.max(secondaryMetricSeries.avgFocusSession.length - 1, 1)) * 100} ${30 - (Math.min(v, 120) / 120) * 30}`).join(' L ')}`} /></svg>
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <path
+              d={`M ${secondaryMetricSeries.avgFocusSession.map((v, i) => `${(i / Math.max(secondaryMetricSeries.avgFocusSession.length - 1, 1)) * 100} ${30 - (Math.min(v, 120) / 120) * 30}`).join(' L ')}`}
+            />
+          </svg>
           <strong>{formatMinutes(Math.round(mean(secondaryMetricSeries.avgFocusSession)))}</strong>
           <span>Avg focus session len</span>
         </article>
         <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d={`M ${secondaryMetricSeries.postureAvg.map((v, i) => `${(i / Math.max(secondaryMetricSeries.postureAvg.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`} /></svg>
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <path
+              d={`M ${secondaryMetricSeries.postureAvg.map((v, i) => `${(i / Math.max(secondaryMetricSeries.postureAvg.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`}
+            />
+          </svg>
           <strong>{Math.round(mean(secondaryMetricSeries.postureAvg)) || 0}</strong>
           <span>Posture score today</span>
         </article>
         <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d={`M ${secondaryMetricSeries.breakMinutes.map((v, i) => `${(i / Math.max(secondaryMetricSeries.breakMinutes.length - 1, 1)) * 100} ${30 - (Math.min(v, 60) / 60) * 30}`).join(' L ')}`} /></svg>
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+            <path
+              d={`M ${secondaryMetricSeries.breakMinutes.map((v, i) => `${(i / Math.max(secondaryMetricSeries.breakMinutes.length - 1, 1)) * 100} ${30 - (Math.min(v, 60) / 60) * 30}`).join(' L ')}`}
+            />
+          </svg>
           <strong>{todayBreakCount}</strong>
           <span>Total break time</span>
         </article>
       </motion.section>
 
-      <motion.section className="overview-section session-log" variants={staggerItem(0.2)} initial="hidden" animate="visible">
+      <motion.section
+        className="overview-section session-log"
+        variants={staggerItem(0.2)}
+        initial="hidden"
+        animate="visible"
+      >
         <h3>Today's sessions</h3>
         {todaySessions.length === 0 ? (
           <p className="main-empty">No sessions yet today.</p>
@@ -342,9 +421,13 @@ export function OverviewTab({
                     </p>
                     <h4>{narrative.headline}</h4>
                     <p className="entry-stats">
-                      Avg stress {stress} · Heart rate {item.heart_rate_bpm == null ? '--' : Math.round(item.heart_rate_bpm)} bpm · Posture {friendlyPosture(item.posture_score)}
+                      Avg stress {stress} · Heart rate{' '}
+                      {item.heart_rate_bpm == null ? '--' : Math.round(item.heart_rate_bpm)} bpm · Posture{' '}
+                      {friendlyPosture(item.posture_score)}
                     </p>
-                    <div className="entry-stress-bar"><div style={{ width: `${stress}%`, background: stressColor(stress) }} /></div>
+                    <div className="entry-stress-bar">
+                      <div style={{ width: `${stress}%`, background: stressColor(stress) }} />
+                    </div>
                   </div>
                 </article>
               )

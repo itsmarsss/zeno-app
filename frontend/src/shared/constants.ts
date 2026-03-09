@@ -33,7 +33,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     duration_minutes: 2,
     difficulty: 'easy',
     space: 'desk',
-    steps: ['Sit tall and look forward.', 'Pull chin straight back (not down).', 'Hold 3 seconds, release, repeat 10 times.'],
+    steps: [
+      'Sit tall and look forward.',
+      'Pull chin straight back (not down).',
+      'Hold 3 seconds, release, repeat 10 times.',
+    ],
   },
   {
     id: 'wall-angels',
@@ -42,7 +46,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     duration_minutes: 3,
     difficulty: 'moderate',
     space: 'open',
-    steps: ['Stand against a wall with arms bent at 90°.', 'Slide arms up slowly while keeping contact.', 'Return down with control for 8-10 reps.'],
+    steps: [
+      'Stand against a wall with arms bent at 90°.',
+      'Slide arms up slowly while keeping contact.',
+      'Return down with control for 8-10 reps.',
+    ],
   },
   {
     id: 'scap-squeeze',
@@ -60,7 +68,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     duration_minutes: 3,
     difficulty: 'moderate',
     space: 'desk',
-    steps: ['Sit upright with hands behind head.', 'Lift chest and extend upper back slightly.', 'Return neutral and repeat 8-10 reps.'],
+    steps: [
+      'Sit upright with hands behind head.',
+      'Lift chest and extend upper back slightly.',
+      'Return neutral and repeat 8-10 reps.',
+    ],
   },
   {
     id: 'doorway-pec-stretch',
@@ -69,7 +81,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     duration_minutes: 2,
     difficulty: 'easy',
     space: 'open',
-    steps: ['Place forearm on door frame at shoulder height.', 'Step forward until chest stretch is felt.', 'Hold 20 seconds each side, 3 rounds.'],
+    steps: [
+      'Place forearm on door frame at shoulder height.',
+      'Step forward until chest stretch is felt.',
+      'Hold 20 seconds each side, 3 rounds.',
+    ],
   },
   {
     id: 'seated-side-bend',
@@ -78,7 +94,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     duration_minutes: 2,
     difficulty: 'easy',
     space: 'desk',
-    steps: ['Sit with both feet grounded.', 'Reach one arm overhead and lean to opposite side.', 'Hold 15 seconds per side for 4 rounds.'],
+    steps: [
+      'Sit with both feet grounded.',
+      'Reach one arm overhead and lean to opposite side.',
+      'Hold 15 seconds per side for 4 rounds.',
+    ],
   },
 ]
 

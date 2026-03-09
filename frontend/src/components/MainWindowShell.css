@@ -2,16 +2,19 @@
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   background: var(--bg-base);
+  min-height: 0;
 }
 
 .desktop-chrome {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto;
   align-items: center;
+  align-content: center;
   gap: 12px;
   padding: 6px 12px 6px 74px;
+  min-height: 44px;
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-surface) 93%, #fff 7%);
 }
@@ -31,6 +34,9 @@
   grid-template-columns: 220px 1fr;
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .main-sidebar {
@@ -40,6 +46,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .main-sidebar h2 {
@@ -66,8 +73,10 @@
 }
 
 .main-content {
-  padding: 22px;
+  padding: 16px;
   overflow: auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .desktop-topbar-title h1 {
@@ -289,20 +298,77 @@
   max-width: 560px;
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 980px) {
+  .main-shell {
+    grid-template-columns: 178px 1fr;
+  }
+
+  .main-sidebar {
+    padding: 14px 10px;
+  }
+
+  .main-content {
+    padding: 16px;
+  }
+
   .desktop-chrome {
-    grid-template-columns: 1fr;
-    padding: 8px 12px;
     gap: 8px;
+    padding: 6px 10px 6px 74px;
   }
 
-  .desktop-chrome-drag {
-    flex-direction: column;
-    align-items: flex-start;
+  .desktop-topbar-title h1 {
+    font-size: 15px;
   }
 
-  .desktop-topbar-status,
+  .desktop-topbar-title p {
+    font-size: 10px;
+  }
+
+  .desktop-pill {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  .desktop-action-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
   .desktop-topbar-actions {
+    justify-content: flex-start;
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 860px) {
+  .main-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .main-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .main-sidebar h2 {
+    margin: 0 10px 0 0;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .main-nav {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .main-content {
+    padding: 14px;
   }
 }

@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 
 .focus-period-range {
@@ -37,7 +37,7 @@
 }
 
 .period-summary {
-  margin-bottom: 32px;
+  margin-bottom: 18px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
@@ -48,7 +48,7 @@
 
 .period-summary article {
   background: var(--bg-surface);
-  padding: 24px 28px;
+  padding: 16px 16px;
 }
 
 .period-summary p {
@@ -63,19 +63,19 @@
   margin-top: 6px;
   display: block;
   font-family: 'DM Serif Display', serif;
-  font-size: 40px;
+  font-size: 30px;
   line-height: 1;
 }
 
 .period-summary span {
-  margin-top: 8px;
+  margin-top: 6px;
   display: block;
   font-size: 12px;
   color: var(--text-secondary);
 }
 
 .period-summary em {
-  margin-top: 12px;
+  margin-top: 8px;
   display: inline-block;
   border-radius: 999px;
   padding: 3px 8px;
@@ -95,7 +95,7 @@
 }
 
 .heatmap {
-  margin-bottom: 32px;
+  margin-bottom: 18px;
 }
 
 .focus-pattern-empty {
@@ -119,11 +119,15 @@
   display: inline-block;
 }
 
-.heatmap-legend .calm { background: color-mix(in srgb, var(--accent) 40%, white); }
-.heatmap-legend .high { background: color-mix(in srgb, var(--state-mild) 45%, white); }
+.heatmap-legend .calm {
+  background: color-mix(in srgb, var(--accent) 40%, white);
+}
+.heatmap-legend .high {
+  background: color-mix(in srgb, var(--state-mild) 45%, white);
+}
 
 .heatmap-grid-wrap {
-  margin-top: 16px;
+  margin-top: 10px;
 }
 
 .heatmap-hours {
@@ -167,7 +171,7 @@
 
 .heatmap-cell {
   border: 0;
-  height: 28px;
+  height: 24px;
   border-radius: 4px;
   cursor: default;
   transition: transform 100ms ease;
@@ -178,10 +182,18 @@
   z-index: 3;
 }
 
-.heatmap-cell.is-no-data { background: var(--bg-subtle); }
-.heatmap-cell.is-calm { background: color-mix(in srgb, var(--accent) 80%, transparent); }
-.heatmap-cell.is-mild { background: color-mix(in srgb, var(--accent) 40%, transparent); }
-.heatmap-cell.is-high { background: color-mix(in srgb, var(--state-mild) 40%, transparent); }
+.heatmap-cell.is-no-data {
+  background: var(--bg-subtle);
+}
+.heatmap-cell.is-calm {
+  background: color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.heatmap-cell.is-mild {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.heatmap-cell.is-high {
+  background: color-mix(in srgb, var(--state-mild) 40%, transparent);
+}
 
 .heatmap-callout {
   margin: 12px 0 0;
@@ -205,11 +217,11 @@
 }
 
 .rhythm-chart {
-  margin-bottom: 32px;
+  margin-bottom: 18px;
 }
 
 .rhythm-canvas {
-  margin-top: 14px;
+  margin-top: 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   padding: 10px 12px 12px;
@@ -236,6 +248,12 @@
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.rhythm-point {
+  fill: var(--state-mild);
+  stroke: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  stroke-width: 0.8;
 }
 
 .rhythm-hover-band {
@@ -341,10 +359,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
-.focus-log-head h3 { margin: 0; }
+.focus-log-head h3 {
+  margin: 0;
+}
 
 .focus-log-head span {
   font-family: 'IBM Plex Mono', monospace;
@@ -375,10 +395,11 @@
   background: transparent;
   padding: 10px 4px;
   display: grid;
-  grid-template-columns: 48px 1fr 80px 80px 32px;
+  grid-template-columns: 48px minmax(0, 1fr) auto auto 32px;
   align-items: center;
   cursor: pointer;
   text-align: left;
+  column-gap: 10px;
 }
 
 .focus-row-top:hover {
@@ -541,51 +562,49 @@
   color: var(--text-secondary);
 }
 
-@media (max-width: 1180px) {
-  .main-shell {
-    grid-template-columns: 190px 1fr;
+@media (max-width: 900px) {
+  .focus-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 
-  .hero-band {
-    grid-template-columns: 1fr;
-    gap: 14px;
+  .focus-log-head {
+    flex-wrap: wrap;
   }
 
-  .hero-divider {
-    display: none;
+  .focus-session-info strong {
+    font-size: 12px;
   }
 
-  .hero-right {
-    justify-self: start;
-    text-align: left;
+  .focus-duration,
+  .focus-stress-cell em {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 760px) {
+  .period-toggle {
+    width: 100%;
+    justify-content: space-between;
   }
 
-  .narrative-strip,
-  .secondary-metrics,
-  .period-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .narrative-tile {
-    border-right: 0;
-    border-bottom: 1px solid var(--border-subtle);
-    padding: 0 0 12px;
-    margin-bottom: 12px;
-  }
-
-  .narrative-tile:last-child {
-    border-bottom: 0;
-    margin-bottom: 0;
-    padding-bottom: 0;
+  .period-toggle button {
+    flex: 1 1 0;
+    text-align: center;
+    padding: 5px 8px;
   }
 
   .focus-row-top {
-    grid-template-columns: 48px 1fr 70px 70px 24px;
-    gap: 8px;
+    grid-template-columns: 40px minmax(0, 1fr) auto 16px;
   }
 
-  .focus-row-expand {
-    grid-template-columns: 1fr;
-    padding-left: 56px;
+  .focus-stress-cell {
+    display: none;
+  }
+
+  .focus-row-expand,
+  .focus-row.is-expanded .focus-row-expand {
+    padding-left: 46px;
   }
 }
