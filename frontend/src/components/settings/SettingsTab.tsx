@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, CheckCircle2, ChevronRight, Download, ExternalLink, Loader2, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, ChevronRight, Download, ExternalLink, Loader2, LogOut, Trash2, User } from 'lucide-react'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
+import { useAuth } from '../../context/AuthContext'
 import './SettingsTab.css'
 import { easeOut } from '../../shared/motion'
 
@@ -88,6 +89,8 @@ export function SettingsTab({
   const [checkingUpdates, setCheckingUpdates] = useState<'idle' | 'loading' | 'updated'>('idle')
   const [activeSheet, setActiveSheet] = useState<SelectKey | null>(null)
   const [licenseError, setLicenseError] = useState<string | null>(null)
+  const [deleteAccountExpanded, setDeleteAccountExpanded] = useState(false)
+  const { user, isGuest, logout } = useAuth()
 
   const passiveMonitoring = !(settings?.monitoring_paused ?? false)
   const frequencyValue = String(settings?.session_frequency_minutes ?? 10)
@@ -153,6 +156,116 @@ export function SettingsTab({
         <h1>Settings</h1>
         <p>How Zeno works for you</p>
       </header>
+
+      {!isGuest && (
+        <section className="settings-section">
+          <p className="settings-section-title">Account</p>
+          <div className="settings-card">
+            <div className="settings-row settings-row--info">
+              <div className="settings-account-info">
+                <User size={16} className="settings-account-icon" />
+                <div>
+                  <strong>{user?.email || 'Not signed in'}</strong>
+                  <p>
+                    {user?.subscriptionTier === 'paid' ? 'Paid subscription' : 'Free tier'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {user?.subscriptionTier === 'free' && (
+              <button className="settings-row settings-row--select">
+                <div>
+                  <strong>Upgrade to paid</strong>
+                  <p>Unlock higher rate limits and priority support</p>
+                </div>
+                <span>
+                  <ExternalLink size={12} /> <ChevronRight size={14} />
+                </span>
+              </button>
+            )}
+
+            <button className="settings-row settings-row--action" onClick={logout}>
+              <div>
+                <strong>Sign out</strong>
+                <p>You'll lose access to AI insights</p>
+              </div>
+              <span className="settings-action-cta">
+                <LogOut size={14} /> Sign out
+              </span>
+            </button>
+
+            <button
+              className="settings-row settings-row--danger"
+              onClick={() => setDeleteAccountExpanded((value) => !value)}
+            >
+              <div>
+                <strong>Delete account</strong>
+                <p>Permanently delete your account and all data</p>
+              </div>
+              <span>
+                <Trash2 size={14} />
+              </span>
+            </button>
+
+            <AnimatePresence initial={false}>
+              {deleteAccountExpanded && (
+                <motion.div
+                  className="settings-inline-block settings-inline-block--danger"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={easeOut}
+                >
+                  <p>
+                    This will permanently delete your account, all analysis history, and cached insights. Your local session
+                    data will remain on this device. This cannot be undone.
+                  </p>
+                  <div className="settings-inline-actions">
+                    <button className="btn-ghost" onClick={() => setDeleteAccountExpanded(false)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn-danger"
+                      onClick={() => {
+                        // TODO: Implement account deletion API call
+                        setDeleteAccountExpanded(false)
+                        logout()
+                      }}
+                    >
+                      Delete account
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </section>
+      )}
+
+      {isGuest && (
+        <section className="settings-section">
+          <p className="settings-section-title">Account</p>
+          <div className="settings-card">
+            <div className="settings-row settings-row--info">
+              <div>
+                <strong>Guest mode</strong>
+                <p>Create an account to unlock AI insights</p>
+              </div>
+            </div>
+
+            <button className="settings-row settings-row--action" onClick={logout}>
+              <div>
+                <strong>Create account</strong>
+                <p>Get personalized study coaching</p>
+              </div>
+              <span className="settings-action-cta">
+                <User size={14} /> Sign up
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="settings-section">
         <p className="settings-section-title">How Zeno watches you</p>

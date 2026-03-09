@@ -303,3 +303,14 @@
     transform: rotate(360deg);
   }
 }
+
+.settings-account-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-account-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
