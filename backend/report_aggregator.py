@@ -11,7 +11,14 @@ from db_schema import ensure_sessions_schema
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
 
 
-def _stress_index(dominant_emotion: str, emotion_score: float, heart_rate_bpm: float | None) -> int:
+def _stress_index(
+    dominant_emotion: str,
+    emotion_score: float,
+    heart_rate_bpm: float | None,
+    respiratory_rate: float | None,
+    rr_confidence: str,
+    mode: str,
+) -> int:
     emotion = (dominant_emotion or "unknown").lower()
     emotion_points = {
         "fear": 28.0,
@@ -41,7 +48,27 @@ def _stress_index(dominant_emotion: str, emotion_score: float, heart_rate_bpm: f
     else:
         hr_points = 6.0
 
-    return int(max(0, min(100, round(emotion_points + hr_points))))
+    rr = float(respiratory_rate or 0.0)
+    if rr <= 0:
+        rr_points = 0.0
+    elif rr >= 25:
+        rr_points = 28.0
+    elif rr >= 21:
+        rr_points = 20.0
+    elif rr >= 17:
+        rr_points = 12.0
+    else:
+        rr_points = 4.0
+
+    if mode == "focus" and rr_confidence == "full":
+        hr_weight, rr_weight, emotion_weight = 0.35, 0.30, 0.35
+    elif mode == "focus" and rr_confidence == "partial":
+        hr_weight, rr_weight, emotion_weight = 0.40, 0.15, 0.45
+    else:
+        hr_weight, rr_weight, emotion_weight = 0.50, 0.00, 0.50
+
+    weighted = hr_points * hr_weight + rr_points * rr_weight + emotion_points * emotion_weight
+    return int(max(0, min(100, round(weighted))))
 
 
 def _recommendation(avg_stress: float, avg_posture: float) -> str:
@@ -80,7 +107,10 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
                 posture_score,
                 dominant_emotion,
                 emotion_score,
-                heart_rate_bpm
+                heart_rate_bpm,
+                respiratory_rate,
+                rr_confidence,
+                mode
             FROM sessions
             WHERE created_at BETWEEN ? AND ?
               AND presence_detected = 1
@@ -108,6 +138,9 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             dominant_emotion=row["dominant_emotion"],
             emotion_score=row["emotion_score"],
             heart_rate_bpm=row["heart_rate_bpm"],
+            respiratory_rate=row["respiratory_rate"],
+            rr_confidence=str(row["rr_confidence"] or "none"),
+            mode=str(row["mode"] or "passive"),
         )
         items.append(
             {

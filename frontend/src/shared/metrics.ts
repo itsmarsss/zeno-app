@@ -27,7 +27,25 @@ export function stressIndex(result: SessionResult | null): number {
 
   const hr = result.heart_rate_bpm
   const hrPoints = hr == null ? 8 : hr >= 105 ? 52 : hr >= 95 ? 40 : hr >= 85 ? 28 : hr >= 75 ? 14 : 6
-  return Math.max(0, Math.min(100, Math.round(emotionPoints + hrPoints)))
+  const rr = result.respiratory_rate ?? 0
+  const rrPoints = rr <= 0 ? 0 : rr >= 25 ? 28 : rr >= 21 ? 20 : rr >= 17 ? 12 : 4
+  const rrConfidence = result.mode === 'focus' ? result.rr_confidence : 'none'
+
+  let hrWeight = 0.5
+  let rrWeight = 0
+  let emotionWeight = 0.5
+  if (rrConfidence === 'full') {
+    hrWeight = 0.35
+    rrWeight = 0.3
+    emotionWeight = 0.35
+  } else if (rrConfidence === 'partial') {
+    hrWeight = 0.4
+    rrWeight = 0.15
+    emotionWeight = 0.45
+  }
+
+  const weighted = hrPoints * hrWeight + rrPoints * rrWeight + emotionPoints * emotionWeight
+  return Math.max(0, Math.min(100, Math.round(weighted)))
 }
 
 export function stressState(score: number): 'calm' | 'mild' | 'elevated' | 'high' {

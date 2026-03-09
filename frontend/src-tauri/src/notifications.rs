@@ -24,6 +24,18 @@ fn stress_index_from_result(result: &Value) -> Option<u8> {
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
     let heart_rate = result.get("heart_rate_bpm").and_then(|v| v.as_f64());
+    let rr = result
+        .get("respiratory_rate")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let rr_conf = result
+        .get("rr_confidence")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none");
+    let mode = result
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("passive");
 
     let emotion_points = match emotion.as_str() {
         "fear" => 28.0,
@@ -44,8 +56,31 @@ fn stress_index_from_result(result: &Value) -> Option<u8> {
         Some(_) => 6.0,
         None => 8.0,
     };
+    let rr_points = if rr <= 0.0 {
+        0.0
+    } else if rr >= 25.0 {
+        28.0
+    } else if rr >= 21.0 {
+        20.0
+    } else if rr >= 17.0 {
+        12.0
+    } else {
+        4.0
+    };
 
-    let score = (emotion_points + hr_points).round();
+    let rr_weight = match (mode, rr_conf) {
+        ("focus", "full") => 0.30,
+        ("focus", "partial") => 0.15,
+        _ => 0.0,
+    };
+    let (hr_weight, emotion_weight) = if rr_weight >= 0.30 {
+        (0.35, 0.35)
+    } else if rr_weight > 0.0 {
+        (0.40, 0.45)
+    } else {
+        (0.50, 0.50)
+    };
+    let score = (emotion_points * emotion_weight + hr_points * hr_weight + rr_points * rr_weight).round();
     Some(score.clamp(0.0, 100.0) as u8)
 }
 

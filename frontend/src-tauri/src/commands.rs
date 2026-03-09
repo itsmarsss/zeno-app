@@ -274,6 +274,10 @@ fn stress_index_from_payload(payload: &Value) -> Option<u64> {
         .get("rr_confidence")
         .and_then(|v| v.as_str())
         .unwrap_or("none");
+    let mode = payload
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("passive");
 
     let emotion_points = match emotion.as_str() {
         "fear" => 28.0,
@@ -304,13 +308,21 @@ fn stress_index_from_payload(payload: &Value) -> Option<u64> {
     } else {
         4.0
     };
-    let rr_weight = match rr_conf {
-        "full" => 0.30,
-        "partial" => 0.15,
+    let rr_weight = match (mode, rr_conf) {
+        ("focus", "full") => 0.30,
+        ("focus", "partial") => 0.15,
         _ => 0.0,
     };
-    let hr_weight = if rr_weight > 0.0 { 0.35 } else { 0.50 };
-    let emo_weight = 1.0 - hr_weight - rr_weight;
+    let hr_weight = if rr_weight > 0.0 {
+        if rr_weight >= 0.30 { 0.35 } else { 0.40 }
+    } else {
+        0.50
+    };
+    let emo_weight = if rr_weight > 0.0 {
+        if rr_weight >= 0.30 { 0.35 } else { 0.45 }
+    } else {
+        0.50
+    };
     let weighted = hr_points * hr_weight + rr_points * rr_weight + emotion_points * emo_weight;
     Some(weighted.round().clamp(0.0, 100.0) as u64)
 }
