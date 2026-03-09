@@ -85,6 +85,13 @@ function postureTone(value: number): 'calm' | 'neutral' | 'mild' | 'high' {
   return 'high'
 }
 
+function formatDelta(value: number | null, decimals = 0): string | null {
+  if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.05) return null
+  const rounded = Number(value.toFixed(decimals))
+  if (rounded === 0) return null
+  return `${rounded > 0 ? '+' : ''}${rounded}`
+}
+
 export function MonitorTab({
   history,
   currentResult,
@@ -113,6 +120,7 @@ export function MonitorTab({
   const [recentFocusSummary, setRecentFocusSummary] = useState<{ endedAt: number; durationSeconds: number } | null>(
     null,
   )
+  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string } | null>(null)
   const wasFocusActiveRef = useRef(focusModeActive)
 
   const monitorMode: MonitorMode = recentFocusSummary
@@ -214,6 +222,12 @@ export function MonitorTab({
   const rrConfidenceProgress = focusStartedAt ? clamp(((now - focusStartedAt) / 90_000) * 100, 0, 100) : 0
   const rrConfidenceSeconds = Math.max(0, 90 - Math.floor((now - (focusStartedAt ?? now)) / 1000))
   const restingHr = displayResult?.resting_hr ?? 75
+  const restingRr = displayResult?.resting_rr ?? 14
+  const baselinePosturePct = Math.round((displayResult?.baseline_posture_score ?? 0) * 100)
+  const stressDelta = displayResult ? stressValue - 35 : null
+  const hrDelta = hrValue == null ? null : hrValue - restingHr
+  const rrDelta = rrValue > 0 ? rrValue - restingRr : null
+  const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
 
   const stressPath = buildPath(
     focusPoints.map((item) => item.stress),
@@ -246,7 +260,10 @@ export function MonitorTab({
   const timelineStart = timelinePoints[0]?.at ?? Date.now() - 60 * 60_000
   const timelineEnd = timelinePoints[timelinePoints.length - 1]?.at ?? Date.now()
   const timelineRange = Math.max(1, timelineEnd - timelineStart)
-  const passiveMarkOffsets = passiveMarks.map((ts) => clamp(((ts - timelineStart) / timelineRange) * 100, 0, 100))
+  const passiveMarkOffsets = passiveMarks.map((ts) => ({
+    ts,
+    xPct: clamp(((ts - timelineStart) / timelineRange) * 100, 0, 100),
+  }))
 
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
@@ -361,6 +378,11 @@ export function MonitorTab({
             </div>
             <div className="monitor-card-sub">
               <span>{displayResult ? stressLabel(stressValue) : 'No data'}</span>
+              {monitorMode === 'focus' && (
+                <span className="monitor-delta">
+                  {formatDelta(stressDelta) ? `${formatDelta(stressDelta)} from baseline` : 'at baseline'}
+                </span>
+              )}
             </div>
             {monitorMode === 'focus' && (
               <svg viewBox="0 0 100 32" preserveAspectRatio="none">
@@ -407,6 +429,11 @@ export function MonitorTab({
                         ? 'Elevated'
                         : 'High'}
               </span>
+              {monitorMode === 'focus' && (
+                <span className="monitor-delta">
+                  {formatDelta(hrDelta, 1) ? `${formatDelta(hrDelta, 1)} from baseline` : 'at baseline'}
+                </span>
+              )}
             </div>
             {monitorMode === 'focus' && (
               <svg viewBox="0 0 100 32" preserveAspectRatio="none">
@@ -461,6 +488,11 @@ export function MonitorTab({
                           ? 'Slightly elevated'
                           : 'Elevated'}
               </span>
+              {monitorMode === 'focus' && (
+                <span className="monitor-delta">
+                  {formatDelta(rrDelta, 1) ? `${formatDelta(rrDelta, 1)} from baseline` : 'at baseline'}
+                </span>
+              )}
             </div>
             {monitorMode === 'focus' && rrConfidence !== 'full' ? (
               <div className="monitor-rr-progress-wrap">
@@ -499,6 +531,11 @@ export function MonitorTab({
             </div>
             <div className="monitor-card-sub">
               <span>{postureLabel(displayResult)}</span>
+              {monitorMode === 'focus' && (
+                <span className="monitor-delta">
+                  {formatDelta(postureDelta) ? `${formatDelta(postureDelta)} from baseline` : 'at baseline'}
+                </span>
+              )}
             </div>
             {monitorMode === 'focus' && postureAlerts.length > 0 && (
               <div className="monitor-posture-pills">
@@ -528,13 +565,32 @@ export function MonitorTab({
         ) : (
           <div className="monitor-timeline-chart">
             <svg viewBox="0 0 100 36" preserveAspectRatio="none">
-              {passiveMarkOffsets.map((offset, index) => (
-                <line key={`${offset}-${index}`} x1={offset} y1={0} x2={offset} y2={36} className="monitor-passive-mark" />
+              {passiveMarkOffsets.map((mark, index) => (
+                <line
+                  key={`${mark.ts}-${index}`}
+                  x1={mark.xPct}
+                  y1={0}
+                  x2={mark.xPct}
+                  y2={36}
+                  className="monitor-passive-mark"
+                  onMouseEnter={() =>
+                    setHoveredPassiveMark({
+                      xPct: mark.xPct,
+                      label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+                    })
+                  }
+                  onMouseLeave={() => setHoveredPassiveMark(null)}
+                />
               ))}
               <path className="signal-stress" d={buildPath(timelinePoints.map((p) => p.stress), 0, 100, 100, 36)} />
               <path className="signal-hr" d={buildPath(timelinePoints.map((p) => p.hrNorm), 0, 100, 100, 36)} />
               <path className="signal-rr" d={buildPath(timelinePoints.map((p) => p.rrNorm), 0, 100, 100, 36)} />
             </svg>
+            {hoveredPassiveMark && (
+              <div className="monitor-passive-tooltip" style={{ left: `${hoveredPassiveMark.xPct}%` }}>
+                {hoveredPassiveMark.label}
+              </div>
+            )}
           </div>
         )}
       </div>

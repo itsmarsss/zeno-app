@@ -430,6 +430,7 @@
 .monitor-timeline-chart {
   margin-top: 8px;
   height: 36px;
+  position: relative;
 }
 
 .monitor-timeline-chart svg {
@@ -476,6 +477,28 @@
 .monitor-passive-mark {
   stroke: var(--border-default);
   stroke-width: 0.35;
+}
+
+.monitor-delta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.monitor-passive-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
 
 @media (min-width: 1000px) {
