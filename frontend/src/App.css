@@ -469,6 +469,22 @@
   color: var(--text-secondary);
 }
 
+.breathing-summary .label {
+  margin-bottom: 4px;
+}
+
+.breathing-summary-row + .breathing-summary-row {
+  margin-top: 4px;
+}
+
+.breathing-summary-row--calm {
+  color: var(--state-calm);
+}
+
+.breathing-summary-row--neutral {
+  color: var(--text-secondary);
+}
+
 .footerbar {
   height: 44px;
   flex-shrink: 0;

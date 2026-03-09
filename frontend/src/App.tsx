@@ -32,6 +32,13 @@ import type {
 import { fadeSlide } from './shared/motion'
 import './App.css'
 
+type BreathingSummary = {
+  hrText: string
+  hrTone: 'calm' | 'neutral'
+  rrText: string
+  rrTone: 'calm' | 'neutral'
+}
+
 function ScrollArea({
   useOverlayScrollbars,
   overlayScrollbarOptions,
@@ -94,7 +101,7 @@ function App() {
   const [breathingCycle, setBreathingCycle] = useState(1)
   const [breathingStartHr, setBreathingStartHr] = useState<number | null>(null)
   const [breathingTriggeredBy, setBreathingTriggeredBy] = useState<'manual' | 'auto'>('manual')
-  const [breathingSummary, setBreathingSummary] = useState<string | null>(null)
+  const [breathingSummary, setBreathingSummary] = useState<BreathingSummary | null>(null)
   const [breakActive, setBreakActive] = useState(false)
   const [breakRemainingSec, setBreakRemainingSec] = useState(5 * 60)
   const [breakSummary, setBreakSummary] = useState<string | null>(null)
@@ -182,17 +189,29 @@ function App() {
       // Keep UX resilient; logging should never block the flow.
     }
 
-    if (hrDelta != null) {
-      const summary =
-        hrDelta < 0
+    const hrText =
+      hrDelta == null
+        ? 'Heart rate unchanged'
+        : hrDelta < 0
           ? `Heart rate down ${Math.abs(Math.round(hrDelta))} bpm`
           : hrDelta > 0
             ? `Heart rate up ${Math.round(hrDelta)} bpm`
             : 'Heart rate unchanged'
-      setBreathingSummary(summary)
-    } else {
-      setBreathingSummary('Session complete')
-    }
+    const rrText =
+      rrDelta == null
+        ? 'Breathing rate unchanged'
+        : rrDelta < 0
+          ? `Breathing slowed ${Math.abs(Math.round(rrDelta))} bpm`
+          : rrDelta > 0
+            ? `Breathing faster ${Math.round(rrDelta)} bpm`
+            : 'Breathing rate unchanged'
+
+    setBreathingSummary({
+      hrText,
+      hrTone: hrDelta != null && hrDelta < 0 ? 'calm' : 'neutral',
+      rrText,
+      rrTone: rrDelta != null && rrDelta < 0 ? 'calm' : 'neutral',
+    })
     setBreathingActive(false)
     setBreathingLiveHr(null)
   }, [
@@ -823,7 +842,12 @@ function App() {
                   exit="exit"
                 >
                   <p className="label">Done</p>
-                  <p>{breathingSummary}</p>
+                  <p className={`breathing-summary-row breathing-summary-row--${breathingSummary.hrTone}`}>
+                    {breathingSummary.hrText}
+                  </p>
+                  <p className={`breathing-summary-row breathing-summary-row--${breathingSummary.rrTone}`}>
+                    {breathingSummary.rrText}
+                  </p>
                 </motion.section>
               )}
             </AnimatePresence>
