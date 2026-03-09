@@ -7,7 +7,9 @@ import { ArrowUpRight, ChartNoAxesCombined, Ellipsis, House } from 'lucide-react
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import { MainWindowShell } from './components/MainWindowShell'
 import { QuickActionsPopover } from './components/QuickActionsPopover'
+import { AuthScreen } from './components/auth/AuthScreen'
 import { AppSettingsProvider } from './context/AppSettingsContext'
+import { useAuth } from './context/AuthContext'
 import { BREATHING_PATTERNS } from './shared/constants'
 import {
   friendlyPosture,
@@ -69,6 +71,7 @@ function ScrollArea({
 
 function App() {
   const isMainWindow = getCurrentWindow().label === 'main-window'
+  const { isAuthenticated, loading: authLoading } = useAuth()
   const overlayScrollbarOptions = useMemo(
     () => ({
       overflow: { x: 'hidden' as const, y: 'scroll' as const },
@@ -782,6 +785,11 @@ function App() {
     startBreak,
     updateNudgeFromResult,
   ])
+
+  // Show auth screen for main window if not authenticated
+  if (isMainWindow && !authLoading && !isAuthenticated) {
+    return <AuthScreen />
+  }
 
   return (
     <AppSettingsProvider value={{ settings, updateSettings }}>
