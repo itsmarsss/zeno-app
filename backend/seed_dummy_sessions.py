@@ -7,80 +7,79 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from db_schema import ensure_sessions_schema
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
-EMOTIONS = ["neutral", "happy", "stressed", "sad", "angry", "surprise"]
+EMOTIONS = ["neutral", "happy", "fear", "sad", "anger", "surprise", "disgust"]
 
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL,
-                presence_detected INTEGER NOT NULL,
-                posture_score REAL NOT NULL,
-                dominant_emotion TEXT NOT NULL,
-                emotion_score REAL NOT NULL,
-                heart_rate_bpm REAL,
-                emotion_backend TEXT NOT NULL,
-                session_duration_seconds REAL NOT NULL,
-                focus_mode INTEGER NOT NULL DEFAULT 0,
-                raw_json TEXT NOT NULL
-            )
-            """
-        )
-        columns = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
-        }
-        if "focus_mode" not in columns:
-            conn.execute(
-                "ALTER TABLE sessions ADD COLUMN focus_mode INTEGER NOT NULL DEFAULT 0"
-            )
+        ensure_sessions_schema(conn)
         conn.commit()
 
 
 def generate_session(ts: datetime, focus_mode: bool) -> dict:
+    mode = "focus" if focus_mode else "passive"
     if focus_mode:
-        posture = round(random.uniform(0.56, 0.93), 3)
+        posture = round(random.uniform(0.50, 0.90), 3)
         emotion = random.choices(
             population=EMOTIONS,
-            weights=[30, 22, 24, 4, 12, 8],
+            weights=[34, 15, 16, 10, 12, 7, 6],
             k=1,
         )[0]
-        duration_seconds = round(random.uniform(20 * 60, 55 * 60), 2)
+        duration_seconds = round(random.uniform(18 * 60, 55 * 60), 2)
+        focus_duration_seconds = int(duration_seconds)
+        rr_confidence = random.choices(["full", "partial"], weights=[80, 20], k=1)[0]
+        respiratory_rate = round(random.uniform(11.0, 24.0), 1)
     else:
-        posture = round(random.uniform(0.35, 0.90), 3)
+        posture = round(random.uniform(0.36, 0.88), 3)
         emotion = random.choices(
             population=EMOTIONS,
-            weights=[34, 16, 21, 11, 10, 8],
+            weights=[40, 18, 11, 11, 8, 8, 4],
             k=1,
         )[0]
-        duration_seconds = round(random.uniform(25.0, 65.0), 2)
+        duration_seconds = round(random.uniform(22.0, 70.0), 2)
+        focus_duration_seconds = 0
+        rr_confidence = "none"
+        respiratory_rate = round(random.uniform(11.0, 24.0), 1)
 
     emotion_score = round(random.uniform(0.45, 0.97), 3)
 
     heart_rate = None
     if random.random() > 0.08:
-        base = 78
-        if emotion in {"stressed", "angry"}:
+        base = 77 if not focus_mode else 80
+        if emotion in {"fear", "anger", "disgust"}:
             base = 93
         elif emotion == "happy":
             base = 74
         heart_rate = round(random.uniform(base - 9, base + 12), 1)
 
+    baseline_posture_score = round(random.uniform(0.60, 0.72), 3)
+    posture_deviation = max(0.0, round((baseline_posture_score - posture) / max(baseline_posture_score, 0.001), 4))
+    posture_is_poor = posture_deviation > 0.15
+
     return {
         "timestamp": ts.isoformat(timespec="seconds"),
         "presence_detected": True,
+        "analysis_skipped": False,
         "posture_score": posture,
+        "baseline_posture_score": baseline_posture_score,
+        "posture_deviation": posture_deviation,
+        "posture_is_poor": posture_is_poor,
         "dominant_emotion": emotion,
         "emotion_score": emotion_score,
         "heart_rate_bpm": heart_rate,
+        "respiratory_rate": respiratory_rate,
+        "rr_confidence": rr_confidence,
         "emotion_backend": "hsemotion",
+        "mode": mode,
+        "focus_duration_seconds": focus_duration_seconds,
         "session_duration_seconds": duration_seconds,
         "focus_mode": focus_mode,
+        "notification_sent": "none",
+        "notification_dismissed_by": "none",
     }
 
 
@@ -92,7 +91,7 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
     with sqlite3.connect(db_path) as conn:
         for day_offset in range(days):
             day = now - timedelta(days=(days - 1 - day_offset))
-            short_checkins = max(2, sessions_per_day // 3)
+            short_checkins = max(2, int(round(sessions_per_day * 0.65)))
             focus_blocks = max(1, sessions_per_day - short_checkins)
 
             # Short check-ins spread throughout work hours.
@@ -107,26 +106,46 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                     INSERT INTO sessions (
                         created_at,
                         presence_detected,
+                        analysis_skipped,
                         posture_score,
+                        baseline_posture_score,
+                        posture_deviation,
+                        posture_is_poor,
                         dominant_emotion,
                         emotion_score,
                         heart_rate_bpm,
+                        respiratory_rate,
+                        rr_confidence,
                         emotion_backend,
+                        mode,
+                        focus_duration_seconds,
                         session_duration_seconds,
                         focus_mode,
+                        notification_sent,
+                        notification_dismissed_by,
                         raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session["timestamp"],
                         1,
+                        0,
                         session["posture_score"],
+                        session["baseline_posture_score"],
+                        session["posture_deviation"],
+                        1 if session["posture_is_poor"] else 0,
                         session["dominant_emotion"],
                         session["emotion_score"],
                         session["heart_rate_bpm"],
+                        session["respiratory_rate"],
+                        session["rr_confidence"],
                         session["emotion_backend"],
+                        session["mode"],
+                        session["focus_duration_seconds"],
                         session["session_duration_seconds"],
                         0,
+                        session["notification_sent"],
+                        session["notification_dismissed_by"],
                         json.dumps(session),
                     ),
                 )
@@ -144,26 +163,46 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                     INSERT INTO sessions (
                         created_at,
                         presence_detected,
+                        analysis_skipped,
                         posture_score,
+                        baseline_posture_score,
+                        posture_deviation,
+                        posture_is_poor,
                         dominant_emotion,
                         emotion_score,
                         heart_rate_bpm,
+                        respiratory_rate,
+                        rr_confidence,
                         emotion_backend,
+                        mode,
+                        focus_duration_seconds,
                         session_duration_seconds,
                         focus_mode,
+                        notification_sent,
+                        notification_dismissed_by,
                         raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session["timestamp"],
                         1,
+                        0,
                         session["posture_score"],
+                        session["baseline_posture_score"],
+                        session["posture_deviation"],
+                        1 if session["posture_is_poor"] else 0,
                         session["dominant_emotion"],
                         session["emotion_score"],
                         session["heart_rate_bpm"],
+                        session["respiratory_rate"],
+                        session["rr_confidence"],
                         session["emotion_backend"],
+                        session["mode"],
+                        session["focus_duration_seconds"],
                         session["session_duration_seconds"],
                         1,
+                        session["notification_sent"],
+                        session["notification_dismissed_by"],
                         json.dumps(session),
                     ),
                 )
