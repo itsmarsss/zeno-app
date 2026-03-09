@@ -1,0 +1,449 @@
+.monitor-tab {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  min-height: 100%;
+}
+
+.monitor-banner {
+  height: 40px;
+  border-radius: 10px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border-subtle);
+  transition: background 400ms ease;
+}
+
+.monitor-banner--idle {
+  background: var(--bg-subtle);
+}
+
+.monitor-banner--passive,
+.monitor-banner--focus {
+  background: color-mix(in srgb, var(--accent) 11%, var(--bg-surface));
+}
+
+.monitor-banner-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.monitor-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border-default);
+}
+
+.monitor-pulse--passive,
+.monitor-pulse--focus {
+  background: var(--accent);
+  animation: monitorPulse 2s ease-in-out infinite;
+}
+
+.monitor-pulse--focus {
+  animation-duration: 1.4s;
+}
+
+@keyframes monitorPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  50% {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+.monitor-banner-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.monitor-banner-label.is-strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.monitor-banner-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.monitor-banner-time--accent {
+  color: var(--accent);
+}
+
+.monitor-banner-action {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.monitor-banner-action--danger {
+  color: var(--state-elevated);
+}
+
+.monitor-body {
+  display: grid;
+  grid-template-columns: 44% 56%;
+  gap: 20px;
+  min-height: 0;
+}
+
+.monitor-camera-shell {
+  min-width: 0;
+}
+
+.monitor-camera-idle {
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  aspect-ratio: 4 / 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+}
+
+.monitor-camera-idle p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.monitor-camera-idle span {
+  max-width: 170px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.monitor-camera-live {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0d0d0d;
+  animation: cameraReveal 300ms ease;
+}
+
+.monitor-camera-frame {
+  margin-top: 0;
+  border: none;
+  border-radius: 14px;
+  aspect-ratio: 4 / 3;
+  max-width: none;
+}
+
+@keyframes cameraReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.monitor-camera-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+
+.monitor-camera-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: monitorPulse 1.6s ease-in-out infinite;
+}
+
+.monitor-camera-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.monitor-camera-progress-fill {
+  height: 100%;
+  background: #fff;
+}
+
+.monitor-camera-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 24px 16px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+}
+
+.monitor-camera-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.monitor-camera-score {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 4px 10px;
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+
+.monitor-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.monitor-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.monitor-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.monitor-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  color: var(--text-tertiary);
+}
+
+.monitor-mode-pill {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 9px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-tertiary);
+  background: var(--bg-subtle);
+}
+
+.monitor-mode-pill--focus {
+  color: color-mix(in srgb, var(--accent) 84%, #0f1510 16%);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-subtle));
+}
+
+.monitor-card-value {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.monitor-card-value strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.monitor-card-value em {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-style: normal;
+  color: var(--text-tertiary);
+}
+
+.monitor-card-sub {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.monitor-card svg {
+  margin-top: 10px;
+  width: 100%;
+  height: 32px;
+}
+
+.monitor-rr-progress-wrap {
+  margin-top: 10px;
+}
+
+.monitor-rr-progress {
+  height: 3px;
+  background: var(--bg-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.monitor-rr-progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.monitor-rr-progress-wrap span {
+  margin-top: 5px;
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.monitor-posture-pills {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.monitor-posture-pills span {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.monitor-timeline {
+  height: 80px;
+  margin-top: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.monitor-timeline header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.monitor-timeline header span {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.monitor-timeline header em {
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-style: normal;
+  color: var(--text-tertiary);
+}
+
+.monitor-timeline-chart {
+  margin-top: 8px;
+  height: 36px;
+}
+
+.monitor-timeline-chart svg {
+  width: 100%;
+  height: 100%;
+}
+
+.monitor-timeline-empty {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.monitor-timeline-empty p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.monitor-timeline-empty span {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.signal-stress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.signal-hr {
+  fill: none;
+  stroke: var(--border-default);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.signal-rr {
+  fill: none;
+  stroke: var(--state-mild);
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
+}
+
+.monitor-passive-mark {
+  stroke: var(--border-default);
+  stroke-width: 0.35;
+}
+
+@media (min-width: 1000px) {
+  .monitor-banner {
+    height: 48px;
+  }
+
+  .monitor-banner-label,
+  .monitor-banner-time,
+  .monitor-banner-action {
+    font-size: 14px;
+  }
+
+  .monitor-card {
+    padding: 24px 28px;
+  }
+
+  .monitor-card-value strong {
+    font-size: 44px;
+  }
+}
+

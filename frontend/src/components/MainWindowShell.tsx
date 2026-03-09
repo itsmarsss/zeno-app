@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Pause, Play, Target, Zap } from 'lucide-react'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import { FocusHistoryTab } from './focus/FocusHistoryTab'
+import { MonitorTab } from './monitor/MonitorTab'
 import { OverviewTab } from './overview/OverviewTab'
 import { PostureTab } from './posture/PostureTab'
 import { ExercisesTab } from './exercises/ExercisesTab'
@@ -18,6 +19,7 @@ import type {
   PostureLandmarks,
   PostureStreamFrame,
   SessionHistoryItem,
+  SessionResult,
 } from '../shared/types'
 import {
   buildAreaPath,
@@ -54,6 +56,7 @@ export function MainWindowShell({
   clearAllData,
   onRunCheckIn,
   isCheckInRunning,
+  currentResult,
 }: {
   history: SessionHistoryItem[]
   dailyReport: DailyReport | null
@@ -64,6 +67,7 @@ export function MainWindowShell({
   clearAllData: () => Promise<void>
   onRunCheckIn: () => Promise<void>
   isCheckInRunning: boolean
+  currentResult: SessionResult | null
 }) {
   const { settings, updateSettings } = useAppSettings()
   const [tab, setTab] = useState<MainTab>('overview')
@@ -479,6 +483,8 @@ export function MainWindowShell({
   const tabTitle =
     tab === 'overview'
       ? 'Overview'
+      : tab === 'monitor'
+        ? 'Monitor'
       : tab === 'focus'
         ? 'Focus History'
         : tab === 'posture'
@@ -486,7 +492,10 @@ export function MainWindowShell({
           : tab === 'exercises'
             ? 'Exercises'
             : 'Settings'
-  const tabSubline = `Today ${todaySessions.length} sessions · ${formatMinutes(todayFocusedMinutes)} focused`
+  const tabSubline =
+    tab === 'monitor'
+      ? 'Live signal stack and camera state'
+      : `Today ${todaySessions.length} sessions · ${formatMinutes(todayFocusedMinutes)} focused`
 
   async function logExerciseSessionOnExit() {
     const exerciseId = guidedExerciseIdRef.current ?? selectedExercise?.id
@@ -577,7 +586,10 @@ export function MainWindowShell({
   }
 
   useEffect(() => {
-    const shouldStream = tab === 'posture' || (tab === 'exercises' && exerciseGuidedActive)
+    const shouldStream =
+      tab === 'posture' ||
+      (tab === 'exercises' && exerciseGuidedActive) ||
+      (tab === 'monitor' && (Boolean(settings?.focus_mode_active) || isCheckInRunning))
     if (!shouldStream) return
 
     let unlistenFrame: (() => void) | undefined
@@ -611,7 +623,7 @@ export function MainWindowShell({
       if (unlistenEnded) unlistenEnded()
       void invoke('stop_posture_stream').catch(() => null)
     }
-  }, [tab, exerciseGuidedActive, selectedExercise?.id, selectedExercise])
+  }, [tab, exerciseGuidedActive, selectedExercise?.id, selectedExercise, settings?.focus_mode_active, isCheckInRunning])
 
   return (
     <div className="main-window-shell">
@@ -716,6 +728,22 @@ export function MainWindowShell({
                   setExpandedSessionId={setExpandedSessionId}
                   sortNewestFirst={sortNewestFirst}
                   setSortNewestFirst={setSortNewestFirst}
+                />
+              </motion.div>
+            )}
+
+            {tab === 'monitor' && (
+              <motion.div key="tab-monitor" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+                <MonitorTab
+                  history={history}
+                  currentResult={currentResult}
+                  focusModeActive={Boolean(settings?.focus_mode_active)}
+                  isCheckInRunning={isCheckInRunning}
+                  postureFrame={postureFrame}
+                  postureLandmarks={postureLandmarks}
+                  postureScoreLive={postureScoreLive}
+                  onStartFocusMode={() => void updateSettings({ focus_mode_active: true })}
+                  onEndFocusMode={() => void updateSettings({ focus_mode_active: false })}
                 />
               </motion.div>
             )}

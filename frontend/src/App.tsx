@@ -756,6 +756,7 @@ function App() {
           clearAllData={clearAllData}
           onRunCheckIn={runSession}
           isCheckInRunning={status === 'Running'}
+          currentResult={result}
         />
       ) : (
         <main className="popover">
