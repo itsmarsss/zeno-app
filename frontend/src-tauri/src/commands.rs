@@ -256,6 +256,14 @@ fn stress_index_from_payload(payload: &Value) -> Option<u64> {
     {
         return None;
     }
+    if let Some(v) = payload
+        .get("stress_index_smoothed")
+        .and_then(|v| v.as_u64())
+        .or_else(|| payload.get("stress_index").and_then(|v| v.as_u64()))
+    {
+        return Some(v.min(100));
+    }
+
     let emotion = payload
         .get("dominant_emotion")
         .and_then(|v| v.as_str())

@@ -456,6 +456,10 @@ function App() {
       if (cancelled) return
       unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
         const session = normalizeFocusStreamResult(event.payload)
+        const smoothedStress =
+          typeof event.payload?.stress_index_smoothed === 'number'
+            ? event.payload.stress_index_smoothed
+            : stressIndex(session)
         if (session.session_skipped || !session.presence_detected) {
           setLastNudge('No face detected, focus stream waiting.')
           setStatus('Done')
@@ -467,7 +471,7 @@ function App() {
         setStatus('Done')
         setError(null)
 
-        if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(session) > 60) {
+        if (!breathingActiveRef.current && !breakActiveRef.current && smoothedStress > 60) {
           setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
           startBreathing('auto')
         }
