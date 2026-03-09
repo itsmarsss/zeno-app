@@ -6,6 +6,8 @@ export function AuthScreen() {
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [referralCode, setReferralCode] = useState('')
+  const [showReferralInput, setShowReferralInput] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [expiresIn, setExpiresIn] = useState(0)
@@ -33,7 +35,7 @@ export function AuthScreen() {
     setLoading(true)
 
     try {
-      await verifyOTP(email, code)
+      await verifyOTP(email, code, referralCode || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code')
     } finally {
@@ -151,6 +153,31 @@ export function AuthScreen() {
               {error && (
                 <div className="auth-error">
                   <span>{error}</span>
+                </div>
+              )}
+
+              {!showReferralInput && (
+                <button
+                  type="button"
+                  className="auth-referral-toggle"
+                  onClick={() => setShowReferralInput(true)}
+                >
+                  Have a referral code?
+                </button>
+              )}
+
+              {showReferralInput && (
+                <div className="form-field">
+                  <label htmlFor="referral">Referral code (optional)</label>
+                  <input
+                    id="referral"
+                    type="text"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder="ZENO-XXXX"
+                    disabled={loading}
+                    className="auth-referral-input"
+                  />
                 </div>
               )}
 

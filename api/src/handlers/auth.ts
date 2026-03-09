@@ -18,6 +18,10 @@ import {
   isOTPExpired,
   hasExceededAttempts,
 } from '../utils/otp.js'
+import {
+  generateUniqueReferralCode,
+  validateReferralCode,
+} from '../utils/referral.js'
 import { User, OTPCode } from '../types/index.js'
 
 const requestOTPSchema = z.object({
@@ -27,6 +31,7 @@ const requestOTPSchema = z.object({
 const verifyOTPSchema = z.object({
   email: z.string().email(),
   code: z.string().length(6),
+  referredBy: z.string().optional(),
 })
 
 // Request OTP handler
@@ -75,7 +80,7 @@ export const requestOTP: APIGatewayProxyHandler = async (event) => {
 export const verifyOTP: APIGatewayProxyHandler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
-    const { email, code } = verifyOTPSchema.parse(body)
+    const { email, code, referredBy } = verifyOTPSchema.parse(body)
 
     const normalizedEmail = email.toLowerCase()
 
@@ -138,9 +143,23 @@ export const verifyOTP: APIGatewayProxyHandler = async (event) => {
       const userId = randomUUID()
       const now = Date.now()
 
+      // Validate referral code if provided
+      let validReferredBy: string | null = null
+      if (referredBy) {
+        const isValid = await validateReferralCode(referredBy)
+        if (isValid) {
+          validReferredBy = referredBy
+        }
+      }
+
+      // Generate unique referral code for new user
+      const referralCode = await generateUniqueReferralCode()
+
       user = {
         id: userId,
         email: normalizedEmail,
+        referralCode,
+        referredBy: validReferredBy,
         subscriptionTier: 'free',
         createdAt: now,
         updatedAt: now,
@@ -177,6 +196,7 @@ export const verifyOTP: APIGatewayProxyHandler = async (event) => {
       user: {
         id: user.id,
         email: user.email,
+        referralCode: user.referralCode,
         subscriptionTier: user.subscriptionTier,
       },
     })
@@ -219,6 +239,7 @@ export const me: APIGatewayProxyHandler = async (event) => {
       user: {
         id: user.id,
         email: user.email,
+        referralCode: user.referralCode,
         subscriptionTier: user.subscriptionTier,
         createdAt: user.createdAt,
       },

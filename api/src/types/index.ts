@@ -1,6 +1,8 @@
 export interface User {
   id: string
   email: string
+  referralCode: string
+  referredBy?: string | null
   subscriptionTier: 'free' | 'paid'
   createdAt: number
   updatedAt: number

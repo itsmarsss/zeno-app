@@ -14,9 +14,20 @@ resource "aws_dynamodb_table" "users" {
     type = "S"
   }
 
+  attribute {
+    name = "referralCode"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "EmailIndex"
     hash_key        = "email"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "ReferralCodeIndex"
+    hash_key        = "referralCode"
     projection_type = "ALL"
   }
 

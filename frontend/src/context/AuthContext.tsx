@@ -4,6 +4,7 @@ import { apiClient } from '../api/client'
 interface User {
   id: string
   email: string
+  referralCode: string
   subscriptionTier: string
 }
 
@@ -12,7 +13,7 @@ interface AuthContextType {
   loading: boolean
   isGuest: boolean
   requestOTP: (email: string) => Promise<void>
-  verifyOTP: (email: string, code: string) => Promise<void>
+  verifyOTP: (email: string, code: string, referredBy?: string) => Promise<void>
   continueAsGuest: () => void
   logout: () => void
   isAuthenticated: boolean
@@ -56,8 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiClient.requestOTP(email)
   }
 
-  const verifyOTP = async (email: string, code: string) => {
-    const response = await apiClient.verifyOTP(email, code)
+  const verifyOTP = async (email: string, code: string, referredBy?: string) => {
+    const response = await apiClient.verifyOTP(email, code, referredBy)
     apiClient.setToken(response.token)
     setUser(response.user)
   }

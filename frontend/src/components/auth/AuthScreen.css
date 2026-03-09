@@ -318,3 +318,27 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.auth-referral-toggle {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+  margin-bottom: 12px;
+}
+
+.auth-referral-toggle:hover {
+  color: var(--accent);
+}
+
+.auth-referral-input {
+  font-family: 'IBM Plex Mono', monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}

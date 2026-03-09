@@ -173,6 +173,27 @@ export function SettingsTab({
               </div>
             </div>
 
+            <div className="settings-row settings-row--info settings-referral-row">
+              <div>
+                <strong>Your referral code</strong>
+                <p>Share with friends to earn rewards</p>
+              </div>
+              <div className="settings-referral-code">
+                <code>{user?.referralCode || 'ZENO-XXXX'}</code>
+                <button
+                  className="settings-copy-btn"
+                  onClick={() => {
+                    if (user?.referralCode) {
+                      navigator.clipboard.writeText(user.referralCode)
+                    }
+                  }}
+                  title="Copy code"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
             {user?.subscriptionTier === 'free' && (
               <button className="settings-row settings-row--select">
                 <div>

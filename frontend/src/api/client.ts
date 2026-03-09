@@ -61,13 +61,18 @@ class ApiClient {
     })
   }
 
-  async verifyOTP(email: string, code: string) {
+  async verifyOTP(email: string, code: string, referredBy?: string) {
     return this.request<{
       token: string
-      user: { id: string; email: string; subscriptionTier: string }
+      user: {
+        id: string
+        email: string
+        referralCode: string
+        subscriptionTier: string
+      }
     }>('/auth/verify-otp', {
       method: 'POST',
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ email, code, referredBy }),
     })
   }
 
