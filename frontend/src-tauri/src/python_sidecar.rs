@@ -46,10 +46,26 @@ pub fn parse_json_line(stdout: &str) -> Result<Value, String> {
 
 fn extract_session_from_logger_payload(payload: Value) -> Result<Value, String> {
     if let Some(session) = payload.get("session") {
-        return Ok(session.clone());
+        let mut enriched = session.clone();
+        if let Some(map) = enriched.as_object_mut() {
+            map.insert(
+                "session_id".to_string(),
+                payload.get("inserted_id").cloned().unwrap_or(Value::Null),
+            );
+            map.insert(
+                "session_skipped".to_string(),
+                payload.get("skipped").cloned().unwrap_or(Value::Bool(false)),
+            );
+        }
+        return Ok(enriched);
     }
     if payload.get("timestamp").is_some() {
-        return Ok(payload);
+        let mut enriched = payload;
+        if let Some(map) = enriched.as_object_mut() {
+            map.insert("session_id".to_string(), Value::Null);
+            map.insert("session_skipped".to_string(), Value::Bool(false));
+        }
+        return Ok(enriched);
     }
     Err(format!(
         "Unexpected sidecar payload shape. Expected {{session: ...}} or session object. Got: {}",
@@ -402,6 +418,122 @@ pub fn run_log_break_session_blocking(
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         return Err(format!(
             "Break logger failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_update_session_notification_blocking(
+    session_id: u64,
+    notification_sent: Option<String>,
+    notification_dismissed_by: Option<String>,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("session_notification.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(script)
+        .arg("--session-id")
+        .arg(session_id.to_string());
+    if let Some(value) = notification_sent {
+        cmd.arg("--notification-sent").arg(value);
+    }
+    if let Some(value) = notification_dismissed_by {
+        cmd.arg("--notification-dismissed-by").arg(value);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to update session notification: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Session notification update failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_log_exercise_session_blocking(
+    exercise_id: String,
+    completed: bool,
+    form_score: Option<f64>,
+    duration_seconds: Option<f64>,
+    triggered_by: String,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("exercise_logger.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let mut cmd = Command::new(python_bin);
+    cmd.arg(script)
+        .arg("--exercise-id")
+        .arg(exercise_id)
+        .arg("--triggered-by")
+        .arg(triggered_by);
+    if completed {
+        cmd.arg("--completed");
+    }
+    if let Some(value) = form_score {
+        cmd.arg("--form-score").arg(value.to_string());
+    }
+    if let Some(value) = duration_seconds {
+        cmd.arg("--duration-seconds").arg(value.to_string());
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to log exercise session: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Exercise logger failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_export_sessions_csv_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let script = root.join("backend").join("export_csv.py");
+    if !script.is_file() {
+        return Err(format!("Missing script: {}", script.display()));
+    }
+
+    let output = Command::new(python_bin)
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Failed to export CSV: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "CSV export failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
             output.status.code(),
             stdout,
             stderr

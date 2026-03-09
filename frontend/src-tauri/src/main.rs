@@ -8,9 +8,9 @@ mod state;
 
 use commands::{
     open_main_window, run_calibration_status, run_clear_data, run_daily_report, run_get_settings,
-    run_log_break_session, run_log_breathing_session, run_presence_check, run_python_session,
-    run_session_history, run_update_settings, start_hr_stream, start_posture_stream, stop_hr_stream,
-    stop_posture_stream,
+    run_export_sessions_csv, run_log_break_session, run_log_breathing_session,
+    run_log_exercise_session, run_presence_check, run_python_session, run_session_history,
+    run_update_settings, start_hr_stream, start_posture_stream, stop_hr_stream, stop_posture_stream,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
@@ -148,6 +148,8 @@ fn main() {
             run_log_breathing_session,
             run_presence_check,
             run_log_break_session,
+            run_log_exercise_session,
+            run_export_sessions_csv,
             open_main_window,
             start_posture_stream,
             stop_posture_stream,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -73,6 +73,7 @@ export function MainWindowShell({
   const [exerciseMetrics, setExerciseMetrics] = useState<PostureStreamFrame['exercise_metrics']>(null)
   const [licenseInput, setLicenseInput] = useState('')
   const [paywallMessage, setPaywallMessage] = useState<string | null>(null)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
@@ -85,6 +86,8 @@ export function MainWindowShell({
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [chartHoverIndex, setChartHoverIndex] = useState<number | null>(null)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
+  const guidedStartedAtRef = useRef<number | null>(null)
+  const guidedExerciseIdRef = useRef<string | null>(null)
   const overlayScrollbarOptions = useMemo(
     () => ({
       overflow: { x: 'hidden' as const, y: 'scroll' as const },
@@ -443,6 +446,33 @@ export function MainWindowShell({
             : 'Settings'
   const tabSubline = `Today ${todaySessions.length} sessions · ${formatMinutes(todayFocusedMinutes)} focused`
 
+  async function logExerciseSessionOnExit() {
+    const exerciseId = guidedExerciseIdRef.current ?? selectedExercise?.id
+    const startedAt = guidedStartedAtRef.current
+    if (!exerciseId || startedAt == null) return
+
+    const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+    const completionByReps =
+      exerciseMetrics?.target_reps && exerciseMetrics.target_reps > 0
+        ? exerciseMetrics.rep_count >= exerciseMetrics.target_reps
+        : false
+    const completionByProgress = (exerciseMetrics?.progress_pct ?? 0) >= 90
+    const completed = completionByReps || completionByProgress
+    const formScore = exerciseMetrics?.quality_score ?? null
+
+    try {
+      await invoke('run_log_exercise_session', {
+        exerciseId,
+        completed,
+        formScore,
+        durationSeconds,
+        triggeredBy: 'manual',
+      })
+    } catch {
+      // Exercise logging should not block UX.
+    }
+  }
+
   function toggleGuidedExercise(exerciseId?: string) {
     const targetExercise =
       (exerciseId ? EXERCISE_LIBRARY.find((exercise) => exercise.id === exerciseId) : selectedExercise) ??
@@ -465,8 +495,14 @@ export function MainWindowShell({
     setExerciseGuidedActive((v) => {
       const next = !v
       if (!next) {
+        void logExerciseSessionOnExit()
         setExerciseFeedback(null)
         setExerciseMetrics(null)
+        guidedStartedAtRef.current = null
+        guidedExerciseIdRef.current = null
+      } else {
+        guidedStartedAtRef.current = Date.now()
+        guidedExerciseIdRef.current = targetExercise?.id ?? selectedExercise?.id ?? null
       }
       return next
     })
@@ -483,6 +519,19 @@ export function MainWindowShell({
     setExerciseMetrics(null)
     setExerciseGuidedActive(false)
     setTab('exercises')
+  }
+
+  async function exportDataAsCsv() {
+    try {
+      const result = await invoke<{ ok?: boolean; path?: string; error?: string }>('run_export_sessions_csv')
+      if (result?.ok && result.path) {
+        setExportMessage(`Exported to ${result.path}`)
+      } else {
+        setExportMessage(result?.error ?? 'Export failed')
+      }
+    } catch (err) {
+      setExportMessage(err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   useEffect(() => {
@@ -670,6 +719,8 @@ export function MainWindowShell({
                   clearAllData={clearAllData}
                   lastRunSource={lastRunSource}
                   error={error}
+                  onExportData={exportDataAsCsv}
+                  exportMessage={exportMessage}
                 />
               </motion.div>
             )}

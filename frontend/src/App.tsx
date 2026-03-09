@@ -65,6 +65,7 @@ function App() {
   const [breathingRemainingMs, setBreathingRemainingMs] = useState(BREATHING_PATTERNS.box.phases[0].seconds * 1000)
   const [breathingCycle, setBreathingCycle] = useState(1)
   const [breathingStartHr, setBreathingStartHr] = useState<number | null>(null)
+  const [breathingTriggeredBy, setBreathingTriggeredBy] = useState<'manual' | 'auto'>('manual')
   const [breathingSummary, setBreathingSummary] = useState<string | null>(null)
   const [breakActive, setBreakActive] = useState(false)
   const [breakRemainingSec, setBreakRemainingSec] = useState(5 * 60)
@@ -78,6 +79,8 @@ function App() {
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
   const breakActiveRef = useRef(false)
+  const breakReminderTwoSentRef = useRef(false)
+  const breakReminderFourSentRef = useRef(false)
   const finishBreakRef = useRef<(reason: 'complete' | 'early') => Promise<void>>(async () => {})
 
   const canRun = status !== 'Running'
@@ -137,7 +140,7 @@ function App() {
         hrStart,
         hrEnd,
         hrDelta,
-        triggeredBy: 'manual',
+        triggeredBy: breathingTriggeredBy,
       })
     } catch {
       // Keep UX resilient; logging should never block the flow.
@@ -161,6 +164,7 @@ function App() {
     breathingLiveHr,
     breathingPattern,
     breathingStartHr,
+    breathingTriggeredBy,
     breathingUseHrSensing,
     result?.heart_rate_bpm,
   ])
@@ -268,13 +272,26 @@ function App() {
   }, [breakActive, breakUseGenuinityChecks])
 
   useEffect(() => {
+    if (!breakActive || !breakUseGenuinityChecks) return
+    const elapsed = Math.max(0, breakTargetSec - breakRemainingSec)
+    if (elapsed >= 120 && !breakReminderTwoSentRef.current && breakAwaySeconds < Math.floor(elapsed * 0.4)) {
+      breakReminderTwoSentRef.current = true
+      setBreakSummary('Gentle reminder: try stepping away from your desk.')
+    }
+    if (elapsed >= 240 && !breakReminderFourSentRef.current && breakAwaySeconds < Math.floor(elapsed * 0.5)) {
+      breakReminderFourSentRef.current = true
+      setBreakSummary('Stronger reminder: this break only works if you leave the screen.')
+    }
+  }, [breakActive, breakAwaySeconds, breakRemainingSec, breakTargetSec, breakUseGenuinityChecks])
+
+  useEffect(() => {
     if (!breakSummary) return
     const timeout = window.setTimeout(() => setBreakSummary(null), 3000)
     return () => window.clearTimeout(timeout)
   }, [breakSummary])
 
   const updateNudgeFromResult = useCallback((session: SessionResult) => {
-    if (session.posture_score < 0.45) {
+    if (session.posture_score < 0.45 || session.posture_is_poor) {
       setLastNudge('Straighten up and roll your shoulders back.')
       return
     }
@@ -349,15 +366,19 @@ function App() {
     await updateSettings({ focus_mode_active: !settings?.focus_mode_active })
   }
 
-  function startBreathing() {
-    setBreathingActive(true)
-    setBreathingPhaseIndex(0)
-    setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
-    setBreathingCycle(1)
-    setBreathingStartHr(breathingUseHrSensing ? null : (result?.heart_rate_bpm ?? null))
-    setBreathingLiveHr(null)
-    setBreathingSummary(null)
-  }
+  const startBreathing = useCallback(
+    (triggeredBy: 'manual' | 'auto' = 'manual') => {
+      setBreathingActive(true)
+      setBreathingTriggeredBy(triggeredBy)
+      setBreathingPhaseIndex(0)
+      setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
+      setBreathingCycle(1)
+      setBreathingStartHr(breathingUseHrSensing ? null : (result?.heart_rate_bpm ?? null))
+      setBreathingLiveHr(null)
+      setBreathingSummary(null)
+    },
+    [activePattern.phases, breathingUseHrSensing, result?.heart_rate_bpm],
+  )
 
   async function completeOnboarding() {
     await updateSettings({ onboarding_completed: true })
@@ -367,6 +388,8 @@ function App() {
   const startBreak = useCallback((durationSec = 5 * 60) => {
     const target = Math.max(60, durationSec)
     setBreakActive(true)
+    breakReminderTwoSentRef.current = false
+    breakReminderFourSentRef.current = false
     setBreakTargetSec(target)
     setBreakRemainingSec(target)
     setBreakAwaySeconds(0)
@@ -456,6 +479,12 @@ function App() {
       setStatus('Running')
       setError(null)
       const payload = await invoke<SessionResult>('run_python_session')
+      if (payload.session_skipped || !payload.presence_detected) {
+        setLastNudge('No face detected, skipped this check-in.')
+        setStatus('Done')
+        await loadSettings()
+        return
+      }
       setResult(payload)
       updateNudgeFromResult(payload)
       setLastRunSource('manual')
@@ -484,10 +513,20 @@ function App() {
       await loadSettings()
 
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
+        if (event.payload.result.session_skipped || !event.payload.result.presence_detected) {
+          setLastNudge('No face detected, skipped this check-in.')
+          setStatus('Done')
+          setError(null)
+          return
+        }
         setResult(event.payload.result)
         updateNudgeFromResult(event.payload.result)
         if (event.payload.source === 'focus-mode') {
           setLastRunSource('focus-mode')
+          if (!breathingActive && !breakActive && stressIndex(event.payload.result) > 60) {
+            setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
+            startBreathing('auto')
+          }
         } else {
           setLastRunSource('scheduler')
         }
@@ -529,7 +568,17 @@ function App() {
       unlistenGesture?.()
       unlistenBreakAuto?.()
     }
-  }, [loadCalibrationStatus, loadDailyReport, loadHistory, loadSettings, startBreak, updateNudgeFromResult])
+  }, [
+    breakActive,
+    breathingActive,
+    loadCalibrationStatus,
+    loadDailyReport,
+    loadHistory,
+    loadSettings,
+    startBreathing,
+    startBreak,
+    updateNudgeFromResult,
+  ])
 
   return (
     <AppSettingsProvider value={{ settings, updateSettings }}>

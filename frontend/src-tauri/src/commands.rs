@@ -1,8 +1,10 @@
 use crate::notifications::{notify_for_session, start_gesture_dismiss_listener};
 use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
-    run_log_break_session_blocking, run_log_breathing_session_blocking, run_presence_check_blocking,
-    run_python_session_blocking, run_session_history_blocking, run_settings_blocking,
+    run_export_sessions_csv_blocking, run_log_break_session_blocking,
+    run_log_breathing_session_blocking, run_log_exercise_session_blocking,
+    run_presence_check_blocking, run_python_session_blocking, run_session_history_blocking,
+    run_settings_blocking, run_update_session_notification_blocking,
 };
 use crate::state::{HrStreamState, NotificationState, PostureStreamState, SessionState, SettingsState};
 use serde_json::Value;
@@ -40,7 +42,18 @@ pub async fn run_python_session(
 
     state.running.store(false, Ordering::SeqCst);
     if let Ok(ref payload) = result {
-        if notify_for_session(&app, &notification_state, payload) {
+        if let Some(dispatch) = notify_for_session(&app, &notification_state, payload) {
+            let session_id = payload.get("session_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if session_id > 0 {
+                notification_state
+                    .last_notified_session_id
+                    .store(session_id, Ordering::SeqCst);
+                let _ = run_update_session_notification_blocking(
+                    session_id,
+                    Some(dispatch.kind),
+                    None,
+                );
+            }
             start_gesture_dismiss_listener(&app);
         }
     }
@@ -150,6 +163,34 @@ pub async fn run_log_break_session(
     })
     .await
     .map_err(|e| format!("Break log task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_log_exercise_session(
+    exercise_id: String,
+    completed: bool,
+    form_score: Option<f64>,
+    duration_seconds: Option<f64>,
+    triggered_by: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_log_exercise_session_blocking(
+            exercise_id,
+            completed,
+            form_score,
+            duration_seconds,
+            triggered_by.unwrap_or_else(|| "manual".to_string()),
+        )
+    })
+    .await
+    .map_err(|e| format!("Exercise log task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_export_sessions_csv() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_export_sessions_csv_blocking)
+        .await
+        .map_err(|e| format!("CSV export task join error: {e}"))?
 }
 
 #[tauri::command]

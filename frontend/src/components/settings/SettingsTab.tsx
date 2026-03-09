@@ -60,6 +60,8 @@ export function SettingsTab({
   clearAllData,
   lastRunSource,
   error,
+  onExportData,
+  exportMessage,
 }: {
   settings: AppSettings | null
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>
@@ -71,6 +73,8 @@ export function SettingsTab({
   clearAllData: () => Promise<void>
   lastRunSource: string | null
   error: string | null
+  onExportData: () => Promise<void>
+  exportMessage: string | null
 }) {
   const [cameraIndicator, setCameraIndicator] = useState(true)
   const [postureNudges, setPostureNudges] = useState(true)
@@ -284,7 +288,7 @@ export function SettingsTab({
       <section className="settings-section">
         <p className="settings-section-title">Your data</p>
         <div className="settings-card">
-          <button className="settings-row settings-row--action">
+          <button className="settings-row settings-row--action" onClick={() => void onExportData()}>
             <div>
               <strong>Export my data</strong>
               <p>Download everything as CSV</p>
@@ -293,6 +297,7 @@ export function SettingsTab({
               <Download size={14} /> Export
             </span>
           </button>
+          {exportMessage ? <p className="settings-inline-note">{exportMessage}</p> : null}
 
           <button className="settings-row settings-row--select" onClick={() => setLicenseExpanded((value) => !value)}>
             <div>

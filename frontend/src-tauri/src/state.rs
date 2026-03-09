@@ -11,6 +11,7 @@ pub struct SessionState {
 #[derive(Default)]
 pub struct NotificationState {
     pub suppress_until_unix: AtomicU64,
+    pub last_notified_session_id: AtomicU64,
 }
 
 #[derive(Default)]
@@ -54,6 +55,8 @@ pub struct SettingsState {
 pub struct FocusTimerState {
     pub started_at_unix: AtomicU64,
     pub break_triggered_for_session: AtomicBool,
+    pub stress_sum: AtomicU64,
+    pub stress_samples: AtomicU32,
 }
 
 #[derive(Default)]

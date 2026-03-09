@@ -1,10 +1,17 @@
-use crate::python_sidecar::{now_unix_secs, run_gesture_dismiss_blocking};
+use crate::python_sidecar::{
+    now_unix_secs, run_gesture_dismiss_blocking, run_update_session_notification_blocking,
+};
 use crate::state::NotificationState;
 use serde_json::Value;
 use std::sync::atomic::Ordering;
 use std::thread;
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+
+#[derive(Clone)]
+pub struct NotificationDispatch {
+    pub kind: String,
+}
 
 fn stress_index_from_result(result: &Value) -> Option<u8> {
     let emotion = result
@@ -42,16 +49,21 @@ fn stress_index_from_result(result: &Value) -> Option<u8> {
     Some(score.clamp(0.0, 100.0) as u8)
 }
 
-fn notification_for_result(result: &Value) -> Option<(String, String)> {
+fn notification_for_result(result: &Value) -> Option<(String, String, String)> {
     let posture_score = result
         .get("posture_score")
         .and_then(|v| v.as_f64())
         .unwrap_or(1.0);
+    let posture_is_poor = result
+        .get("posture_is_poor")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
-    if posture_score < 0.45 {
+    if posture_score < 0.45 || posture_is_poor {
         return Some((
             "Posture Check".to_string(),
             "Straighten up and roll your shoulders back.".to_string(),
+            "posture".to_string(),
         ));
     }
 
@@ -60,12 +72,14 @@ fn notification_for_result(result: &Value) -> Option<(String, String)> {
         return Some((
             "Stress Check".to_string(),
             "Take a 5 minute break. Step away for a reset.".to_string(),
+            "stress_high".to_string(),
         ));
     }
     if (31..=60).contains(&stress_index) {
         return Some((
             "Focus Check".to_string(),
             "You have been locked in for a while. Grab some water.".to_string(),
+            "stress_mild".to_string(),
         ));
     }
     None
@@ -75,18 +89,26 @@ pub fn notify_for_session(
     app: &tauri::AppHandle,
     notification_state: &NotificationState,
     result: &Value,
-) -> bool {
+) -> Option<NotificationDispatch> {
+    let skipped = result
+        .get("session_skipped")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if skipped {
+        return None;
+    }
+
     let now = now_unix_secs();
     let suppress_until = notification_state.suppress_until_unix.load(Ordering::SeqCst);
     if now < suppress_until {
-        return false;
+        return None;
     }
 
-    if let Some((title, body)) = notification_for_result(result) {
+    if let Some((title, body, kind)) = notification_for_result(result) {
         let _ = app.notification().builder().title(title).body(body).show();
-        return true;
+        return Some(NotificationDispatch { kind });
     }
-    false
+    None
 }
 
 pub fn start_gesture_dismiss_listener(app: &tauri::AppHandle) {
@@ -95,10 +117,20 @@ pub fn start_gesture_dismiss_listener(app: &tauri::AppHandle) {
         let dismissed = run_gesture_dismiss_blocking(10).unwrap_or(false);
         if dismissed {
             let notification_state = app_handle.state::<NotificationState>();
+            let session_id = notification_state
+                .last_notified_session_id
+                .load(Ordering::SeqCst);
             let suppress_until = now_unix_secs() + (20 * 60);
             notification_state
                 .suppress_until_unix
                 .store(suppress_until, Ordering::SeqCst);
+            if session_id > 0 {
+                let _ = run_update_session_notification_blocking(
+                    session_id,
+                    None,
+                    Some("gesture".to_string()),
+                );
+            }
             let _ = app_handle.emit(
                 "gesture-dismissed",
                 serde_json::json!({"snooze_minutes": 20}),
