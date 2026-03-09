@@ -116,6 +116,8 @@ function App() {
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
   const breakActiveRef = useRef(false)
   const breathingActiveRef = useRef(false)
+  const latestResultRef = useRef<SessionResult | null>(null)
+  const breathingUseHrSensingRef = useRef(true)
   const breakReminderTwoSentRef = useRef(false)
   const breakReminderFourSentRef = useRef(false)
   const finishBreakRef = useRef<(reason: 'complete' | 'early') => Promise<void>>(async () => {})
@@ -264,6 +266,14 @@ function App() {
   useEffect(() => {
     breathingActiveRef.current = breathingActive
   }, [breathingActive])
+
+  useEffect(() => {
+    latestResultRef.current = result
+  }, [result])
+
+  useEffect(() => {
+    breathingUseHrSensingRef.current = breathingUseHrSensing
+  }, [breathingUseHrSensing])
 
   useEffect(() => {
     if (!breathingActive) return
@@ -422,6 +432,29 @@ function App() {
     }
   }, [])
 
+  const mergeStreamResult = useCallback((next: SessionResult): SessionResult => {
+    const previous = latestResultRef.current
+    if (!previous || previous.mode !== 'focus') {
+      return next
+    }
+
+    const heartRate =
+      next.heart_rate_bpm == null && previous.heart_rate_bpm != null ? previous.heart_rate_bpm : next.heart_rate_bpm
+    const rrScore =
+      next.respiratory_rate <= 0 && previous.respiratory_rate > 0 ? previous.respiratory_rate : next.respiratory_rate
+    const rrConfidence =
+      next.rr_confidence === 'none' && rrScore > 0 && previous.rr_confidence !== 'none'
+        ? previous.rr_confidence
+        : next.rr_confidence
+
+    return {
+      ...next,
+      heart_rate_bpm: heartRate,
+      respiratory_rate: rrScore,
+      rr_confidence: rrConfidence,
+    }
+  }, [])
+
   const loadHistory = useCallback(async () => {
     try {
       const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history', { limit: 20 })
@@ -429,16 +462,22 @@ function App() {
       setHistory(items)
       if (items.length > 0) {
         const latest = sessionFromHistory(items[0])
-        setResult(latest)
-        updateNudgeFromResult(latest)
+        if (!(settings?.focus_mode_active ?? false)) {
+          setResult(latest)
+          updateNudgeFromResult(latest)
+        }
       } else {
-        setResult(null)
+        if (!(settings?.focus_mode_active ?? false)) {
+          setResult(null)
+        }
       }
     } catch {
       setHistory([])
-      setResult(null)
+      if (!(settings?.focus_mode_active ?? false)) {
+        setResult(null)
+      }
     }
-  }, [updateNudgeFromResult])
+  }, [settings?.focus_mode_active, updateNudgeFromResult])
 
   const loadDailyReport = useCallback(async () => {
     try {
@@ -488,12 +527,13 @@ function App() {
       setBreathingPhaseIndex(0)
       setBreathingRemainingMs(activePattern.phases[0].seconds * 1000)
       setBreathingCycle(1)
-      setBreathingStartHr(breathingUseHrSensing ? null : (result?.heart_rate_bpm ?? null))
-      setBreathingStartRr(result?.respiratory_rate && result.respiratory_rate > 0 ? result.respiratory_rate : null)
+      const snapshot = latestResultRef.current
+      setBreathingStartHr(breathingUseHrSensingRef.current ? null : (snapshot?.heart_rate_bpm ?? null))
+      setBreathingStartRr(snapshot?.respiratory_rate && snapshot.respiratory_rate > 0 ? snapshot.respiratory_rate : null)
       setBreathingLiveHr(null)
       setBreathingSummary(null)
     },
-    [activePattern.phases, breathingUseHrSensing, result?.heart_rate_bpm, result?.respiratory_rate],
+    [activePattern.phases],
   )
 
   useEffect(() => {
@@ -510,7 +550,7 @@ function App() {
       await invoke('start_focus_stream', { updateEvery: 5, maxSeconds: 0 })
       if (cancelled) return
       unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
-        const session = normalizeFocusStreamResult(event.payload)
+        const session = mergeStreamResult(normalizeFocusStreamResult(event.payload))
         const smoothedStress =
           typeof event.payload?.stress_index_smoothed === 'number'
             ? event.payload.stress_index_smoothed
@@ -543,7 +583,7 @@ function App() {
       unlistenEnded?.()
       void invoke('stop_focus_stream').catch(() => null)
     }
-  }, [normalizeFocusStreamResult, settings?.focus_mode_active, startBreathing, updateNudgeFromResult])
+  }, [mergeStreamResult, normalizeFocusStreamResult, settings?.focus_mode_active, startBreathing, updateNudgeFromResult])
 
   async function completeOnboarding() {
     await updateSettings({ onboarding_completed: true })

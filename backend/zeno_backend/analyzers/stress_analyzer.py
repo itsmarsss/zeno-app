@@ -27,9 +27,11 @@ class StressAnalyzer:
         self,
         hr_window_seconds: float = 20.0,
         emotion_sample_every_seconds: float = 1.2,
+        hr_hold_seconds: float = 8.0,
     ) -> None:
         self._hr_window_seconds = max(8.0, float(hr_window_seconds))
         self._emotion_sample_every_seconds = max(0.4, float(emotion_sample_every_seconds))
+        self._hr_hold_seconds = max(0.0, float(hr_hold_seconds))
         self._face_detector = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -43,6 +45,8 @@ class StressAnalyzer:
         self._times: list[float] = []
         self._started_at = time.perf_counter()
         self._last_face: tuple[int, int, int, int] | None = None
+        self._last_valid_bpm: float | None = None
+        self._last_valid_bpm_at = 0.0
         self._last_emotion_sample_at = 0.0
         self._emotion_scores: dict[str, float] = defaultdict(float)
         self._emotion_count = 0
@@ -91,6 +95,14 @@ class StressAnalyzer:
                 self._times = self._times[trim_idx:]
 
         bpm = _estimate_bpm(self._signal, self._times)
+        bpm_out: float | None = None
+        if bpm > 0:
+            bpm_out = float(round(bpm, 1))
+            self._last_valid_bpm = bpm_out
+            self._last_valid_bpm_at = now
+        elif self._last_valid_bpm is not None and (now - self._last_valid_bpm_at) <= self._hr_hold_seconds:
+            # Keep last stable HR briefly to avoid UI flicker between adjacent windows.
+            bpm_out = float(self._last_valid_bpm)
 
         if (
             self._emotion_detector is not None
@@ -117,7 +129,7 @@ class StressAnalyzer:
             confidence = total / self._emotion_count
 
         current = {
-            "heart_rate_bpm": None if bpm <= 0 else float(round(bpm, 1)),
+            "heart_rate_bpm": bpm_out,
             "dominant_emotion": dominant,
             "emotion_score": float(round(confidence, 3)),
         }
@@ -131,6 +143,8 @@ class StressAnalyzer:
             self._signal = []
             self._times = []
             self._last_face = None
+            self._last_valid_bpm = None
+            self._last_valid_bpm_at = 0.0
             self._last_emotion_sample_at = 0.0
             self._emotion_scores = defaultdict(float)
             self._emotion_count = 0

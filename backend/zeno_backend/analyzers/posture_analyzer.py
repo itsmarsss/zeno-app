@@ -146,22 +146,13 @@ class PostureAnalyzer:
         }
         self._lock = threading.Lock()
         self._subscriber_name = "posture-analyzer"
+        self._landmarker = None
 
     def analyze_frame_details(self, frame: np.ndarray) -> dict:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        from mediapipe.tasks import python as mp_python
-        from mediapipe.tasks.python import vision
-
-        options = vision.PoseLandmarkerOptions(
-            base_options=mp_python.BaseOptions(model_asset_path=str(_ensure_pose_model())),
-            running_mode=vision.RunningMode.IMAGE,
-            min_pose_presence_confidence=self._min_pose_presence_confidence,
-            num_poses=1,
-        )
+        landmarker = self._get_landmarker()
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        with vision.PoseLandmarker.create_from_options(options) as landmarker:
-            result = landmarker.detect(mp_image)
+        result = landmarker.detect(mp_image)
 
         if not result.pose_landmarks:
             return {
@@ -175,10 +166,12 @@ class PostureAnalyzer:
         return float(self.analyze_frame_details(frame)["posture_score"])
 
     def start_live(self, camera_manager: CameraManager) -> None:
+        self._get_landmarker()
         camera_manager.subscribe(self._subscriber_name, self._process_frame)
 
     def stop_live(self, camera_manager: CameraManager) -> None:
         camera_manager.unsubscribe(self._subscriber_name)
+        self.close()
 
     def latest_score(self) -> float:
         with self._lock:
@@ -193,6 +186,30 @@ class PostureAnalyzer:
         with self._lock:
             self._latest_score = float(metrics["posture_score"])
             self._latest_metrics = metrics
+
+    def _get_landmarker(self):
+        if self._landmarker is not None:
+            return self._landmarker
+
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision
+
+        options = vision.PoseLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=str(_ensure_pose_model())),
+            running_mode=vision.RunningMode.IMAGE,
+            min_pose_presence_confidence=self._min_pose_presence_confidence,
+            num_poses=1,
+        )
+        self._landmarker = vision.PoseLandmarker.create_from_options(options)
+        return self._landmarker
+
+    def close(self) -> None:
+        if self._landmarker is not None:
+            try:
+                self._landmarker.close()
+            except Exception:
+                pass
+            self._landmarker = None
 
 
 def analyze_posture(
@@ -219,6 +236,7 @@ def analyze_posture(
 
         return analyzer.analyze_frame(frame)
     finally:
+        analyzer.close()
         cap.release()
 
 

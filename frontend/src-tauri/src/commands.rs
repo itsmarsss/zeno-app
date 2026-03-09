@@ -27,6 +27,15 @@ fn log_stream_stderr(name: &'static str, stderr: std::process::ChildStderr) {
                 break;
             };
             let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.contains("inference_feedback_manager.cc:114")
+                || trimmed.contains("gl_context.cc:357")
+            {
+                // Drop high-volume Mediapipe noise in dev logs.
+                continue;
+            }
             if !trimmed.is_empty() {
                 eprintln!("[py:{name}:stderr] {trimmed}");
             }

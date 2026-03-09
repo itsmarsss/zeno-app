@@ -105,28 +105,35 @@ class PresenceDetector:
         self._latest_result = False
         self._lock = threading.Lock()
         self._subscriber_name = "presence-detector"
+        self._tasks_detector = None
+        self._legacy_detector = None
+        self._backend: str | None = None
 
     def analyze_frame(self, frame: np.ndarray) -> bool:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        try:
-            return _detect_with_tasks(rgb_frame, self._min_detection_confidence)
-        except Exception as tasks_error:
-            try:
-                return _detect_with_legacy(rgb_frame, self._min_detection_confidence)
-            except Exception as legacy_error:
-                version = getattr(mp, "__version__", "unknown")
-                raise RuntimeError(
-                    "MediaPipe face detection is unavailable in this install "
-                    f"(mediapipe=={version}). "
-                    f"Tasks API error: {tasks_error}. "
-                    f"Legacy API error: {legacy_error}."
-                ) from legacy_error
+        self._ensure_backend()
+        if self._backend == "tasks":
+            detector = self._tasks_detector
+            if detector is None:
+                return False
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            result = detector.detect(mp_image)
+            return bool(result.detections)
+        if self._backend == "legacy":
+            detector = self._legacy_detector
+            if detector is None:
+                return False
+            result = detector.process(rgb_frame)
+            return bool(result.detections)
+        return False
 
     def start_live(self, camera_manager: CameraManager) -> None:
+        self._ensure_backend()
         camera_manager.subscribe(self._subscriber_name, self._process_frame)
 
     def stop_live(self, camera_manager: CameraManager) -> None:
         camera_manager.unsubscribe(self._subscriber_name)
+        self.close()
 
     def latest_result(self) -> bool:
         with self._lock:
@@ -136,6 +143,64 @@ class PresenceDetector:
         presence = self.analyze_frame(frame)
         with self._lock:
             self._latest_result = bool(presence)
+
+    def _ensure_backend(self) -> None:
+        if self._backend is not None:
+            return
+        try:
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision
+
+            model_path = _ensure_task_model()
+            options = vision.FaceDetectorOptions(
+                base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
+                running_mode=vision.RunningMode.IMAGE,
+                min_detection_confidence=self._min_detection_confidence,
+            )
+            self._tasks_detector = vision.FaceDetector.create_from_options(options)
+            self._backend = "tasks"
+            return
+        except Exception as tasks_error:
+            try:
+                self._legacy_detector = mp.solutions.face_detection.FaceDetection(
+                    model_selection=0,
+                    min_detection_confidence=self._min_detection_confidence,
+                )
+                self._backend = "legacy"
+                return
+            except Exception:
+                try:
+                    from mediapipe.python.solutions import face_detection
+
+                    self._legacy_detector = face_detection.FaceDetection(
+                        model_selection=0,
+                        min_detection_confidence=self._min_detection_confidence,
+                    )
+                    self._backend = "legacy"
+                    return
+                except Exception as legacy_error:
+                    version = getattr(mp, "__version__", "unknown")
+                    raise RuntimeError(
+                        "MediaPipe face detection is unavailable in this install "
+                        f"(mediapipe=={version}). "
+                        f"Tasks API error: {tasks_error}. "
+                        f"Legacy API error: {legacy_error}."
+                    ) from legacy_error
+
+    def close(self) -> None:
+        if self._tasks_detector is not None:
+            try:
+                self._tasks_detector.close()
+            except Exception:
+                pass
+            self._tasks_detector = None
+        if self._legacy_detector is not None:
+            try:
+                self._legacy_detector.close()
+            except Exception:
+                pass
+            self._legacy_detector = None
+        self._backend = None
 
 
 def detect_presence(
@@ -219,6 +284,7 @@ def detect_presence(
             return False
         return float(np.mean(liveness_diffs)) >= float(liveness_diff_threshold)
     finally:
+        detector.close()
         cap.release()
 
 
