@@ -39,7 +39,7 @@ let monitorRuntimeCache: MonitorRuntimeCache = {
 function formatTime(timestamp: string): string {
   const d = new Date(timestamp)
   if (Number.isNaN(d.getTime())) return timestamp
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
 function formatFocusTimer(seconds: number): string {
@@ -345,7 +345,10 @@ export function MonitorTab({
   const timeWindowMs = timeWindowMinutes * 60_000
   const cutoffTime = now - timeWindowMs
   const timelinePoints = allTimelinePoints.filter((point) => point.at >= cutoffTime)
-  const cardPoints = focusPoints.length > 0 ? focusPoints : focusHistoryPoints
+  // For mini charts: always show historical data, appending live points if in focus mode
+  const cardPoints = focusPoints.length > 0
+    ? [...focusHistoryPoints, ...focusPoints].filter((point) => point.at >= cutoffTime)
+    : focusHistoryPoints.slice(-20)
 
   const passiveElapsedSec = passiveStartedAt ? Math.floor((now - passiveStartedAt) / 1000) : 0
   const passiveRemaining = Math.max(0, 30 - passiveElapsedSec)
@@ -383,6 +386,7 @@ export function MonitorTab({
   const timelineStressPoints = useMemo(() => buildChartPoints(timelinePoints, (p) => p.stress), [timelinePoints])
   const timelineHrValues = useMemo(() => timelinePoints.map((p) => p.heartRate), [timelinePoints])
   const timelineRrValues = useMemo(() => timelinePoints.map((p) => p.respiratoryRate), [timelinePoints])
+  const timelinePostureValues = useMemo(() => timelinePoints.map((p) => p.postureScore), [timelinePoints])
 
   const timelineStart = Number.isFinite(timelinePoints[0]?.at)
     ? (timelinePoints[0]?.at as number)
@@ -478,6 +482,18 @@ export function MonitorTab({
           )}
         </div>
         <div className="monitor-banner-right">
+          <select
+            className="monitor-timeline-window-select"
+            value={timeWindowMinutes}
+            onChange={(e) => setTimeWindowMinutes(Number(e.target.value))}
+          >
+            <option value={1}>Last 1 min</option>
+            <option value={5}>Last 5 min</option>
+            <option value={15}>Last 15 min</option>
+            <option value={30}>Last 30 min</option>
+            <option value={60}>Last 1 hour</option>
+            <option value={180}>Last 3 hours</option>
+          </select>
           {monitorMode === 'idle' && (
             <button className="monitor-banner-action" onClick={handleStartFocusMode}>
               Start Focus Mode
@@ -785,6 +801,30 @@ export function MonitorTab({
                 showAxis={false}
                 chartHeight={58}
                 tooltipWidth={138}
+                renderTooltip={({ point, index, direction }) => {
+                  const row = cardPoints[index]
+                  if (!row) return null
+                  const rrValue = row.respiratoryRate
+                  const displayValue =
+                    rrValue == null
+                      ? '--'
+                      : row.rrConfidence === 'partial'
+                        ? `~${Math.round(rrValue)}`
+                        : `${Math.round(rrValue)}`
+                  return (
+                    <>
+                      <p>
+                        <AnimatedTickerText value={point.label} direction={direction} />
+                      </p>
+                      <div className="interactive-chart-tooltip-row">
+                        <strong>
+                          <AnimatedTickerText value={displayValue} direction={direction} />
+                        </strong>
+                        <span>Resp bpm</span>
+                      </div>
+                    </>
+                  )
+                }}
               />
             )}
           </article>
@@ -848,21 +888,7 @@ export function MonitorTab({
 
       <div className="monitor-timeline">
         <header>
-          <div className="monitor-timeline-header-left">
-            <span>Session timeline</span>
-            <select
-              className="monitor-timeline-window-select"
-              value={timeWindowMinutes}
-              onChange={(e) => setTimeWindowMinutes(Number(e.target.value))}
-            >
-              <option value={1}>Last 1 min</option>
-              <option value={5}>Last 5 min</option>
-              <option value={15}>Last 15 min</option>
-              <option value={30}>Last 30 min</option>
-              <option value={60}>Last 1 hour</option>
-              <option value={180}>Last 3 hours</option>
-            </select>
-          </div>
+          <span>Session timeline</span>
           <em>
             {monitorMode === 'focus' && focusStartedAt
               ? `Focus session · started ${new Date(focusStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
@@ -887,11 +913,12 @@ export function MonitorTab({
               areaGradientId="monitorStressGradient"
               areaGradientColor="var(--accent)"
               showAxis={false}
-              chartHeight={120}
+              chartHeight={180}
               tooltipWidth={166}
               extraLines={[
                 { values: timelineHrValues, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
                 { values: timelineRrValues, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
+                { values: timelinePostureValues, yMin: 0, yMax: 100, className: 'signal-posture', smooth: false },
               ]}
               renderTooltip={({ point, index, direction }) => {
                 const row = timelinePoints[index]
@@ -930,6 +957,15 @@ export function MonitorTab({
                         />
                       </strong>
                       <span>RR</span>
+                    </div>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText
+                          value={row.postureScore == null ? '--' : `${row.postureScore}`}
+                          direction={direction}
+                        />
+                      </strong>
+                      <span>Posture</span>
                     </div>
                   </>
                 )

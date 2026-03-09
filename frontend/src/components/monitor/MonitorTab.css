@@ -17,7 +17,6 @@
   transition: background 400ms ease;
 }
 
-
 .monitor-banner--idle {
   background: var(--bg-subtle);
 }
@@ -302,7 +301,6 @@
   color: var(--text-secondary);
 }
 
-
 .monitor-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -464,7 +462,7 @@
 }
 
 .monitor-timeline {
-  min-height: 196px;
+  min-height: 250px;
   margin-top: 4px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -650,7 +648,6 @@
   z-index: 5;
   animation: tooltipFade 180ms ease;
 }
-
 
 .monitor-passive-tooltip--left {
   transform: translateX(0);
