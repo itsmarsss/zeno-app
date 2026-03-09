@@ -2,9 +2,48 @@
   width: 100vw;
   height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: var(--bg-base);
+  position: relative;
+  padding-top: 40px;
+}
+
+.auth-screen-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 10;
+  cursor: default;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.auth-screen-header span {
+  margin-bottom: 2px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.auth-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(45, 106, 79, 0.4);
 }
 
 .auth-container {
@@ -15,6 +54,7 @@
   border-radius: 12px;
   padding: 32px;
   box-shadow: var(--shadow-lg);
+  will-change: transform, opacity;
 }
 
 .auth-brand {
@@ -125,6 +165,7 @@
   background: rgba(192, 57, 43, 0.08);
   border: 1px solid rgba(192, 57, 43, 0.2);
   border-radius: 8px;
+  overflow: hidden;
 }
 
 .auth-error span {
