@@ -16,6 +16,23 @@
   transition: background 400ms ease;
 }
 
+.monitor-tab--phase-banner .monitor-banner,
+.monitor-tab--phase-camera .monitor-banner,
+.monitor-tab--phase-cards .monitor-banner {
+  animation: bannerReveal 260ms ease both;
+}
+
+@keyframes bannerReveal {
+  from {
+    opacity: 0.82;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .monitor-banner--idle {
   background: var(--bg-subtle);
 }
@@ -103,6 +120,22 @@
 
 .monitor-camera-shell {
   min-width: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.monitor-tab--phase-banner .monitor-camera-shell {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.monitor-tab--phase-camera .monitor-camera-shell,
+.monitor-tab--phase-cards .monitor-camera-shell,
+.monitor-tab--phase-settled .monitor-camera-shell,
+.monitor-camera-shell.is-stage-active {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .monitor-camera-shell--focus .monitor-camera-live {
@@ -142,6 +175,10 @@
   animation: cameraReveal 300ms ease;
 }
 
+.monitor-camera-live.is-hiding {
+  animation: cameraHide 400ms ease both;
+}
+
 .monitor-camera-frame {
   margin-top: 0;
   border: none;
@@ -158,6 +195,17 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes cameraHide {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
   }
 }
 
@@ -236,6 +284,22 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.monitor-tab--phase-banner .monitor-signals,
+.monitor-tab--phase-camera .monitor-signals {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.monitor-tab--phase-cards .monitor-signals,
+.monitor-tab--phase-settled .monitor-signals,
+.monitor-signals.is-stage-active {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .monitor-card {
@@ -483,6 +547,7 @@
   stroke: transparent;
   stroke-width: 6;
   pointer-events: stroke;
+  cursor: pointer;
 }
 
 .monitor-delta {
@@ -518,6 +583,7 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 5;
+  animation: tooltipFade 180ms ease;
 }
 
 .monitor-passive-tooltip--left {
@@ -526,6 +592,47 @@
 
 .monitor-passive-tooltip--right {
   transform: translateX(-100%);
+}
+
+@keyframes tooltipFade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.monitor-passive-tooltip--left {
+  animation-name: tooltipFadeLeft;
+}
+
+.monitor-passive-tooltip--right {
+  animation-name: tooltipFadeRight;
+}
+
+@keyframes tooltipFadeLeft {
+  from {
+    opacity: 0;
+    transform: translateX(0) translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes tooltipFadeRight {
+  from {
+    opacity: 0;
+    transform: translateX(-100%) translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-100%) translateY(0);
+  }
 }
 
 @media (min-width: 1000px) {

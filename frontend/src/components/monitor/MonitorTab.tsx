@@ -7,6 +7,7 @@ import type { PostureLandmarks, SessionHistoryItem, SessionResult } from '../../
 import './MonitorTab.css'
 
 type MonitorMode = 'idle' | 'passive' | 'focus' | 'ended'
+type TransitionPhase = 'banner' | 'camera' | 'cards' | 'settled'
 
 type FocusPoint = {
   at: number
@@ -50,9 +51,26 @@ function stressLabel(value: number): string {
 function postureLabel(result: SessionResult | null): string {
   if (!result) return 'No posture data'
   if (result.posture_score >= 0.8) return 'Good alignment'
-  if (result.posture_is_poor || result.posture_score < 0.45) return 'Chin forward'
-  if (result.posture_score < 0.6) return 'Rounded shoulders'
-  return 'Balanced posture'
+  if (result.posture_is_poor) {
+    if (result.posture_deviation >= 0.22) return 'Chin forward'
+    if (result.posture_deviation >= 0.14) return 'Rounded shoulders'
+    return 'Head tilt'
+  }
+  if (result.posture_score < 0.58) return 'Rounded shoulders'
+  if (result.posture_score < 0.68) return 'Head tilt'
+  return 'Good alignment'
+}
+
+function postureLabelFromSnapshot(score: number, deviation: number, isPoor: boolean): string {
+  if (score >= 0.8) return 'Good alignment'
+  if (isPoor) {
+    if (deviation >= 0.22) return 'Chin'
+    if (deviation >= 0.14) return 'Shoulders'
+    return 'Tilt'
+  }
+  if (score < 0.58) return 'Shoulders'
+  if (score < 0.68) return 'Tilt'
+  return 'Good alignment'
 }
 
 function stressTone(value: number): 'calm' | 'neutral' | 'mild' | 'high' {
@@ -130,8 +148,12 @@ export function MonitorTab({
   const [recentFocusSummary, setRecentFocusSummary] = useState<{ endedAt: number; durationSeconds: number } | null>(
     null,
   )
+  const [transitionPhase, setTransitionPhase] = useState<TransitionPhase>('settled')
+  const [passiveCameraClosing, setPassiveCameraClosing] = useState(false)
   const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string; align: 'left' | 'center' | 'right' } | null>(null)
   const wasFocusActiveRef = useRef(focusModeActive)
+  const previousModeRef = useRef<MonitorMode>('idle')
+  const cameraModeRef = useRef<MonitorMode>('idle')
 
   const monitorMode: MonitorMode = recentFocusSummary
     ? 'ended'
@@ -140,6 +162,36 @@ export function MonitorTab({
       : isCheckInRunning
         ? 'passive'
         : 'idle'
+
+  useEffect(() => {
+    const previous = previousModeRef.current
+    if (previous === monitorMode) return
+    previousModeRef.current = monitorMode
+
+    setTransitionPhase('banner')
+    const cameraTimer = window.setTimeout(() => setTransitionPhase('camera'), 140)
+    const cardsTimer = window.setTimeout(() => setTransitionPhase('cards'), 260)
+    const settleTimer = window.setTimeout(() => setTransitionPhase('settled'), 460)
+
+    return () => {
+      window.clearTimeout(cameraTimer)
+      window.clearTimeout(cardsTimer)
+      window.clearTimeout(settleTimer)
+    }
+  }, [monitorMode])
+
+  useEffect(() => {
+    const previous = cameraModeRef.current
+    cameraModeRef.current = monitorMode
+    if (previous === 'passive' && monitorMode !== 'passive') {
+      setPassiveCameraClosing(true)
+      const timeout = window.setTimeout(() => setPassiveCameraClosing(false), 420)
+      return () => window.clearTimeout(timeout)
+    }
+    if (monitorMode === 'passive') {
+      setPassiveCameraClosing(false)
+    }
+  }, [monitorMode])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -223,6 +275,11 @@ export function MonitorTab({
   const passiveRemaining = Math.max(0, 30 - passiveElapsedSec)
   const passiveProgress = clamp((passiveElapsedSec / 30) * 100, 0, 100)
   const focusElapsed = focusStartedAt ? Math.floor((now - focusStartedAt) / 1000) : 0
+  const cameraStageActive = transitionPhase !== 'banner'
+  const cardsStageActive = transitionPhase === 'cards' || transitionPhase === 'settled'
+  const showLiveCamera = monitorMode === 'focus' || monitorMode === 'passive' || passiveCameraClosing
+  const rrStage: 'measuring' | 'stabilizing' | 'live' | null =
+    monitorMode === 'focus' ? (focusElapsed < 60 ? 'measuring' : focusElapsed < 90 ? 'stabilizing' : 'live') : null
 
   const stressValue = displayResult ? stressIndex(displayResult) : 0
   const hrValue = displayResult?.heart_rate_bpm ?? null
@@ -238,8 +295,6 @@ export function MonitorTab({
   const hrDelta = hrValue == null ? null : hrValue - restingHr
   const rrDelta = rrValue > 0 ? rrValue - restingRr : null
   const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
-  const rrStage: 'measuring' | 'stabilizing' | 'live' | null =
-    monitorMode === 'focus' ? (focusElapsed < 60 ? 'measuring' : focusElapsed < 90 ? 'stabilizing' : 'live') : null
 
   const stressPath = buildPath(
     focusPoints.map((item) => item.stress),
@@ -280,10 +335,26 @@ export function MonitorTab({
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
     .slice(0, 3)
-    .map((item) => `${formatTime(item.created_at)} · Chin`)
+    .map(
+      (item) =>
+        `${formatTime(item.created_at)} · ${postureLabelFromSnapshot(
+          item.posture_score,
+          item.posture_deviation,
+          Boolean(item.posture_is_poor),
+        )}`,
+    )
+
+  function showPassiveTooltip(mark: { ts: number; xPct: number }) {
+    const align: 'left' | 'center' | 'right' = mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center'
+    setHoveredPassiveMark({
+      xPct: mark.xPct,
+      label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+      align,
+    })
+  }
 
   return (
-    <section className="monitor-tab">
+    <section className={`monitor-tab monitor-tab--phase-${transitionPhase}`}>
       <div className={`monitor-banner monitor-banner--${monitorMode}`}>
         <div className="monitor-banner-left">
           <span className={`monitor-pulse monitor-pulse--${monitorMode}`} />
@@ -331,15 +402,15 @@ export function MonitorTab({
       </div>
 
       <div className="monitor-body">
-        <div className={`monitor-camera-shell monitor-camera-shell--${monitorMode}`}>
-          {monitorMode === 'idle' || monitorMode === 'ended' ? (
+        <div className={`monitor-camera-shell monitor-camera-shell--${monitorMode} ${cameraStageActive ? 'is-stage-active' : ''}`}>
+          {!showLiveCamera ? (
             <div className="monitor-camera-idle">
               <CameraOff size={24} />
               <p>Camera inactive</p>
               <span>Camera activates during check-ins and Focus Mode</span>
             </div>
           ) : (
-            <div className="monitor-camera-live">
+            <div className={`monitor-camera-live ${passiveCameraClosing ? 'is-hiding' : ''}`}>
               <PostureFrame
                 frame={postureFrame}
                 landmarks={postureLandmarks}
@@ -348,17 +419,20 @@ export function MonitorTab({
               />
               <div className="monitor-camera-badge">
                 <span className="monitor-camera-dot" />
-                {monitorMode === 'passive' ? 'Passive capture' : 'Live'}
+                {monitorMode === 'focus' ? 'Live' : 'Passive capture'}
               </div>
-              {monitorMode === 'passive' && (
+              {monitorMode !== 'focus' && (
                 <div className="monitor-camera-progress">
-                  <div className="monitor-camera-progress-fill" style={{ width: `${passiveProgress}%` }} />
+                  <div
+                    className="monitor-camera-progress-fill"
+                    style={{ width: `${passiveCameraClosing ? 100 : passiveProgress}%` }}
+                  />
                 </div>
               )}
               {monitorMode === 'focus' && (
                 <div className="monitor-camera-overlay">
                   <div className="monitor-camera-status">
-                    {postureValue >= 80 ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    {postureLabel(displayResult) === 'Good alignment' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                     <span>{postureLabel(displayResult)}</span>
                   </div>
                   <span className="monitor-camera-score">{postureValue} / 100</span>
@@ -368,7 +442,7 @@ export function MonitorTab({
           )}
         </div>
 
-        <div className={`monitor-signals monitor-signals--${monitorMode}`}>
+        <div className={`monitor-signals monitor-signals--${monitorMode} ${cardsStageActive ? 'is-stage-active' : ''}`}>
           <article className="monitor-card monitor-card--stress">
             <header>
               <div className="monitor-card-title">
@@ -586,14 +660,20 @@ export function MonitorTab({
                     x2={mark.xPct}
                     y2={36}
                     className="monitor-passive-mark-hit"
-                    onMouseEnter={() =>
-                      setHoveredPassiveMark({
-                        xPct: mark.xPct,
-                        label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
-                        align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
-                      })
-                    }
+                    onMouseEnter={() => showPassiveTooltip(mark)}
                     onMouseLeave={() => setHoveredPassiveMark(null)}
+                    onClick={() =>
+                      setHoveredPassiveMark((prev) =>
+                        prev?.xPct === mark.xPct && prev?.label.includes('Passive check-in')
+                          ? null
+                          : {
+                              xPct: mark.xPct,
+                              label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+                              align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
+                            },
+                      )
+                    }
+                    onTouchStart={() => showPassiveTooltip(mark)}
                   />
                 </g>
               ))}
