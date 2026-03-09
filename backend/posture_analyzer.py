@@ -127,14 +127,27 @@ def _posture_score_from_landmarks(landmarks) -> float:
     return round(_clamp(score), 3)
 
 
+def _posture_metrics_from_landmarks(landmarks) -> dict:
+    return {
+        "posture_score": _posture_score_from_landmarks(landmarks),
+        "ear_shoulder_offset": round(float(calculate_ear_shoulder_offset(landmarks)), 5),
+        "neck_spine_angle": round(float(calculate_neck_spine_angle(landmarks)), 3),
+    }
+
+
 class PostureAnalyzer:
     def __init__(self, min_pose_presence_confidence: float = 0.5) -> None:
         self._min_pose_presence_confidence = float(min_pose_presence_confidence)
         self._latest_score = 0.0
+        self._latest_metrics = {
+            "posture_score": 0.0,
+            "ear_shoulder_offset": 0.0,
+            "neck_spine_angle": 0.0,
+        }
         self._lock = threading.Lock()
         self._subscriber_name = "posture-analyzer"
 
-    def analyze_frame(self, frame: np.ndarray) -> float:
+    def analyze_frame_details(self, frame: np.ndarray) -> dict:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         from mediapipe.tasks import python as mp_python
@@ -151,8 +164,15 @@ class PostureAnalyzer:
             result = landmarker.detect(mp_image)
 
         if not result.pose_landmarks:
-            return 0.0
-        return _posture_score_from_landmarks(result.pose_landmarks[0])
+            return {
+                "posture_score": 0.0,
+                "ear_shoulder_offset": 0.0,
+                "neck_spine_angle": 0.0,
+            }
+        return _posture_metrics_from_landmarks(result.pose_landmarks[0])
+
+    def analyze_frame(self, frame: np.ndarray) -> float:
+        return float(self.analyze_frame_details(frame)["posture_score"])
 
     def start_live(self, camera_manager: CameraManager) -> None:
         camera_manager.subscribe(self._subscriber_name, self._process_frame)
@@ -164,10 +184,15 @@ class PostureAnalyzer:
         with self._lock:
             return float(self._latest_score)
 
-    def _process_frame(self, frame: np.ndarray) -> None:
-        score = self.analyze_frame(frame)
+    def latest_metrics(self) -> dict:
         with self._lock:
-            self._latest_score = float(score)
+            return dict(self._latest_metrics)
+
+    def _process_frame(self, frame: np.ndarray) -> None:
+        metrics = self.analyze_frame_details(frame)
+        with self._lock:
+            self._latest_score = float(metrics["posture_score"])
+            self._latest_metrics = metrics
 
 
 def analyze_posture(

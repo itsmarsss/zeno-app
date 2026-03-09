@@ -20,6 +20,8 @@ def _skipped_payload(duration: float, duration_seconds: float, started_at: datet
         "baseline_posture_score": 0.0,
         "posture_deviation": 0.0,
         "posture_is_poor": False,
+        "ear_shoulder_offset": 0.0,
+        "neck_spine_angle": 0.0,
         "dominant_emotion": "unknown",
         "emotion_score": 0.0,
         "heart_rate_bpm": None,
@@ -75,6 +77,7 @@ def run_passive_checkin(duration_seconds: float = 30.0) -> dict:
 
     duration = round(time.perf_counter() - started, 2)
     presence_detected = bool(presence.latest_result()) or presence_confirmed
+    posture_metrics = posture.latest_metrics()
     stress_result = stress.latest_result()
     if not presence_detected:
         return _skipped_payload(duration, duration_seconds, started_at)
@@ -82,10 +85,12 @@ def run_passive_checkin(duration_seconds: float = 30.0) -> dict:
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "presence_detected": presence_detected,
         "analysis_skipped": False,
-        "posture_score": float(posture.latest_score()),
+        "posture_score": float(posture_metrics.get("posture_score", posture.latest_score())),
         "baseline_posture_score": 0.0,
         "posture_deviation": 0.0,
         "posture_is_poor": False,
+        "ear_shoulder_offset": float(posture_metrics.get("ear_shoulder_offset", 0.0)),
+        "neck_spine_angle": float(posture_metrics.get("neck_spine_angle", 0.0)),
         "dominant_emotion": str(stress_result.get("dominant_emotion", "unknown")),
         "emotion_score": float(stress_result.get("emotion_score", 0.0)),
         "heart_rate_bpm": stress_result.get("heart_rate_bpm"),

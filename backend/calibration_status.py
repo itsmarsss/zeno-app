@@ -29,6 +29,10 @@ def get_calibration_status(db_path: Path) -> dict:
             """
             SELECT
               posture_baseline_score,
+              ear_shoulder_offset,
+              neck_spine_angle,
+              resting_hr,
+              resting_rr,
               calibration_sessions_completed,
               is_calibrated
             FROM baseline
@@ -44,6 +48,26 @@ def get_calibration_status(db_path: Path) -> dict:
         if baseline_row and baseline_row["posture_baseline_score"] is not None
         else None
     )
+    baseline_ear = (
+        round(float(baseline_row["ear_shoulder_offset"]), 5)
+        if baseline_row and baseline_row["ear_shoulder_offset"] is not None
+        else None
+    )
+    baseline_neck = (
+        round(float(baseline_row["neck_spine_angle"]), 3)
+        if baseline_row and baseline_row["neck_spine_angle"] is not None
+        else None
+    )
+    resting_hr = (
+        round(float(baseline_row["resting_hr"]), 1)
+        if baseline_row and baseline_row["resting_hr"] is not None
+        else None
+    )
+    resting_rr = (
+        round(float(baseline_row["resting_rr"]), 1)
+        if baseline_row and baseline_row["resting_rr"] is not None
+        else None
+    )
 
     return {
         "calibrated": calibrated,
@@ -51,6 +75,10 @@ def get_calibration_status(db_path: Path) -> dict:
         "sessions_collected": sessions_collected,
         "sessions_remaining": sessions_remaining,
         "baseline_posture_score": baseline_score,
+        "baseline_ear_shoulder_offset": baseline_ear,
+        "baseline_neck_spine_angle": baseline_neck,
+        "resting_hr": resting_hr,
+        "resting_rr": resting_rr,
         "deviation_threshold": 0.15,
     }
 

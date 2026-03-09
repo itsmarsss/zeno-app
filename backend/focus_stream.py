@@ -127,6 +127,8 @@ def stream_focus_updates(
                 "elapsed_seconds": 0.0,
                 "presence_detected": False,
                 "posture_score": 0.0,
+                "ear_shoulder_offset": 0.0,
+                "neck_spine_angle": 0.0,
                 "heart_rate_bpm": None,
                 "dominant_emotion": "unknown",
                 "emotion_score": 0.0,
@@ -149,11 +151,14 @@ def stream_focus_updates(
                 continue
             next_emit += update_every_seconds
 
+            posture_metrics = posture.latest_metrics()
             payload = {
                 "timestamp": datetime.now().isoformat(timespec="seconds"),
                 "elapsed_seconds": round(elapsed, 1),
                 "presence_detected": bool(presence.latest_result()),
-                "posture_score": float(posture.latest_score()),
+                "posture_score": float(posture_metrics.get("posture_score", posture.latest_score())),
+                "ear_shoulder_offset": float(posture_metrics.get("ear_shoulder_offset", 0.0)),
+                "neck_spine_angle": float(posture_metrics.get("neck_spine_angle", 0.0)),
                 "heart_rate_bpm": stress.latest_result().get("heart_rate_bpm"),
                 "dominant_emotion": stress.latest_result().get("dominant_emotion", "unknown"),
                 "emotion_score": float(stress.latest_result().get("emotion_score", 0.0)),
