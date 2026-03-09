@@ -136,6 +136,8 @@ def main() -> None:
         emotion_backend=args.emotion_backend,
         preview=args.preview,
         focus_mode=bool(args.focus_mode),
+        shared_camera=not bool(args.focus_mode),
+        passive_duration_seconds=30.0,
         hsemotion_model=args.hsemotion_model,
         hsemotion_model_path=args.hsemotion_model_path,
     )

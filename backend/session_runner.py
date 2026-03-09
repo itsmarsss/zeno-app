@@ -4,20 +4,27 @@ import argparse
 import json
 from datetime import datetime
 
-from emotion_analyzer_fer import analyze_emotion as analyze_emotion_fer
-from emotion_analyzer_hsemotion import analyze_emotion as analyze_emotion_hsemotion
-from posture_analyzer import analyze_posture
-from presence_detector import detect_presence
-from rppg_estimator import estimate_heart_rate
+from passive_checkin import run_passive_checkin
 
 
 def run_session(
     emotion_backend: str = "hsemotion",
     preview: bool = False,
     focus_mode: bool = False,
+    shared_camera: bool = False,
+    passive_duration_seconds: float = 30.0,
     hsemotion_model: str = "enet_b0_8_best_afew",
     hsemotion_model_path: str | None = None,
 ) -> dict:
+    if shared_camera and not focus_mode:
+        return run_passive_checkin(duration_seconds=passive_duration_seconds)
+
+    from emotion_analyzer_fer import analyze_emotion as analyze_emotion_fer
+    from emotion_analyzer_hsemotion import analyze_emotion as analyze_emotion_hsemotion
+    from posture_analyzer import analyze_posture
+    from presence_detector import detect_presence
+    from rppg_estimator import estimate_heart_rate
+
     started_at = datetime.now()
 
     presence_detected = detect_presence(preview_seconds=1.0 if preview else 0.0)
@@ -101,11 +108,24 @@ def main() -> None:
         default=None,
         help="Local HSEmotion .pt path (used when --emotion-backend=hsemotion).",
     )
+    parser.add_argument(
+        "--shared-camera",
+        action="store_true",
+        help="Use PRD v5 shared camera manager passive check-in flow.",
+    )
+    parser.add_argument(
+        "--passive-duration-seconds",
+        type=float,
+        default=30.0,
+        help="Passive shared-camera capture duration in seconds.",
+    )
     args = parser.parse_args()
 
     result = run_session(
         emotion_backend=args.emotion_backend,
         preview=args.preview,
+        shared_camera=args.shared_camera,
+        passive_duration_seconds=args.passive_duration_seconds,
         hsemotion_model=args.hsemotion_model,
         hsemotion_model_path=args.hsemotion_model_path,
     )
