@@ -73,3 +73,36 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
           notification_dismissed_by = COALESCE(NULLIF(notification_dismissed_by, ''), 'none')
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS baseline (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            resting_hr REAL,
+            resting_rr REAL,
+            ear_shoulder_offset REAL,
+            neck_spine_angle REAL,
+            posture_baseline_score REAL,
+            calibration_sessions_completed INTEGER NOT NULL DEFAULT 0,
+            is_calibrated INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    baseline_columns = {row[1] for row in conn.execute("PRAGMA table_info(baseline)").fetchall()}
+    if "posture_baseline_score" not in baseline_columns:
+        conn.execute("ALTER TABLE baseline ADD COLUMN posture_baseline_score REAL")
+    if "calibration_sessions_completed" not in baseline_columns:
+        conn.execute(
+            "ALTER TABLE baseline ADD COLUMN calibration_sessions_completed INTEGER NOT NULL DEFAULT 0"
+        )
+    if "is_calibrated" not in baseline_columns:
+        conn.execute("ALTER TABLE baseline ADD COLUMN is_calibrated INTEGER NOT NULL DEFAULT 0")
+
+    conn.execute(
+        """
+        INSERT INTO baseline (id, updated_at, calibration_sessions_completed, is_calibrated)
+        VALUES (1, CURRENT_TIMESTAMP, 0, 0)
+        ON CONFLICT(id) DO NOTHING
+        """
+    )

@@ -19,33 +19,67 @@ def init_db(db_path: Path) -> None:
         conn.commit()
 
 
-def _baseline_posture_score(conn: sqlite3.Connection) -> float | None:
-    rows = conn.execute(
+def _sync_baseline_for_posture(conn: sqlite3.Connection, posture_score: float) -> tuple[float, float, bool]:
+    baseline_row = conn.execute(
         """
-        SELECT posture_score
-        FROM sessions
-        WHERE presence_detected = 1 AND analysis_skipped = 0
-        ORDER BY id ASC
-        LIMIT 3
+        SELECT posture_baseline_score, calibration_sessions_completed, is_calibrated
+        FROM baseline
+        WHERE id = 1
         """
-    ).fetchall()
-    if len(rows) < 3:
-        return None
-    return float(sum(float(row[0]) for row in rows) / 3.0)
+    ).fetchone()
+    baseline_score = float(baseline_row[0]) if baseline_row and baseline_row[0] is not None else None
+    sessions_completed = int(baseline_row[1]) if baseline_row else 0
+    is_calibrated = bool(baseline_row[2]) if baseline_row else False
+
+    if not is_calibrated:
+        new_completed = min(3, sessions_completed + 1)
+        if baseline_score is None:
+            new_baseline = float(posture_score)
+        else:
+            new_baseline = ((baseline_score * sessions_completed) + float(posture_score)) / max(
+                1, new_completed
+            )
+        new_calibrated = new_completed >= 3
+        conn.execute(
+            """
+            UPDATE baseline
+            SET
+              updated_at = CURRENT_TIMESTAMP,
+              posture_baseline_score = ?,
+              calibration_sessions_completed = ?,
+              is_calibrated = ?
+            WHERE id = 1
+            """,
+            (float(new_baseline), int(new_completed), 1 if new_calibrated else 0),
+        )
+        return float(new_baseline), 0.0, False
+
+    if baseline_score is None or baseline_score <= 0:
+        baseline_score = float(posture_score)
+
+    posture_deviation = max(0.0, (baseline_score - float(posture_score)) / baseline_score)
+    drifted_baseline = (baseline_score * 0.98) + (float(posture_score) * 0.02)
+    conn.execute(
+        """
+        UPDATE baseline
+        SET
+          updated_at = CURRENT_TIMESTAMP,
+          posture_baseline_score = ?
+        WHERE id = 1
+        """,
+        (float(drifted_baseline),),
+    )
+    return float(baseline_score), float(posture_deviation), True
 
 
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
-        baseline_score = _baseline_posture_score(conn)
         posture_score = float(result["posture_score"])
-        posture_deviation = 0.0
-        posture_is_poor = 0
-        if baseline_score and baseline_score > 0:
-            posture_deviation = max(0.0, (baseline_score - posture_score) / baseline_score)
-            posture_is_poor = 1 if posture_deviation > 0.15 else 0
-        else:
-            baseline_score = 0.0
+        baseline_score, posture_deviation, is_calibrated = _sync_baseline_for_posture(
+            conn, posture_score
+        )
+        posture_is_poor = 1 if is_calibrated and posture_deviation > 0.15 else 0
 
         result["baseline_posture_score"] = baseline_score
         result["posture_deviation"] = posture_deviation

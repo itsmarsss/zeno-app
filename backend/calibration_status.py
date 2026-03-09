@@ -25,26 +25,25 @@ def get_calibration_status(db_path: Path) -> dict:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         ensure_sessions_schema(conn)
-        all_rows = conn.execute(
+        baseline_row = conn.execute(
             """
-            SELECT id, created_at, posture_score
-            FROM sessions
-            WHERE presence_detected = 1 AND analysis_skipped = 0
-            ORDER BY id ASC
+            SELECT
+              posture_baseline_score,
+              calibration_sessions_completed,
+              is_calibrated
+            FROM baseline
+            WHERE id = 1
             """
-        ).fetchall()
+        ).fetchone()
 
-    sessions_collected = len(all_rows)
+    sessions_collected = int(baseline_row["calibration_sessions_completed"]) if baseline_row else 0
     sessions_remaining = max(0, BASELINE_SESSIONS - sessions_collected)
-    calibrated = sessions_collected >= BASELINE_SESSIONS
-
-    baseline_rows = all_rows[:BASELINE_SESSIONS]
-    baseline_score = None
-    if baseline_rows:
-        baseline_score = round(
-            sum(float(row["posture_score"]) for row in baseline_rows) / len(baseline_rows),
-            3,
-        )
+    calibrated = bool(baseline_row["is_calibrated"]) if baseline_row else False
+    baseline_score = (
+        round(float(baseline_row["posture_baseline_score"]), 3)
+        if baseline_row and baseline_row["posture_baseline_score"] is not None
+        else None
+    )
 
     return {
         "calibrated": calibrated,
