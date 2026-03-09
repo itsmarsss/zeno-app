@@ -491,6 +491,14 @@
   color: var(--text-tertiary);
 }
 
+.monitor-delta--positive {
+  color: var(--state-mild);
+}
+
+.monitor-delta--negative {
+  color: var(--state-calm);
+}
+
 .monitor-subtle-status {
   color: var(--text-tertiary);
   font-style: italic;

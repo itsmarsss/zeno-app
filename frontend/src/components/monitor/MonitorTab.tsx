@@ -97,6 +97,11 @@ function formatDelta(value: number | null, decimals = 0): string | null {
   return `${rounded > 0 ? '+' : ''}${rounded}`
 }
 
+function deltaTone(value: number | null): 'positive' | 'negative' | 'neutral' {
+  if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.05) return 'neutral'
+  return value > 0 ? 'positive' : 'negative'
+}
+
 export function MonitorTab({
   history,
   currentResult,
@@ -386,7 +391,7 @@ export function MonitorTab({
             <div className="monitor-card-sub">
               <span>{displayResult ? stressLabel(stressValue) : 'No data'}</span>
               {monitorMode === 'focus' && (
-                <span className="monitor-delta">
+                <span className={`monitor-delta monitor-delta--${deltaTone(stressDelta)}`}>
                   {formatDelta(stressDelta) ? `${formatDelta(stressDelta)} from baseline` : 'at baseline'}
                 </span>
               )}
@@ -437,7 +442,7 @@ export function MonitorTab({
                         : 'High'}
               </span>
               {monitorMode === 'focus' && (
-                <span className="monitor-delta">
+                <span className={`monitor-delta monitor-delta--${deltaTone(hrDelta)}`}>
                   {formatDelta(hrDelta, 1) ? `${formatDelta(hrDelta, 1)} from baseline` : 'at baseline'}
                 </span>
               )}
@@ -496,7 +501,7 @@ export function MonitorTab({
                           : 'Elevated'}
               </span>
               {monitorMode === 'focus' && (
-                <span className="monitor-delta">
+                <span className={`monitor-delta monitor-delta--${deltaTone(rrDelta)}`}>
                   {formatDelta(rrDelta, 1) ? `${formatDelta(rrDelta, 1)} from baseline` : 'at baseline'}
                 </span>
               )}
@@ -539,7 +544,7 @@ export function MonitorTab({
             <div className="monitor-card-sub">
               <span>{postureLabel(displayResult)}</span>
               {monitorMode === 'focus' && (
-                <span className="monitor-delta">
+                <span className={`monitor-delta monitor-delta--${deltaTone(postureDelta)}`}>
                   {formatDelta(postureDelta) ? `${formatDelta(postureDelta)} from baseline` : 'at baseline'}
                 </span>
               )}
