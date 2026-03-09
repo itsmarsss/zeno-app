@@ -87,10 +87,12 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             "date": target_day.isoformat(),
             "sessions": 0,
             "average_stress_index": 0,
+            "average_respiratory_rate": None,
             "focused_minutes": 0,
             "peak_stress": None,
             "posture_trend": [],
             "stress_trend": [],
+            "rr_trend": [],
             "recommendation": "No data yet. Run a few check-ins to generate insights.",
         }
 
@@ -125,14 +127,17 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             "date": target_day.isoformat(),
             "sessions": 0,
             "average_stress_index": 0,
+            "average_respiratory_rate": None,
             "focused_minutes": 0,
             "peak_stress": None,
             "posture_trend": [],
             "stress_trend": [],
+            "rr_trend": [],
             "recommendation": "No data yet. Run a few check-ins to generate insights.",
         }
 
     items = []
+    rr_points: list[float] = []
     for row in rows:
         stress = _stress_index(
             dominant_emotion=row["dominant_emotion"],
@@ -148,18 +153,27 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
                 "posture_score": float(row["posture_score"]),
                 "stress_index": stress,
                 "dominant_emotion": str(row["dominant_emotion"]),
+                "respiratory_rate": float(row["respiratory_rate"] or 0.0),
+                "rr_confidence": str(row["rr_confidence"] or "none"),
+                "mode": str(row["mode"] or "passive"),
             }
         )
+        rr_value = float(row["respiratory_rate"] or 0.0)
+        rr_confidence = str(row["rr_confidence"] or "none")
+        if rr_value > 0.0 and rr_confidence in {"partial", "full"} and str(row["mode"] or "passive") == "focus":
+            rr_points.append(rr_value)
 
     avg_stress = sum(i["stress_index"] for i in items) / len(items)
     avg_posture = sum(i["posture_score"] for i in items) / len(items)
     focused_sessions = sum(1 for i in items if i["stress_index"] < 40)
     peak = max(items, key=lambda i: i["stress_index"])
+    avg_rr = round(sum(rr_points) / len(rr_points), 1) if rr_points else None
 
     return {
         "date": target_day.isoformat(),
         "sessions": len(items),
         "average_stress_index": round(avg_stress, 1),
+        "average_respiratory_rate": avg_rr,
         "focused_minutes": focused_sessions * session_minutes,
         "peak_stress": {
             "stress_index": peak["stress_index"],
@@ -178,6 +192,16 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
                 "score": int(i["stress_index"]),
             }
             for i in items
+        ],
+        "rr_trend": [
+            {
+                "time": i["time"],
+                "score": round(float(i["respiratory_rate"]), 1),
+                "confidence": i["rr_confidence"],
+                "mode": i["mode"],
+            }
+            for i in items
+            if float(i["respiratory_rate"]) > 0
         ],
         "recommendation": _recommendation(avg_stress=avg_stress, avg_posture=avg_posture),
     }

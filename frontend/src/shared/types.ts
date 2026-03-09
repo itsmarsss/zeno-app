@@ -46,10 +46,12 @@ export type DailyReport = {
   date: string
   sessions: number
   average_stress_index: number
+  average_respiratory_rate?: number | null
   focused_minutes: number
   peak_stress: { stress_index: number; time: string } | null
   posture_trend: { time: string; score: number }[]
   stress_trend: { time: string; score: number }[]
+  rr_trend?: { time: string; score: number; confidence: 'none' | 'partial' | 'full'; mode: 'passive' | 'focus' }[]
   recommendation: string
 }
 

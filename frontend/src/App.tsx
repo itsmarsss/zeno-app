@@ -146,6 +146,17 @@ function App() {
       })),
     [dailyReport],
   )
+  const rrTrendPoints = useMemo(
+    () =>
+      (dailyReport?.rr_trend ?? [])
+        .slice(-12)
+        .map((item) => ({
+          time: item.time,
+          value: Math.max(0, Math.min(100, ((item.score - 6) / 24) * 100)),
+          bpm: item.score,
+        })),
+    [dailyReport],
+  )
   const postureTrend = useMemo(() => postureTrendPoints.map((item) => item.value), [postureTrendPoints])
   const stressTrend = useMemo(() => stressTrendPoints.map((item) => item.value), [stressTrendPoints])
   const postureStats = useMemo(() => trendStats(postureTrend), [postureTrend])
@@ -155,6 +166,12 @@ function App() {
   const breathingRemainingSeconds = Math.max(0, Math.ceil(breathingRemainingMs / 1000))
   const breakMinutes = Math.floor(breakRemainingSec / 60)
   const breakSeconds = breakRemainingSec % 60
+  const rrDisplay =
+    result && result.respiratory_rate > 0
+      ? result.mode === 'passive' || result.rr_confidence === 'partial'
+        ? `~${Math.round(result.respiratory_rate)}`
+        : `${Math.round(result.respiratory_rate)}`
+      : '--'
 
   async function openMainWindow() {
     try {
@@ -903,7 +920,7 @@ function App() {
                       <span className="stat-value">
                         {result?.heart_rate_bpm == null ? '--' : `${result.heart_rate_bpm}`}
                       </span>
-                      <span className="stat-label">heart rate bpm</span>
+                      <span className="stat-label">{`hr ${result?.heart_rate_bpm == null ? '--' : 'bpm'} · rr ${rrDisplay}`}</span>
                     </article>
                     <article className="stat-cell">
                       <span className="stat-value">{sessionCountToday}</span>
@@ -947,6 +964,12 @@ function App() {
                       </h3>
                       <div className="report-kpis">
                         <span>Avg stress {dailyReport.average_stress_index}</span>
+                        <span>
+                          Avg RR{' '}
+                          {dailyReport.average_respiratory_rate == null
+                            ? '--'
+                            : `${dailyReport.average_respiratory_rate} bpm`}
+                        </span>
                         <span>Focused {dailyReport.focused_minutes} min</span>
                         <span>{dailyReport.sessions} sessions</span>
                       </div>
@@ -983,6 +1006,16 @@ function App() {
                         </div>
                         <svg viewBox="0 0 260 74" preserveAspectRatio="none">
                           <path className="line-stress" d={sparklinePath(stressTrend, 260, 74)} />
+                          {rrTrendPoints.length > 1 && (
+                            <path
+                              className="line-rr"
+                              d={sparklinePath(
+                                rrTrendPoints.map((point) => point.value),
+                                260,
+                                74,
+                              )}
+                            />
+                          )}
                           {stressTrendPoints.map((point, index) => (
                             <circle
                               key={`${point.time}-stress`}
@@ -992,6 +1025,17 @@ function App() {
                               r="2.2"
                             >
                               <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • stress ${point.value}`}</title>
+                            </circle>
+                          ))}
+                          {rrTrendPoints.map((point, index) => (
+                            <circle
+                              key={`${point.time}-rr`}
+                              className="trend-dot trend-dot--rr"
+                              cx={rrTrendPoints.length === 1 ? 130 : (index * 260) / (rrTrendPoints.length - 1)}
+                              cy={pointY(point.value, 74)}
+                              r="2.0"
+                            >
+                              <title>{`${new Date(point.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} • rr ${point.bpm} bpm`}</title>
                             </circle>
                           ))}
                         </svg>

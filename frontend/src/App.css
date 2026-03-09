@@ -389,6 +389,18 @@
   color: var(--text-tertiary);
 }
 
+.line-rr {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 55%, var(--state-mild));
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.trend-dot--rr {
+  fill: color-mix(in srgb, var(--accent) 55%, var(--state-mild));
+  opacity: 0.9;
+}
+
 .breathing-circle {
   width: 120px;
   height: 120px;
