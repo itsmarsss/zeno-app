@@ -1,0 +1,9 @@
+# API backend
+/api/ @itsmarsss
+
+# Frontend
+/frontend/ @itsmarsss
+
+# Infrastructure
+/api/terraform/ @itsmarsss
+/.github/ @itsmarsss
