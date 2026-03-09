@@ -1,11 +1,11 @@
-import { Activity, BarChart3, Dumbbell, Settings, SlidersHorizontal } from 'lucide-react'
+import { Activity, BarChart3, Dumbbell, History, Settings, SlidersHorizontal } from 'lucide-react'
 
 export type MainTab = 'overview' | 'monitor' | 'focus' | 'posture' | 'exercises' | 'settings'
 
 const NAV_ITEMS: Array<{ id: MainTab; label: string; icon: typeof BarChart3 }> = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'monitor', label: 'Monitor', icon: Activity },
-  { id: 'focus', label: 'Focus History', icon: Activity },
+  { id: 'focus', label: 'Focus History', icon: History },
   { id: 'posture', label: 'Posture', icon: SlidersHorizontal },
   { id: 'exercises', label: 'Exercises', icon: Dumbbell },
   { id: 'settings', label: 'Settings', icon: Settings },

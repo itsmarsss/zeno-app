@@ -114,6 +114,43 @@ export function buildPath(values: Array<number | null>, min: number, max: number
   return pathParts.filter(Boolean).join(' ')
 }
 
+export function buildLinearPath(
+  values: Array<number | null>,
+  min: number,
+  max: number,
+  width = 100,
+  height = 100,
+): string {
+  const segments: Array<Array<{ x: number; y: number }>> = []
+  let current: Array<{ x: number; y: number }> = []
+
+  values.forEach((raw, index) => {
+    if (raw == null || Number.isNaN(raw)) {
+      if (current.length > 0) segments.push(current)
+      current = []
+      return
+    }
+
+    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width
+    const norm = clamp((raw - min) / Math.max(max - min, 1), 0, 1)
+    const y = height - norm * height
+    current.push({ x, y })
+  })
+  if (current.length > 0) segments.push(current)
+
+  return segments
+    .map((points) => {
+      if (points.length === 0) return ''
+      let segmentPath = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+      for (let i = 1; i < points.length; i += 1) {
+        segmentPath += ` L ${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)}`
+      }
+      return segmentPath
+    })
+    .filter(Boolean)
+    .join(' ')
+}
+
 export function buildAreaPath(values: number[], min: number, max: number, width = 100, height = 100): string {
   if (!values.length) return ''
   const line = buildPath(values, min, max, width, height)

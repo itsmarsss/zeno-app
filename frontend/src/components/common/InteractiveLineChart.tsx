@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { buildAreaPath, buildPath, clamp } from '../../shared/dashboard'
+import { useRef, useState, type ReactNode } from 'react'
+import { buildAreaPath, buildLinearPath, buildPath, clamp } from '../../shared/dashboard'
 import { AnimatedTickerText } from './AnimatedTickerText'
 import './InteractiveLineChart.css'
 
@@ -24,6 +23,13 @@ export function InteractiveLineChart({
   areaGradientId,
   areaGradientColor,
   thresholdClassName = '',
+  showAxis = true,
+  chartHeight = 130,
+  tooltipWidth = 188,
+  showTooltip = true,
+  extraLines = [],
+  renderTooltip,
+  onHoverChange,
 }: {
   points: InteractiveLineChartPoint[]
   yMin: number
@@ -38,6 +44,19 @@ export function InteractiveLineChart({
   areaGradientId?: string
   areaGradientColor?: string
   thresholdClassName?: string
+  showAxis?: boolean
+  chartHeight?: number
+  tooltipWidth?: number
+  showTooltip?: boolean
+  extraLines?: Array<{
+    values: Array<number | null>
+    yMin?: number
+    yMax?: number
+    className?: string
+    smooth?: boolean
+  }>
+  renderTooltip?: (args: { point: InteractiveLineChartPoint; index: number; direction: 1 | -1 }) => ReactNode
+  onHoverChange?: (index: number | null, direction: 1 | -1) => void
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
@@ -57,7 +76,7 @@ export function InteractiveLineChart({
   const fallbackXPx = chartWidthPx > 0 ? chartLeftPx + hoverRatio * chartWidthPx : 0
   const cursorXPx = hoverXPx ?? fallbackXPx
 
-  const tooltipWidthPx = 188
+  const tooltipWidthPx = tooltipWidth
   const tooltipPaddingPx = 8
   const tooltipMinLeft = chartLeftPx + tooltipPaddingPx
   const tooltipMaxLeft = chartLeftPx + Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx)
@@ -75,6 +94,7 @@ export function InteractiveLineChart({
         setHoverIndex(null)
         setHoverXPx(null)
         previousHoverIndexRef.current = null
+        if (onHoverChange) onHoverChange(null, hoverDirection)
       }}
       onPointerMove={(event) => {
         const canvasRect = event.currentTarget.getBoundingClientRect()
@@ -85,17 +105,26 @@ export function InteractiveLineChart({
         const ratio = clamp(xWithinSvg / localWidth, 0, 1)
         const nextIndex = Math.round(ratio * (points.length - 1))
         const prev = previousHoverIndexRef.current
+        let nextDirection = hoverDirection
         if (prev != null && nextIndex !== prev) {
-          setHoverDirection(nextIndex > prev ? 1 : -1)
+          nextDirection = nextIndex > prev ? 1 : -1
+          setHoverDirection(nextDirection)
         }
         previousHoverIndexRef.current = nextIndex
         setChartLeftPx(localLeft)
         setChartWidthPx(localWidth)
         setHoverXPx(localLeft + xWithinSvg)
         setHoverIndex(nextIndex)
+        if (onHoverChange) onHoverChange(nextIndex, nextDirection)
       }}
     >
-      <svg ref={svgRef} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+      <svg
+        ref={svgRef}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+        style={{ height: `${chartHeight}px` }}
+      >
         {areaGradientId && areaGradientColor ? (
           <defs>
             <linearGradient id={areaGradientId} x1="0" y1="0" x2="0" y2="1">
@@ -119,25 +148,28 @@ export function InteractiveLineChart({
           style={areaGradientId ? { fill: `url(#${areaGradientId})` } : undefined}
         />
         <path d={linePath} className={`interactive-chart-line ${lineClassName}`.trim()} />
+        {extraLines.map((line, index) => {
+          const pathBuilder = line.smooth === false ? buildLinearPath : buildPath
+          const path = pathBuilder(line.values, line.yMin ?? yMin, line.yMax ?? yMax, 100, 100)
+          if (!path) return null
+          return (
+            <path
+              key={`extra-line-${index}`}
+              d={path}
+              className={`interactive-chart-line ${line.className ?? ''}`.trim()}
+            />
+          )
+        })}
       </svg>
 
-      <AnimatePresence initial={false}>
-        {hoveredPoint && (
-          <>
-            <motion.div
-              className="interactive-chart-cursor"
-              initial={{ opacity: 0 }}
-              animate={{ left: `${cursorXPx}px`, opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
-            />
-            <motion.div
-              className="interactive-chart-tooltip"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
-            >
+      {hoveredPoint && <div className="interactive-chart-cursor" style={{ left: `${cursorXPx}px`, opacity: 1 }} />}
+
+      {showTooltip && hoveredPoint && hoverIndex !== null && (
+        <div className="interactive-chart-tooltip" style={{ left: `${tooltipLeftPx}px`, opacity: 1 }}>
+          {renderTooltip ? (
+            renderTooltip({ point: hoveredPoint, index: hoverIndex as number, direction: hoverDirection })
+          ) : (
+            <>
               <p>
                 <AnimatedTickerText value={hoveredPoint.label} direction={hoverDirection} />
               </p>
@@ -150,24 +182,26 @@ export function InteractiveLineChart({
                 </strong>
                 <span>{valueLabel}</span>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            </>
+          )}
+        </div>
+      )}
 
       {thresholdLabel ? <span className="interactive-chart-threshold-label">{thresholdLabel}</span> : null}
-      <div
-        className="interactive-chart-axis"
-        style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
-      >
-        {points.map((point, index) =>
-          index % axisStep === 0 || index === points.length - 1 ? (
-            <span key={point.id}>{point.label}</span>
-          ) : (
-            <span key={point.id} />
-          ),
-        )}
-      </div>
+      {showAxis ? (
+        <div
+          className="interactive-chart-axis"
+          style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
+        >
+          {points.map((point, index) =>
+            index % axisStep === 0 || index === points.length - 1 ? (
+              <span key={point.id}>{point.label}</span>
+            ) : (
+              <span key={point.id} />
+            ),
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

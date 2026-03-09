@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, CameraOff, CheckCircle2, User, Waves, Wind } from 'lucide-react'
+import { InteractiveLineChart, type InteractiveLineChartPoint } from '../common/InteractiveLineChart'
+import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import { PostureFrame } from '../common/PostureFrame'
-import { buildAreaPath, buildPath, clamp, localDateKey } from '../../shared/dashboard'
+import { clamp, localDateKey } from '../../shared/dashboard'
 import { sessionFromHistory, stressIndex } from '../../shared/metrics'
 import type { PostureLandmarks, SessionHistoryItem, SessionResult } from '../../shared/types'
 import './MonitorTab.css'
@@ -12,18 +14,26 @@ type TransitionPhase = 'banner' | 'camera' | 'cards' | 'settled'
 type FocusPoint = {
   at: number
   stress: number
-  hrNorm: number | null
-  rrNorm: number | null
+  heartRate: number | null
+  respiratoryRate: number | null
+  postureScore: number | null
+  rrConfidence: 'none' | 'partial' | 'full'
 }
 
-function hrToNorm(hr: number | null | undefined): number | null {
-  if (hr == null || !Number.isFinite(hr)) return null
-  return clamp(((hr - 50) / 60) * 100, 0, 100)
+type MonitorRuntimeCache = {
+  passiveStartedAt: number | null
+  focusStartedAt: number | null
+  focusLatched: boolean
+  focusPoints: FocusPoint[]
+  recentFocusSummary: { endedAt: number; durationSeconds: number } | null
 }
 
-function rrToNorm(rr: number | null | undefined): number | null {
-  if (rr == null || !Number.isFinite(rr) || rr <= 0) return null
-  return clamp(((rr - 6) / 24) * 100, 0, 100)
+let monitorRuntimeCache: MonitorRuntimeCache = {
+  passiveStartedAt: null,
+  focusStartedAt: null,
+  focusLatched: false,
+  focusPoints: [],
+  recentFocusSummary: null,
 }
 
 function formatTime(timestamp: string): string {
@@ -120,6 +130,19 @@ function deltaTone(value: number | null): 'positive' | 'negative' | 'neutral' {
   return value > 0 ? 'positive' : 'negative'
 }
 
+function buildChartPoints(
+  points: FocusPoint[],
+  getValue: (point: FocusPoint) => number | null,
+): InteractiveLineChartPoint[] {
+  return points
+    .filter((point) => Number.isFinite(point.at))
+    .map((point, index) => ({
+      id: `${point.at}-${index}`,
+      label: formatTime(new Date(point.at).toString()),
+      value: getValue(point),
+    }))
+}
+
 export function MonitorTab({
   history,
   currentResult,
@@ -142,29 +165,47 @@ export function MonitorTab({
   onEndFocusMode: () => void
 }) {
   const [now, setNow] = useState(() => Date.now())
-  const [passiveStartedAt, setPassiveStartedAt] = useState<number | null>(null)
-  const [focusStartedAt, setFocusStartedAt] = useState<number | null>(null)
-  const [focusPoints, setFocusPoints] = useState<FocusPoint[]>([])
+  const [passiveStartedAt, setPassiveStartedAt] = useState<number | null>(() =>
+    monitorRuntimeCache.passiveStartedAt != null && Number.isFinite(monitorRuntimeCache.passiveStartedAt)
+      ? monitorRuntimeCache.passiveStartedAt
+      : null,
+  )
+  const [focusStartedAt, setFocusStartedAt] = useState<number | null>(() =>
+    monitorRuntimeCache.focusStartedAt != null && Number.isFinite(monitorRuntimeCache.focusStartedAt)
+      ? monitorRuntimeCache.focusStartedAt
+      : null,
+  )
+  const [focusLatched, setFocusLatched] = useState<boolean>(() => monitorRuntimeCache.focusLatched)
+  const [focusPoints, setFocusPoints] = useState<FocusPoint[]>(() =>
+    monitorRuntimeCache.focusPoints.filter((point) => Number.isFinite(point.at)),
+  )
   const [recentFocusSummary, setRecentFocusSummary] = useState<{ endedAt: number; durationSeconds: number } | null>(
-    null,
+    () => monitorRuntimeCache.recentFocusSummary,
   )
   const [transitionPhase, setTransitionPhase] = useState<TransitionPhase>('settled')
   const [passiveCameraClosing, setPassiveCameraClosing] = useState(false)
-  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string; align: 'left' | 'center' | 'right' } | null>(null)
-  const [timelineHoverIndex, setTimelineHoverIndex] = useState<number | null>(null)
-  const [timelineHoverXPct, setTimelineHoverXPct] = useState<number | null>(null)
+  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{
+    xPct: number
+    label: string
+    align: 'left' | 'center' | 'right'
+  } | null>(null)
+  const [timeWindowMinutes, setTimeWindowMinutes] = useState<number>(60)
+
   const wasFocusActiveRef = useRef(focusModeActive)
+  const endRequestedRef = useRef(false)
   const previousModeRef = useRef<MonitorMode>('idle')
   const cameraModeRef = useRef<MonitorMode>('idle')
-  const timelinePrevHoverRef = useRef<number | null>(null)
 
-  const monitorMode: MonitorMode = recentFocusSummary
-    ? 'ended'
-    : focusModeActive
-      ? 'focus'
-      : isCheckInRunning
-        ? 'passive'
-        : 'idle'
+  const hasLiveFocusResult = Boolean(currentResult && currentResult.mode === 'focus' && !currentResult.session_skipped)
+  const focusSessionVisible = focusLatched || focusModeActive || hasLiveFocusResult || focusStartedAt != null
+  const monitorMode: MonitorMode =
+    recentFocusSummary && !focusSessionVisible
+      ? 'ended'
+      : focusSessionVisible
+        ? 'focus'
+        : isCheckInRunning
+          ? 'passive'
+          : 'idle'
 
   useEffect(() => {
     const previous = previousModeRef.current
@@ -202,6 +243,16 @@ export function MonitorTab({
   }, [])
 
   useEffect(() => {
+    monitorRuntimeCache = {
+      passiveStartedAt,
+      focusStartedAt,
+      focusLatched,
+      focusPoints,
+      recentFocusSummary,
+    }
+  }, [passiveStartedAt, focusStartedAt, focusLatched, focusPoints, recentFocusSummary])
+
+  useEffect(() => {
     if (monitorMode === 'passive') {
       setPassiveStartedAt((prev) => prev ?? Date.now())
     } else {
@@ -211,21 +262,33 @@ export function MonitorTab({
 
   useEffect(() => {
     if (focusModeActive) {
+      endRequestedRef.current = false
+      setFocusLatched(true)
       setFocusStartedAt((prev) => prev ?? Date.now())
       setRecentFocusSummary(null)
     } else {
       const wasFocusActive = wasFocusActiveRef.current
-      if (wasFocusActive && focusStartedAt) {
+      if (wasFocusActive && focusStartedAt && endRequestedRef.current) {
         const durationSeconds = Math.max(0, Math.floor((Date.now() - focusStartedAt) / 1000))
-        setRecentFocusSummary({
-          endedAt: Date.now(),
-          durationSeconds,
-        })
+        setRecentFocusSummary({ endedAt: Date.now(), durationSeconds })
+        setFocusStartedAt(null)
+        setFocusLatched(false)
+        endRequestedRef.current = false
       }
-      setFocusStartedAt(null)
     }
     wasFocusActiveRef.current = focusModeActive
   }, [focusModeActive, focusStartedAt])
+
+  useEffect(() => {
+    if (!hasLiveFocusResult || !currentResult) return
+    setFocusLatched(true)
+    setRecentFocusSummary(null)
+    setFocusStartedAt((prev) => {
+      if (prev != null && Number.isFinite(prev)) return prev
+      const elapsedMs = Math.max(0, Math.floor(currentResult.focus_duration_seconds * 1000))
+      return Date.now() - elapsedMs
+    })
+  }, [currentResult, hasLiveFocusResult])
 
   useEffect(() => {
     if (!recentFocusSummary) return
@@ -234,22 +297,21 @@ export function MonitorTab({
   }, [recentFocusSummary])
 
   useEffect(() => {
-    if (!focusModeActive || !currentResult) return
+    if (!focusSessionVisible || !currentResult) return
     const point: FocusPoint = {
       at: Date.now(),
       stress: stressIndex(currentResult),
-      hrNorm: hrToNorm(currentResult.heart_rate_bpm),
-      rrNorm:
-        currentResult.rr_confidence === 'none' || currentResult.respiratory_rate <= 0
-          ? null
-          : rrToNorm(currentResult.respiratory_rate),
+      heartRate: currentResult.heart_rate_bpm,
+      respiratoryRate: currentResult.respiratory_rate > 0 ? currentResult.respiratory_rate : null,
+      postureScore: Math.round(currentResult.posture_score * 100),
+      rrConfidence: currentResult.rr_confidence,
     }
     setFocusPoints((prev) => {
       const next = [...prev, point]
       const maxAge = Date.now() - 5 * 60_000
       return next.filter((item) => item.at >= maxAge).slice(-80)
     })
-  }, [currentResult, focusModeActive])
+  }, [currentResult, focusSessionVisible])
 
   const latestHistory = history[0] ? sessionFromHistory(history[0]) : null
   const lastPassiveHistory = useMemo(
@@ -264,20 +326,35 @@ export function MonitorTab({
     return history
       .filter((item) => item.mode === 'focus' && localDateKey(new Date(item.created_at)) === todayKey)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      .map((item) => ({
-        at: new Date(item.created_at).getTime(),
-        stress: stressIndex(sessionFromHistory(item)),
-        hrNorm: hrToNorm(item.heart_rate_bpm),
-        rrNorm: item.rr_confidence === 'none' || item.respiratory_rate <= 0 ? null : rrToNorm(item.respiratory_rate),
-      }))
+      .map((item) => {
+        const parsedAt = new Date(item.created_at).getTime()
+        const session = sessionFromHistory(item)
+        return {
+          at: parsedAt,
+          stress: stressIndex(session),
+          heartRate: item.heart_rate_bpm,
+          respiratoryRate: item.respiratory_rate > 0 ? item.respiratory_rate : null,
+          postureScore: Math.round(item.posture_score * 100),
+          rrConfidence: item.rr_confidence,
+        }
+      })
+      .filter((point) => Number.isFinite(point.at))
   }, [history])
 
-  const timelinePoints = focusPoints.length > 0 ? focusPoints : focusHistoryPoints
+  const allTimelinePoints = focusPoints.length > 0 ? focusPoints : focusHistoryPoints
+  const timeWindowMs = timeWindowMinutes * 60_000
+  const cutoffTime = now - timeWindowMs
+  const timelinePoints = allTimelinePoints.filter((point) => point.at >= cutoffTime)
+  const cardPoints = focusPoints.length > 0 ? focusPoints : focusHistoryPoints
 
   const passiveElapsedSec = passiveStartedAt ? Math.floor((now - passiveStartedAt) / 1000) : 0
   const passiveRemaining = Math.max(0, 30 - passiveElapsedSec)
   const passiveProgress = clamp((passiveElapsedSec / 30) * 100, 0, 100)
-  const focusElapsed = focusStartedAt ? Math.floor((now - focusStartedAt) / 1000) : 0
+  const focusElapsed = hasLiveFocusResult
+    ? Math.max(0, Math.floor(currentResult?.focus_duration_seconds ?? 0))
+    : focusStartedAt
+      ? Math.floor((now - focusStartedAt) / 1000)
+      : 0
   const cameraStageActive = transitionPhase !== 'banner'
   const cardsStageActive = transitionPhase === 'cards' || transitionPhase === 'settled'
   const showLiveCamera = monitorMode === 'focus' || monitorMode === 'passive' || passiveCameraClosing
@@ -287,7 +364,6 @@ export function MonitorTab({
   const stressValue = displayResult ? stressIndex(displayResult) : 0
   const hrValue = displayResult?.heart_rate_bpm ?? null
   const rrValue = displayResult?.respiratory_rate ?? 0
-  const rrConfidence = focusModeActive ? displayResult?.rr_confidence ?? 'none' : 'none'
   const postureValue = Math.round((postureScoreLive ?? displayResult?.posture_score ?? 0) * 100)
   const rrConfidenceProgress = focusStartedAt ? clamp(((now - focusStartedAt) / 90_000) * 100, 0, 100) : 0
   const rrConfidenceSeconds = Math.max(0, 90 - Math.floor((now - (focusStartedAt ?? now)) / 1000))
@@ -299,27 +375,22 @@ export function MonitorTab({
   const rrDelta = rrValue > 0 ? rrValue - restingRr : null
   const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
 
-  const stressPath = buildPath(
-    focusPoints.map((item) => item.stress),
-    0,
-    100,
-    100,
-    32,
-  )
-  const hrPath = buildPath(
-    focusPoints.map((item) => item.hrNorm),
-    0,
-    100,
-    100,
-    32,
-  )
-  const rrPath = buildPath(
-    focusPoints.map((item) => item.rrNorm),
-    0,
-    100,
-    100,
-    32,
-  )
+  const stressChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.stress), [cardPoints])
+  const hrChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.heartRate), [cardPoints])
+  const rrChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.respiratoryRate), [cardPoints])
+  const postureChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.postureScore), [cardPoints])
+
+  const timelineStressPoints = useMemo(() => buildChartPoints(timelinePoints, (p) => p.stress), [timelinePoints])
+  const timelineHrValues = useMemo(() => timelinePoints.map((p) => p.heartRate), [timelinePoints])
+  const timelineRrValues = useMemo(() => timelinePoints.map((p) => p.respiratoryRate), [timelinePoints])
+
+  const timelineStart = Number.isFinite(timelinePoints[0]?.at)
+    ? (timelinePoints[0]?.at as number)
+    : Date.now() - 60 * 60_000
+  const timelineEnd = Number.isFinite(timelinePoints[timelinePoints.length - 1]?.at)
+    ? (timelinePoints[timelinePoints.length - 1]?.at as number)
+    : Date.now()
+  const timelineRange = Math.max(1, timelineEnd - timelineStart)
 
   const todayKey = localDateKey(new Date())
   const passiveMarks = history
@@ -327,23 +398,10 @@ export function MonitorTab({
     .map((item) => new Date(item.created_at).getTime())
     .sort((a, b) => a - b)
 
-  const timelineStart = timelinePoints[0]?.at ?? Date.now() - 60 * 60_000
-  const timelineEnd = timelinePoints[timelinePoints.length - 1]?.at ?? Date.now()
-  const timelineRange = Math.max(1, timelineEnd - timelineStart)
-  const timelineStressValues = timelinePoints.map((p) => p.stress)
-  const timelineHrValues = timelinePoints.map((p) => p.hrNorm)
-  const timelineRrValues = timelinePoints.map((p) => p.rrNorm)
-  const timelineAreaPath = buildAreaPath(timelineStressValues, 0, 100, 100, 36)
-  const timelineStressPath = buildPath(timelineStressValues, 0, 100, 100, 36)
-  const timelineHrPath = buildPath(timelineHrValues, 0, 100, 100, 36)
-  const timelineRrPath = buildPath(timelineRrValues, 0, 100, 100, 36)
   const passiveMarkOffsets = passiveMarks.map((ts) => ({
     ts,
     xPct: clamp(((ts - timelineStart) / timelineRange) * 100, 0, 100),
   }))
-  const hoveredTimelinePoint = timelineHoverIndex != null ? timelinePoints[timelineHoverIndex] : null
-  const fallbackRatio = timelineHoverIndex == null ? 0 : timelineHoverIndex / Math.max(timelinePoints.length - 1, 1)
-  const cursorXPct = timelineHoverXPct ?? fallbackRatio * 100
 
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
@@ -361,9 +419,28 @@ export function MonitorTab({
     const align: 'left' | 'center' | 'right' = mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center'
     setHoveredPassiveMark({
       xPct: mark.xPct,
-      label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+      label: `Passive check-in · ${formatTime(new Date(mark.ts).toString())}`,
       align,
     })
+  }
+
+  function handleStartFocusMode() {
+    endRequestedRef.current = false
+    setFocusLatched(true)
+    setRecentFocusSummary(null)
+    setFocusStartedAt((prev) => prev ?? Date.now())
+    onStartFocusMode()
+  }
+
+  function handleEndFocusMode() {
+    endRequestedRef.current = true
+    if (focusStartedAt) {
+      const durationSeconds = Math.max(0, Math.floor((Date.now() - focusStartedAt) / 1000))
+      setRecentFocusSummary({ endedAt: Date.now(), durationSeconds })
+    }
+    setFocusStartedAt(null)
+    setFocusLatched(false)
+    onEndFocusMode()
   }
 
   return (
@@ -402,12 +479,12 @@ export function MonitorTab({
         </div>
         <div className="monitor-banner-right">
           {monitorMode === 'idle' && (
-            <button className="monitor-banner-action" onClick={onStartFocusMode}>
+            <button className="monitor-banner-action" onClick={handleStartFocusMode}>
               Start Focus Mode
             </button>
           )}
           {monitorMode === 'focus' && (
-            <button className="monitor-banner-action monitor-banner-action--danger" onClick={onEndFocusMode}>
+            <button className="monitor-banner-action monitor-banner-action--danger" onClick={handleEndFocusMode}>
               End session
             </button>
           )}
@@ -415,44 +492,111 @@ export function MonitorTab({
       </div>
 
       <div className="monitor-body">
-        <div className={`monitor-camera-shell monitor-camera-shell--${monitorMode} ${cameraStageActive ? 'is-stage-active' : ''}`}>
-          {!showLiveCamera ? (
-            <div className="monitor-camera-idle">
-              <CameraOff size={24} />
-              <p>Camera inactive</p>
-              <span>Camera activates during check-ins and Focus Mode</span>
-            </div>
-          ) : (
-            <div className={`monitor-camera-live ${passiveCameraClosing ? 'is-hiding' : ''}`}>
-              <PostureFrame
-                frame={postureFrame}
-                landmarks={postureLandmarks}
-                alt="Monitor camera feed"
-                className="monitor-camera-frame"
-              />
-              <div className="monitor-camera-badge">
-                <span className="monitor-camera-dot" />
-                {monitorMode === 'focus' ? 'Live' : 'Passive capture'}
+        <div className="monitor-top">
+          <div
+            className={`monitor-camera-shell monitor-camera-shell--${monitorMode} ${cameraStageActive ? 'is-stage-active' : ''}`}
+          >
+            {!showLiveCamera ? (
+              <div className="monitor-camera-idle">
+                <CameraOff size={24} />
+                <p>Camera inactive</p>
+                <span>Camera activates during check-ins and Focus Mode</span>
               </div>
-              {monitorMode !== 'focus' && (
-                <div className="monitor-camera-progress">
-                  <div
-                    className="monitor-camera-progress-fill"
-                    style={{ width: `${passiveCameraClosing ? 100 : passiveProgress}%` }}
-                  />
+            ) : (
+              <div className={`monitor-camera-live ${passiveCameraClosing ? 'is-hiding' : ''}`}>
+                <PostureFrame
+                  frame={postureFrame}
+                  landmarks={postureLandmarks}
+                  alt="Monitor camera feed"
+                  className="monitor-camera-frame"
+                />
+                <div className="monitor-camera-badge">
+                  <span className="monitor-camera-dot" />
+                  {monitorMode === 'focus' ? 'Live' : 'Passive capture'}
                 </div>
-              )}
-              {monitorMode === 'focus' && (
-                <div className="monitor-camera-overlay">
-                  <div className="monitor-camera-status">
-                    {postureLabel(displayResult) === 'Good alignment' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                    <span>{postureLabel(displayResult)}</span>
+                {monitorMode !== 'focus' && (
+                  <div className="monitor-camera-progress">
+                    <div
+                      className="monitor-camera-progress-fill"
+                      style={{ width: `${passiveCameraClosing ? 100 : passiveProgress}%` }}
+                    />
                   </div>
-                  <span className="monitor-camera-score">{postureValue} / 100</span>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+                {monitorMode === 'focus' && (
+                  <div className="monitor-camera-overlay">
+                    <div className="monitor-camera-status">
+                      {postureLabel(displayResult) === 'Good alignment' ? (
+                        <CheckCircle2 size={14} />
+                      ) : (
+                        <AlertCircle size={14} />
+                      )}
+                      <span>{postureLabel(displayResult)}</span>
+                    </div>
+                    <span className="monitor-camera-score">{postureValue} / 100</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className={`monitor-vitals ${cardsStageActive ? 'is-stage-active' : ''}`}>
+            <article className="monitor-vital">
+              <span className="monitor-vital-label">Stress</span>
+              <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
+                {displayResult ? stressValue : '—'}
+              </strong>
+              <em>{displayResult ? stressLabel(stressValue) : 'No data'}</em>
+            </article>
+            <article className="monitor-vital">
+              <span className="monitor-vital-label">Heart Rate</span>
+              <strong className={`signal-value signal-value--${hrTone(hrValue, restingHr)}`}>
+                {hrValue == null ? '—' : Math.round(hrValue)}
+              </strong>
+              <em>
+                {hrValue == null
+                  ? 'No data'
+                  : hrValue < restingHr - 3
+                    ? 'Resting'
+                    : hrValue <= restingHr + 8
+                      ? 'Normal'
+                      : hrValue <= restingHr + 20
+                        ? 'Elevated'
+                        : 'High'}
+              </em>
+            </article>
+            <article className="monitor-vital">
+              <span className="monitor-vital-label">Respiratory Rate</span>
+              <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
+                {monitorMode === 'focus' && rrStage === 'measuring'
+                  ? '—'
+                  : rrValue > 0
+                    ? monitorMode === 'passive' || rrStage === 'stabilizing'
+                      ? `~${Math.round(rrValue)}`
+                      : `${Math.round(rrValue)}`
+                    : '—'}
+              </strong>
+              <em>
+                {monitorMode === 'passive'
+                  ? 'Approximate'
+                  : monitorMode === 'focus' && rrStage !== 'live'
+                    ? 'Building signal...'
+                    : rrValue <= 0
+                      ? 'No data'
+                      : rrValue <= 16
+                        ? 'Normal'
+                        : rrValue <= 20
+                          ? 'Slightly elevated'
+                          : 'Elevated'}
+              </em>
+            </article>
+            <article className="monitor-vital">
+              <span className="monitor-vital-label">Posture</span>
+              <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
+                {displayResult ? postureValue : '—'}
+              </strong>
+              <em>{postureLabel(displayResult)}</em>
+            </article>
+          </div>
         </div>
 
         <div className={`monitor-signals monitor-signals--${monitorMode} ${cardsStageActive ? 'is-stage-active' : ''}`}>
@@ -473,7 +617,9 @@ export function MonitorTab({
               </span>
             </header>
             <div className="monitor-card-value">
-              <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>{displayResult ? stressValue : '—'}</strong>
+              <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
+                {displayResult ? stressValue : '—'}
+              </strong>
             </div>
             <div className="monitor-card-sub">
               <span>{displayResult ? stressLabel(stressValue) : 'No data'}</span>
@@ -483,10 +629,21 @@ export function MonitorTab({
                 </span>
               )}
             </div>
-            {monitorMode === 'focus' && (
-              <svg viewBox="0 0 100 32" preserveAspectRatio="none">
-                <path className="signal-stress" d={stressPath} />
-              </svg>
+            {stressChartPoints.length > 1 && (
+              <InteractiveLineChart
+                className="monitor-mini-chart"
+                points={stressChartPoints}
+                yMin={0}
+                yMax={100}
+                valueLabel="Stress"
+                lineClassName="signal-stress"
+                areaClassName="monitor-mini-area"
+                areaGradientId="monitorStressCardGradient"
+                areaGradientColor="var(--accent)"
+                showAxis={false}
+                chartHeight={58}
+                tooltipWidth={138}
+              />
             )}
           </article>
 
@@ -534,10 +691,22 @@ export function MonitorTab({
                 </span>
               )}
             </div>
-            {monitorMode === 'focus' && (
-              <svg viewBox="0 0 100 32" preserveAspectRatio="none">
-                <path className="signal-hr" d={hrPath} />
-              </svg>
+            {hrChartPoints.length > 1 && (
+              <InteractiveLineChart
+                className="monitor-mini-chart"
+                points={hrChartPoints}
+                yMin={50}
+                yMax={120}
+                valueLabel="Heart"
+                valueSuffix=" bpm"
+                lineClassName="signal-hr"
+                areaClassName="monitor-mini-area"
+                areaGradientId="monitorHrCardGradient"
+                areaGradientColor="var(--border-default)"
+                showAxis={false}
+                chartHeight={58}
+                tooltipWidth={138}
+              />
             )}
           </article>
 
@@ -601,10 +770,22 @@ export function MonitorTab({
                 <span>Signal ready in {rrConfidenceSeconds}s</span>
               </div>
             ) : null}
-            {monitorMode === 'focus' && rrStage === 'live' && (
-              <svg viewBox="0 0 100 32" preserveAspectRatio="none">
-                <path className="signal-rr" d={rrPath} />
-              </svg>
+            {rrChartPoints.length > 1 && (
+              <InteractiveLineChart
+                className="monitor-mini-chart"
+                points={rrChartPoints}
+                yMin={6}
+                yMax={30}
+                valueLabel="Resp"
+                valueSuffix=" bpm"
+                lineClassName="signal-rr"
+                areaClassName="monitor-mini-area"
+                areaGradientId="monitorRrCardGradient"
+                areaGradientColor="var(--state-mild)"
+                showAxis={false}
+                chartHeight={58}
+                tooltipWidth={138}
+              />
             )}
           </article>
 
@@ -625,7 +806,9 @@ export function MonitorTab({
               </span>
             </header>
             <div className="monitor-card-value">
-              <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>{displayResult ? postureValue : '—'}</strong>
+              <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
+                {displayResult ? postureValue : '—'}
+              </strong>
               <em>/ 100</em>
             </div>
             <div className="monitor-card-sub">
@@ -636,6 +819,22 @@ export function MonitorTab({
                 </span>
               )}
             </div>
+            {postureChartPoints.length > 1 && (
+              <InteractiveLineChart
+                className="monitor-mini-chart"
+                points={postureChartPoints}
+                yMin={0}
+                yMax={100}
+                valueLabel="Posture"
+                lineClassName="signal-posture"
+                areaClassName="monitor-mini-area"
+                areaGradientId="monitorPostureCardGradient"
+                areaGradientColor="var(--state-calm)"
+                showAxis={false}
+                chartHeight={58}
+                tooltipWidth={138}
+              />
+            )}
             {monitorMode === 'focus' && postureAlerts.length > 0 && (
               <div className="monitor-posture-pills">
                 {postureAlerts.map((item) => (
@@ -649,7 +848,21 @@ export function MonitorTab({
 
       <div className="monitor-timeline">
         <header>
-          <span>Session timeline</span>
+          <div className="monitor-timeline-header-left">
+            <span>Session timeline</span>
+            <select
+              className="monitor-timeline-window-select"
+              value={timeWindowMinutes}
+              onChange={(e) => setTimeWindowMinutes(Number(e.target.value))}
+            >
+              <option value={1}>Last 1 min</option>
+              <option value={5}>Last 5 min</option>
+              <option value={15}>Last 15 min</option>
+              <option value={30}>Last 30 min</option>
+              <option value={60}>Last 1 hour</option>
+              <option value={180}>Last 3 hours</option>
+            </select>
+          </div>
           <em>
             {monitorMode === 'focus' && focusStartedAt
               ? `Focus session · started ${new Date(focusStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
@@ -663,80 +876,87 @@ export function MonitorTab({
           </div>
         ) : (
           <div className="monitor-timeline-chart">
-            <svg
-              viewBox="0 0 100 36"
-              preserveAspectRatio="none"
-              onMouseLeave={() => {
-                setTimelineHoverIndex(null)
-                setTimelineHoverXPct(null)
-                timelinePrevHoverRef.current = null
+            <InteractiveLineChart
+              className="monitor-timeline-interactive"
+              points={timelineStressPoints}
+              yMin={0}
+              yMax={100}
+              valueLabel="Stress"
+              lineClassName="signal-stress"
+              areaClassName="monitor-timeline-area"
+              areaGradientId="monitorStressGradient"
+              areaGradientColor="var(--accent)"
+              showAxis={false}
+              chartHeight={120}
+              tooltipWidth={166}
+              extraLines={[
+                { values: timelineHrValues, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
+                { values: timelineRrValues, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
+              ]}
+              renderTooltip={({ point, index, direction }) => {
+                const row = timelinePoints[index]
+                if (!row) return null
+                return (
+                  <>
+                    <p>
+                      <AnimatedTickerText value={point.label} direction={direction} />
+                    </p>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText value={`${row.stress}`} direction={direction} />
+                      </strong>
+                      <span>Stress</span>
+                    </div>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText
+                          value={row.heartRate == null ? '--' : `${Math.round(row.heartRate)}`}
+                          direction={direction}
+                        />
+                      </strong>
+                      <span>HR</span>
+                    </div>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText
+                          value={row.respiratoryRate == null ? '--' : `${Math.round(row.respiratoryRate)}`}
+                          direction={direction}
+                        />
+                      </strong>
+                      <span>RR</span>
+                    </div>
+                  </>
+                )
               }}
-              onPointerMove={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect()
-                const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1)
-                const nextIndex = Math.round(ratio * Math.max(timelinePoints.length - 1, 0))
-                timelinePrevHoverRef.current = nextIndex
-                setTimelineHoverXPct(ratio * 100)
-                setTimelineHoverIndex(nextIndex)
-              }}
-            >
-              <defs>
-                <linearGradient id="monitorStressGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path className="monitor-timeline-area" d={timelineAreaPath} />
+            />
+
+            <div className="monitor-passive-overlay" aria-hidden>
               {passiveMarkOffsets.map((mark, index) => (
-                <g key={`${mark.ts}-${index}`}>
-                  <line x1={mark.xPct} y1={0} x2={mark.xPct} y2={36} className="monitor-passive-mark" />
-                  <line
-                    x1={mark.xPct}
-                    y1={0}
-                    x2={mark.xPct}
-                    y2={36}
-                    className="monitor-passive-mark-hit"
-                    onMouseEnter={() => showPassiveTooltip(mark)}
-                    onMouseLeave={() => setHoveredPassiveMark(null)}
-                    onClick={() =>
-                      setHoveredPassiveMark((prev) =>
-                        prev?.xPct === mark.xPct && prev?.label.includes('Passive check-in')
-                          ? null
-                          : {
-                              xPct: mark.xPct,
-                              label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
-                              align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
-                            },
-                      )
-                    }
-                    onTouchStart={() => showPassiveTooltip(mark)}
-                  />
-                </g>
+                <button
+                  type="button"
+                  key={`${mark.ts}-${index}`}
+                  className="monitor-passive-mark-hit"
+                  style={{ left: `${mark.xPct}%` }}
+                  onMouseEnter={() => showPassiveTooltip(mark)}
+                  onMouseLeave={() => setHoveredPassiveMark(null)}
+                  onClick={() =>
+                    setHoveredPassiveMark((prev) =>
+                      prev?.xPct === mark.xPct && prev?.label.includes('Passive check-in')
+                        ? null
+                        : {
+                            xPct: mark.xPct,
+                            label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
+                            align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
+                          },
+                    )
+                  }
+                  onTouchStart={() => showPassiveTooltip(mark)}
+                >
+                  <span className="monitor-passive-mark" />
+                </button>
               ))}
-              <path className="signal-stress" d={timelineStressPath} />
-              <path className="signal-hr" d={timelineHrPath} />
-              <path className="signal-rr" d={timelineRrPath} />
-              {hoveredTimelinePoint && (
-                <line className="monitor-timeline-cursor" x1={cursorXPct} y1={0} x2={cursorXPct} y2={36} />
-              )}
-            </svg>
-            {hoveredTimelinePoint && (
-              <div className="monitor-timeline-tooltip" style={{ left: `${clamp(cursorXPct, 10, 90)}%` }}>
-                <p>{formatTime(new Date(hoveredTimelinePoint.at).toISOString())}</p>
-                <div className="monitor-timeline-tooltip-row">
-                  <strong>{hoveredTimelinePoint.stress}</strong>
-                  <span>Stress</span>
-                </div>
-                <div className="monitor-timeline-tooltip-row">
-                  <strong>{hoveredTimelinePoint.hrNorm == null ? '--' : `${Math.round((hoveredTimelinePoint.hrNorm / 100) * 60 + 50)}`}</strong>
-                  <span>HR</span>
-                </div>
-                <div className="monitor-timeline-tooltip-row">
-                  <strong>{hoveredTimelinePoint.rrNorm == null ? '--' : `${Math.round((hoveredTimelinePoint.rrNorm / 100) * 24 + 6)}`}</strong>
-                  <span>RR</span>
-                </div>
-              </div>
-            )}
+            </div>
+
             {hoveredPassiveMark && (
               <div
                 className={`monitor-passive-tooltip monitor-passive-tooltip--${hoveredPassiveMark.align}`}

@@ -22,7 +22,6 @@ import type {
   SessionResult,
 } from '../shared/types'
 import {
-  buildAreaPath,
   buildInsights,
   buildPath,
   clamp,
@@ -88,7 +87,6 @@ export function MainWindowShell({
   const [focusPeriod, setFocusPeriod] = useState<FocusPeriod>('week')
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
-  const [chartHoverIndex, setChartHoverIndex] = useState<number | null>(null)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
   const [overviewDate, setOverviewDate] = useState<Date>(() => {
     const d = new Date()
@@ -164,6 +162,9 @@ export function MainWindowShell({
     label: string
     stress: number | null
     heartRate: number | null
+    respiratoryRate: number | null
+    rrConfidence: 'none' | 'partial' | 'full'
+    postureScore: number | null
     focusActive: boolean
     breathing: boolean
   }> = []
@@ -192,22 +193,32 @@ export function MainWindowShell({
     })
     const stressAvg = slice.length ? mean(slice.map((item) => stressIndexFromHistory(item))) : null
     const hrAvg = mean(slice.map((item) => item.heart_rate_bpm).filter((value): value is number => value != null))
+    const rrValues = slice.filter((item) => item.respiratory_rate > 0)
+    const rrAvg = rrValues.length ? mean(rrValues.map((item) => item.respiratory_rate)) : null
+    const rrConfidence =
+      rrValues.length === 0
+        ? 'none'
+        : rrValues.some((item) => item.rr_confidence === 'full')
+          ? 'full'
+          : rrValues.some((item) => item.rr_confidence === 'partial')
+            ? 'partial'
+            : 'none'
+    const postureValues = slice.map((item) => item.posture_score).filter((value) => value > 0)
+    const postureAvg = postureValues.length ? mean(postureValues) : null
     timelineData.push({
       slotStartIso: slot.toISOString(),
       slotEndIso: slotEnd.toISOString(),
       label: slot.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
       stress: stressAvg == null ? null : Math.round(stressAvg),
       heartRate: Number.isFinite(hrAvg) && hrAvg > 0 ? Math.round(hrAvg) : null,
+      respiratoryRate: rrAvg != null && Number.isFinite(rrAvg) && rrAvg > 0 ? Math.round(rrAvg) : null,
+      rrConfidence: rrConfidence as 'none' | 'partial' | 'full',
+      postureScore: postureAvg != null ? Math.round(postureAvg * 100) : null,
       focusActive: overlapSlice.some((item) => Boolean(item.focus_mode)),
       breathing: overlapSlice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
     })
   }
 
-  const timelineStress = timelineData.map((point) => point.stress ?? 0)
-  const timelineHeart = timelineData.map((point) => (point.focusActive ? point.heartRate : null))
-  const timelineAreaPath = buildAreaPath(timelineStress, 0, 100, 100, 100)
-  const timelineStressPath = buildPath(timelineStress, 0, 100, 100, 100)
-  const timelineHeartPath = buildPath(timelineHeart, 50, 110, 100, 100)
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
   const insights = buildInsights(history, overviewSessions)
@@ -231,7 +242,6 @@ export function MainWindowShell({
       if (next > todayDate) return new Date(todayDate)
       return next
     })
-    setChartHoverIndex(null)
   }
 
   const canShiftOverviewPrev = overviewDate > minOverviewDate
@@ -239,7 +249,6 @@ export function MainWindowShell({
 
   function handleTimelineBucketMinutesChange(value: number) {
     setTimelineBucketMinutes(value)
-    setChartHoverIndex(null)
   }
 
   const sevenDayDays: string[] = []
@@ -477,6 +486,225 @@ export function MainWindowShell({
     return sortNewestFirst ? ordered.reverse() : ordered
   }, [currentPeriodFocus, sortNewestFirst])
 
+  // Analytics: Study Streak & Consistency
+  const studyAnalytics = useMemo(() => {
+    const allFocus = [...focusSessions].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    )
+
+    // Calculate current streak
+    let currentStreak = 0
+    let longestStreak = 0
+    let tempStreak = 0
+    const uniqueDays = new Set<string>()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    allFocus.forEach((session) => {
+      const sessionDate = new Date(session.created_at)
+      sessionDate.setHours(0, 0, 0, 0)
+      const dayKey = sessionDate.toISOString().split('T')[0]
+      uniqueDays.add(dayKey)
+    })
+
+    const sortedDays = Array.from(uniqueDays).sort()
+    for (let i = sortedDays.length - 1; i >= 0; i--) {
+      const dayDate = new Date(sortedDays[i])
+      const expectedDate = new Date(today)
+      expectedDate.setDate(today.getDate() - (sortedDays.length - 1 - i))
+
+      if (dayDate.toISOString().split('T')[0] === expectedDate.toISOString().split('T')[0]) {
+        tempStreak++
+      } else {
+        break
+      }
+    }
+    currentStreak = tempStreak
+
+    // Calculate longest streak
+    let streak = 1
+    for (let i = 1; i < sortedDays.length; i++) {
+      const prev = new Date(sortedDays[i - 1])
+      const curr = new Date(sortedDays[i])
+      const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
+      if (diffDays === 1) {
+        streak++
+        longestStreak = Math.max(longestStreak, streak)
+      } else {
+        streak = 1
+      }
+    }
+
+    // Calculate spacing score (0-100)
+    let spacingScore = 0
+    if (currentPeriodFocus.length > 1) {
+      const sessionDates = currentPeriodFocus.map((s) => new Date(s.created_at).getTime())
+      const intervals: number[] = []
+      for (let i = 1; i < sessionDates.length; i++) {
+        intervals.push((sessionDates[i] - sessionDates[i - 1]) / (1000 * 60 * 60)) // hours
+      }
+      const avgInterval = mean(intervals)
+      const optimalInterval = 48 // hours (from research)
+      const deviation = Math.abs(avgInterval - optimalInterval) / optimalInterval
+      spacingScore = Math.round(Math.max(0, Math.min(100, 100 - deviation * 50)))
+    }
+
+    return {
+      currentStreak,
+      longestStreak,
+      spacingScore,
+      sessionsThisWeek: currentPeriodFocus.length,
+      daysStudied: uniqueDays.size,
+    }
+  }, [focusSessions, currentPeriodFocus])
+
+  // Analytics: Calculate personalized quality score for each session
+  const sessionQualityAnalytics = useMemo(() => {
+    // Calculate quality score (0-100) based on multiple factors
+    const sessionsWithQuality = currentPeriodFocus.map((session) => {
+      const stress = stressIndexFromHistory(session)
+      const duration = session.session_duration_seconds / 60
+      const posture = session.posture_score * 100
+      const hrAvailable = session.heart_rate_bpm != null
+      const rrConfidence = session.rr_confidence
+
+      // Quality components (weighted)
+      const postureScore = posture // 0-100
+      const stressScore = Math.max(0, 100 - stress) // Lower stress = higher score
+      const durationScore = Math.min(100, (duration / 60) * 100) // Longer sessions score higher (up to 60 min)
+      const rrConfidenceScore = rrConfidence === 'full' ? 100 : rrConfidence === 'partial' ? 50 : 0
+      const hrScore = hrAvailable ? 100 : 50
+
+      // Weighted quality score
+      const quality = Math.round(
+        postureScore * 0.35 + // 35% posture
+        stressScore * 0.25 + // 25% stress management
+        durationScore * 0.20 + // 20% duration/engagement
+        rrConfidenceScore * 0.10 + // 10% RR data quality
+        hrScore * 0.10 // 10% HR data availability
+      )
+
+      return {
+        ...session,
+        stress,
+        duration,
+        posture,
+        quality,
+      }
+    })
+
+    return sessionsWithQuality.sort((a, b) => b.quality - a.quality)
+  }, [currentPeriodFocus])
+
+  // Analytics: Personalized Optimal Zones (based on top-performing sessions)
+  const personalizedZones = useMemo(() => {
+    if (sessionQualityAnalytics.length < 5) {
+      return {
+        optimalStressMin: 40,
+        optimalStressMax: 65,
+        optimalDurationMin: 30,
+        optimalDurationMax: 60,
+        isPersonalized: false,
+      }
+    }
+
+    // Get top 25% of sessions by quality
+    const topQuartile = sessionQualityAnalytics.slice(0, Math.max(3, Math.ceil(sessionQualityAnalytics.length * 0.25)))
+
+    // Find stress range of top sessions
+    const topStress = topQuartile.map(s => s.stress)
+    const optimalStressMin = Math.max(0, Math.min(...topStress) - 5)
+    const optimalStressMax = Math.min(100, Math.max(...topStress) + 5)
+
+    // Find duration range of top sessions
+    const topDurations = topQuartile.map(s => s.duration)
+    const optimalDurationMin = Math.max(15, Math.min(...topDurations) - 5)
+    const optimalDurationMax = Math.min(120, Math.max(...topDurations) + 5)
+
+    return {
+      optimalStressMin: Math.round(optimalStressMin),
+      optimalStressMax: Math.round(optimalStressMax),
+      optimalDurationMin: Math.round(optimalDurationMin),
+      optimalDurationMax: Math.round(optimalDurationMax),
+      isPersonalized: true,
+    }
+  }, [sessionQualityAnalytics])
+
+  // Analytics: Session Performance Distribution
+  const performanceAnalytics = useMemo(() => {
+    const avgQuality = sessionQualityAnalytics.length > 0 ? mean(sessionQualityAnalytics.map(s => s.quality)) : 0
+
+    // Categorize sessions based on their quality relative to personal average
+    const excellent = sessionQualityAnalytics.filter(s => s.quality >= avgQuality + 15).length
+    const good = sessionQualityAnalytics.filter(s => s.quality >= avgQuality - 10 && s.quality < avgQuality + 15).length
+    const needsWork = sessionQualityAnalytics.filter(s => s.quality < avgQuality - 10).length
+    const total = sessionQualityAnalytics.length || 1
+
+    // Analyze what makes top sessions work
+    const topSessions = sessionQualityAnalytics.slice(0, Math.max(3, Math.ceil(sessionQualityAnalytics.length * 0.25)))
+    const avgTopStress = topSessions.length > 0 ? mean(topSessions.map(s => s.stress)) : 50
+    const avgTopDuration = topSessions.length > 0 ? mean(topSessions.map(s => s.duration)) : 45
+    const avgTopPosture = topSessions.length > 0 ? mean(topSessions.map(s => s.posture)) : 70
+
+    // Generate personalized recommendation
+    let recommendation = ''
+    if (sessionQualityAnalytics.length < 5) {
+      recommendation = 'Complete more sessions to unlock personalized insights'
+    } else {
+      const avgCurrentPosture = mean(sessionQualityAnalytics.map(s => s.posture))
+      const avgCurrentStress = mean(sessionQualityAnalytics.map(s => s.stress))
+
+      if (avgCurrentPosture < avgTopPosture - 10) {
+        recommendation = `Your best sessions have ${Math.round(avgTopPosture)}% posture. Focus on sitting upright.`
+      } else if (avgCurrentStress > avgTopStress + 10) {
+        recommendation = `Your best sessions average ${Math.round(avgTopStress)} stress. Try more breaks or shorter sessions.`
+      } else if (good / total > 0.6) {
+        recommendation = `You're consistent! ${Math.round((good / total) * 100)}% of sessions are performing well.`
+      } else {
+        recommendation = `Your top sessions are ${Math.round(avgTopDuration)} min at ${Math.round(avgTopStress)} stress. Aim for similar conditions.`
+      }
+    }
+
+    return {
+      excellentPct: Math.round((excellent / total) * 100),
+      goodPct: Math.round((good / total) * 100),
+      needsWorkPct: Math.round((needsWork / total) * 100),
+      excellentCount: excellent,
+      goodCount: good,
+      needsWorkCount: needsWork,
+      avgQuality: Math.round(avgQuality),
+      recommendation,
+      personalBest: sessionQualityAnalytics[0]?.quality ?? 0,
+    }
+  }, [sessionQualityAnalytics])
+
+  // Analytics: Duration Effectiveness (based on quality, not just stress)
+  const durationAnalytics = useMemo(() => {
+    const dataPoints = sessionQualityAnalytics.map((session) => ({
+      duration: session.duration,
+      stress: session.stress,
+      quality: session.quality,
+      posture: session.posture,
+      id: session.id,
+    }))
+
+    // Find optimal duration range
+    const avgDuration = dataPoints.length ? mean(dataPoints.map((d) => d.duration)) : 0
+
+    return {
+      dataPoints,
+      optimalDurationMin: personalizedZones.optimalDurationMin,
+      optimalDurationMax: personalizedZones.optimalDurationMax,
+      averageDuration: Math.round(avgDuration),
+      recommendation:
+        dataPoints.length < 5
+          ? 'Complete more sessions for personalized duration recommendations'
+          : personalizedZones.isPersonalized
+          ? `Your best sessions are ${personalizedZones.optimalDurationMin}-${personalizedZones.optimalDurationMax} minutes`
+          : `Build more data to find your optimal session length`,
+    }
+  }, [sessionQualityAnalytics, personalizedZones])
+
   const selectedExercise =
     EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
   const isPro = settings?.plan_tier === 'pro'
@@ -665,6 +893,21 @@ export function MainWindowShell({
         <SidebarNav tab={tab} setTab={setTab} />
 
         <OverlayScrollbarsComponent className="main-content" options={overlayScrollbarOptions}>
+          {/* Monitor is always mounted to preserve streaming data */}
+          <div style={{ display: tab === 'monitor' ? 'block' : 'none' }}>
+            <MonitorTab
+              history={history}
+              currentResult={currentResult}
+              focusModeActive={Boolean(settings?.focus_mode_active)}
+              isCheckInRunning={isCheckInRunning}
+              postureFrame={postureFrame}
+              postureLandmarks={postureLandmarks}
+              postureScoreLive={postureScoreLive}
+              onStartFocusMode={() => void updateSettings({ focus_mode_active: true })}
+              onEndFocusMode={() => void updateSettings({ focus_mode_active: false })}
+            />
+          </div>
+
           <AnimatePresence mode="wait" initial={false}>
             {tab === 'overview' && (
               <motion.div key="tab-overview" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
@@ -682,17 +925,12 @@ export function MainWindowShell({
                   todayBreakCount={todayBreakCount}
                   todaySessions={overviewSessions}
                   timelineData={timelineData}
-                  chartHoverIndex={chartHoverIndex}
-                  setChartHoverIndex={setChartHoverIndex}
                   timelineBucketMinutes={timelineBucketMinutes}
                   setTimelineBucketMinutes={handleTimelineBucketMinutesChange}
                   timelineStartLabel={timelineStartLabel}
                   onShiftOverviewDay={shiftOverviewDay}
                   canShiftOverviewPrev={canShiftOverviewPrev}
                   canShiftOverviewNext={canShiftOverviewNext}
-                  timelineAreaPath={timelineAreaPath}
-                  timelineStressPath={timelineStressPath}
-                  timelineHeartPath={timelineHeartPath}
                   insights={insights}
                   secondaryMetricSeries={secondaryMetricSeries}
                   dailyReport={dailyReport}
@@ -728,22 +966,10 @@ export function MainWindowShell({
                   setExpandedSessionId={setExpandedSessionId}
                   sortNewestFirst={sortNewestFirst}
                   setSortNewestFirst={setSortNewestFirst}
-                />
-              </motion.div>
-            )}
-
-            {tab === 'monitor' && (
-              <motion.div key="tab-monitor" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
-                <MonitorTab
-                  history={history}
-                  currentResult={currentResult}
-                  focusModeActive={Boolean(settings?.focus_mode_active)}
-                  isCheckInRunning={isCheckInRunning}
-                  postureFrame={postureFrame}
-                  postureLandmarks={postureLandmarks}
-                  postureScoreLive={postureScoreLive}
-                  onStartFocusMode={() => void updateSettings({ focus_mode_active: true })}
-                  onEndFocusMode={() => void updateSettings({ focus_mode_active: false })}
+                  studyAnalytics={studyAnalytics}
+                  performanceAnalytics={performanceAnalytics}
+                  durationAnalytics={durationAnalytics}
+                  personalizedZones={personalizedZones}
                 />
               </motion.div>
             )}

@@ -509,25 +509,22 @@
   gap: 16px;
 }
 
+/* Mini chart now uses InteractiveLineChart */
 .focus-mini-chart {
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   background: var(--bg-surface);
-  height: 72px;
+  padding: 8px;
+  height: 56px;
 }
 
-.focus-mini-chart svg {
-  width: 100%;
-  height: 100%;
-}
-
-.focus-mini-chart path {
-  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+.focus-mini-line {
   stroke: var(--accent);
-  stroke-width: 1.1;
-  vector-effect: non-scaling-stroke;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+
+.focus-mini-area {
+  opacity: 0.3;
 }
 
 .focus-stats-list p {
@@ -590,4 +587,269 @@
   .focus-row.is-expanded .focus-row-expand {
     padding-left: 46px;
   }
+}
+
+/* Study Analytics Section */
+.study-analytics h3 {
+  margin: 0 0 16px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.analytics-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: all 0.15s ease;
+}
+
+.analytics-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 3%, var(--bg-surface));
+}
+
+.analytics-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.analytics-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.analytics-icon {
+  color: var(--accent);
+}
+
+.analytics-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.analytics-badge.is-good {
+  background: color-mix(in srgb, var(--state-calm) 20%, transparent);
+  color: var(--state-calm);
+}
+
+.analytics-badge.is-okay {
+  background: color-mix(in srgb, var(--state-mild) 20%, transparent);
+  color: var(--state-mild);
+}
+
+.analytics-badge.is-poor {
+  background: color-mix(in srgb, var(--state-high) 20%, transparent);
+  color: var(--state-high);
+}
+
+.analytics-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.analytics-value-large {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.analytics-unit {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.analytics-detail {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.analytics-detail-small {
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+
+.analytics-bar {
+  height: 4px;
+  background: var(--bg-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.analytics-bar div {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.analytics-recommendation {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  padding: 8px 10px;
+  border-radius: 8px;
+  line-height: 1.4;
+}
+
+/* Stress Zone Bars */
+.stress-zone-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.stress-zone-bar {
+  display: grid;
+  grid-template-columns: 90px 1fr 45px;
+  align-items: center;
+  gap: 10px;
+}
+
+.stress-zone-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stress-zone-track {
+  height: 6px;
+  background: var(--bg-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.stress-zone-track div {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.stress-zone-pct {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Duration Scatter Plot */
+.duration-scatter {
+  margin-top: 18px;
+  padding: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.duration-scatter h4 {
+  margin: 0 0 12px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.scatter-plot {
+  margin-bottom: 12px;
+}
+
+.scatter-plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.scatter-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.scatter-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scatter-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.scatter-note {
+  margin-left: auto;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+
+/* Responsive */
+@media (max-width: 860px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stress-zone-bar {
+    grid-template-columns: 80px 1fr 40px;
+    gap: 8px;
+  }
+}
+
+/* Optimal Zones */
+.optimal-zones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.optimal-zone-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-subtle);
+  border-radius: 8px;
+}
+
+.optimal-zone-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.optimal-zone-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
 }

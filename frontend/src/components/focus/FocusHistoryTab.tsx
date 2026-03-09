@@ -6,9 +6,9 @@ import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
 import { staggerItem } from '../../shared/motion'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
+import { InteractiveLineChart } from '../common/InteractiveLineChart'
 import {
   type FocusPeriod,
-  buildAreaPath,
   classifySession,
   formatClockRange,
   formatDurationSeconds,
@@ -45,6 +45,10 @@ export function FocusHistoryTab({
   setExpandedSessionId,
   sortNewestFirst,
   setSortNewestFirst,
+  studyAnalytics,
+  performanceAnalytics,
+  durationAnalytics,
+  personalizedZones,
 }: {
   focusPeriod: FocusPeriod
   setFocusPeriod: (value: FocusPeriod) => void
@@ -70,6 +74,38 @@ export function FocusHistoryTab({
   setExpandedSessionId: (value: number | null | ((prev: number | null) => number | null)) => void
   sortNewestFirst: boolean
   setSortNewestFirst: (value: boolean | ((prev: boolean) => boolean)) => void
+  studyAnalytics: {
+    currentStreak: number
+    longestStreak: number
+    spacingScore: number
+    sessionsThisWeek: number
+    daysStudied: number
+  }
+  performanceAnalytics: {
+    excellentPct: number
+    goodPct: number
+    needsWorkPct: number
+    excellentCount: number
+    goodCount: number
+    needsWorkCount: number
+    avgQuality: number
+    recommendation: string
+    personalBest: number
+  }
+  durationAnalytics: {
+    dataPoints: Array<{ duration: number; stress: number; quality: number; posture: number; id: number }>
+    optimalDurationMin: number
+    optimalDurationMax: number
+    averageDuration: number
+    recommendation: string
+  }
+  personalizedZones: {
+    optimalStressMin: number
+    optimalStressMax: number
+    optimalDurationMin: number
+    optimalDurationMax: number
+    isPersonalized: boolean
+  }
 }) {
   const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<number | null>(null)
@@ -184,8 +220,194 @@ export function FocusHistoryTab({
       </motion.section>
 
       <motion.section
-        className="overview-section heatmap"
+        className="overview-section study-analytics"
         variants={staggerItem(0.08)}
+        initial="hidden"
+        animate="visible"
+      >
+        <h3>Study Patterns & Effectiveness</h3>
+        <div className="analytics-grid">
+          {/* Consistency Tracker */}
+          <article className="analytics-card">
+            <div className="analytics-card-header">
+              <span className="analytics-label">Study Streak</span>
+              <Zap size={14} className="analytics-icon" />
+            </div>
+            <div className="analytics-value-row">
+              <strong className="analytics-value-large">{studyAnalytics.currentStreak}</strong>
+              <span className="analytics-unit">days</span>
+            </div>
+            <p className="analytics-detail">
+              Longest streak: {studyAnalytics.longestStreak} days · {studyAnalytics.daysStudied} days studied
+            </p>
+            <div className="analytics-bar">
+              <div
+                style={{
+                  width: `${Math.min(100, (studyAnalytics.currentStreak / 30) * 100)}%`,
+                  background: 'var(--accent)',
+                }}
+              />
+            </div>
+          </article>
+
+          {/* Spacing Score */}
+          <article className="analytics-card">
+            <div className="analytics-card-header">
+              <span className="analytics-label">Spacing Quality</span>
+              <span className={`analytics-badge ${studyAnalytics.spacingScore >= 70 ? 'is-good' : studyAnalytics.spacingScore >= 40 ? 'is-okay' : 'is-poor'}`}>
+                {studyAnalytics.spacingScore >= 70 ? 'Excellent' : studyAnalytics.spacingScore >= 40 ? 'Good' : 'Needs Work'}
+              </span>
+            </div>
+            <div className="analytics-value-row">
+              <strong className="analytics-value-large">{studyAnalytics.spacingScore}</strong>
+              <span className="analytics-unit">/100</span>
+            </div>
+            <p className="analytics-detail">
+              Research shows 48-hour spacing is optimal for retention
+            </p>
+            <div className="analytics-bar">
+              <div
+                style={{
+                  width: `${studyAnalytics.spacingScore}%`,
+                  background: studyAnalytics.spacingScore >= 70 ? 'var(--state-calm)' : studyAnalytics.spacingScore >= 40 ? 'var(--state-mild)' : 'var(--state-high)',
+                }}
+              />
+            </div>
+          </article>
+
+          {/* Session Quality Distribution */}
+          <article className="analytics-card">
+            <div className="analytics-card-header">
+              <span className="analytics-label">Session Quality</span>
+              <span className="analytics-detail-small">Personalized score</span>
+            </div>
+            <div className="analytics-value-row">
+              <strong className="analytics-value-large">{performanceAnalytics.avgQuality}</strong>
+              <span className="analytics-unit">/100</span>
+            </div>
+            <div className="stress-zone-bars">
+              <div className="stress-zone-bar">
+                <span className="stress-zone-label">Excellent ({performanceAnalytics.excellentCount})</span>
+                <div className="stress-zone-track">
+                  <div style={{ width: `${performanceAnalytics.excellentPct}%`, background: 'var(--state-calm)' }} />
+                </div>
+                <span className="stress-zone-pct">{performanceAnalytics.excellentPct}%</span>
+              </div>
+              <div className="stress-zone-bar">
+                <span className="stress-zone-label">Good ({performanceAnalytics.goodCount})</span>
+                <div className="stress-zone-track">
+                  <div style={{ width: `${performanceAnalytics.goodPct}%`, background: 'var(--state-mild)' }} />
+                </div>
+                <span className="stress-zone-pct">{performanceAnalytics.goodPct}%</span>
+              </div>
+              <div className="stress-zone-bar">
+                <span className="stress-zone-label">Needs Work ({performanceAnalytics.needsWorkCount})</span>
+                <div className="stress-zone-track">
+                  <div style={{ width: `${performanceAnalytics.needsWorkPct}%`, background: '#94a3b8' }} />
+                </div>
+                <span className="stress-zone-pct">{performanceAnalytics.needsWorkPct}%</span>
+              </div>
+            </div>
+            <p className="analytics-detail">
+              Personal best: {performanceAnalytics.personalBest}/100
+            </p>
+          </article>
+
+          {/* Personalized Optimal Zones */}
+          <article className="analytics-card">
+            <div className="analytics-card-header">
+              <span className="analytics-label">Your Optimal Conditions</span>
+              <span className={`analytics-badge ${personalizedZones.isPersonalized ? 'is-good' : 'is-okay'}`}>
+                {personalizedZones.isPersonalized ? 'Personalized' : 'Learning'}
+              </span>
+            </div>
+            <div className="optimal-zones">
+              <div className="optimal-zone-item">
+                <span className="optimal-zone-label">Duration</span>
+                <strong className="optimal-zone-value">
+                  {durationAnalytics.optimalDurationMin}-{durationAnalytics.optimalDurationMax} min
+                </strong>
+              </div>
+              <div className="optimal-zone-item">
+                <span className="optimal-zone-label">Stress Level</span>
+                <strong className="optimal-zone-value">
+                  {personalizedZones.optimalStressMin}-{personalizedZones.optimalStressMax}
+                </strong>
+              </div>
+              <div className="optimal-zone-item">
+                <span className="optimal-zone-label">Avg Duration</span>
+                <strong className="optimal-zone-value">
+                  {durationAnalytics.averageDuration} min
+                </strong>
+              </div>
+            </div>
+            <p className="analytics-recommendation">💡 {performanceAnalytics.recommendation}</p>
+          </article>
+        </div>
+
+        {/* Duration vs Quality Scatter Plot */}
+        {durationAnalytics.dataPoints.length >= 3 && (
+          <div className="duration-scatter">
+            <h4>Session Duration vs. Effectiveness</h4>
+            <div className="scatter-plot">
+              <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet">
+                {/* Grid lines */}
+                <line x1="40" y1="160" x2="380" y2="160" stroke="var(--border-subtle)" strokeWidth="1" />
+                <line x1="40" y1="20" x2="40" y2="160" stroke="var(--border-subtle)" strokeWidth="1" />
+
+                {/* Personalized optimal zone overlay */}
+                <rect
+                  x={40 + (durationAnalytics.optimalDurationMin / 120) * 340}
+                  y="20"
+                  width={((durationAnalytics.optimalDurationMax - durationAnalytics.optimalDurationMin) / 120) * 340}
+                  height="140"
+                  fill="var(--accent-light)"
+                  opacity="0.15"
+                />
+
+                {/* Data points */}
+                {durationAnalytics.dataPoints.map((point) => {
+                  const x = 40 + (Math.min(point.duration, 120) / 120) * 340
+                  const y = 160 - (point.quality / 100) * 140
+                  return (
+                    <circle
+                      key={point.id}
+                      cx={x}
+                      cy={y}
+                      r="4"
+                      fill={stressColor(point.stress)}
+                      opacity="0.7"
+                    />
+                  )
+                })}
+
+                {/* Axis labels */}
+                <text x="210" y="190" fontSize="11" fill="var(--text-tertiary)" textAnchor="middle">
+                  Session Duration (minutes)
+                </text>
+                <text x="15" y="95" fontSize="11" fill="var(--text-tertiary)" textAnchor="middle" transform="rotate(-90 15 95)">
+                  Quality Score
+                </text>
+
+                {/* Tick labels */}
+                <text x="40" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">0</text>
+                <text x="210" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">60</text>
+                <text x="380" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">120</text>
+              </svg>
+            </div>
+            <div className="scatter-legend">
+              <span><i style={{ background: 'var(--state-calm)' }} />Low stress</span>
+              <span><i style={{ background: 'var(--state-mild)' }} />Medium stress</span>
+              <span><i style={{ background: 'var(--state-high)' }} />High stress</span>
+              <span className="scatter-note">Shaded area = your optimal duration</span>
+            </div>
+          </div>
+        )}
+      </motion.section>
+
+      <motion.section
+        className="overview-section heatmap"
+        variants={staggerItem(0.12)}
         initial="hidden"
         animate="visible"
       >
@@ -447,17 +669,24 @@ export function FocusHistoryTab({
                         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                       >
                         <div className="focus-mini-chart">
-                          <svg viewBox="0 0 100 32" preserveAspectRatio="none">
-                            <path
-                              d={buildAreaPath(
-                                [stress - 8, stress - 3, stress + 6, stress - 2, stress],
-                                0,
-                                100,
-                                100,
-                                32,
-                              )}
-                            />
-                          </svg>
+                          <InteractiveLineChart
+                            points={[
+                              { id: '1', label: '', value: stress - 8 },
+                              { id: '2', label: '', value: stress - 3 },
+                              { id: '3', label: '', value: stress + 6 },
+                              { id: '4', label: '', value: stress - 2 },
+                              { id: '5', label: '', value: stress },
+                            ]}
+                            yMin={0}
+                            yMax={100}
+                            showAxis={false}
+                            chartHeight={32}
+                            tooltipWidth={0}
+                            lineClassName="focus-mini-line"
+                            areaClassName="focus-mini-area"
+                            areaGradientId={`focusMiniGradient-${item.id}`}
+                            areaGradientColor={stressColor(stress)}
+                          />
                         </div>
                         <div className="focus-stats-list">
                           <p>

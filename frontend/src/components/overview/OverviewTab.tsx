@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Activity, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
+import { motion } from 'framer-motion'
+import { stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
 import './OverviewTab.css'
 import { staggerItem } from '../../shared/motion'
@@ -9,7 +9,6 @@ import {
   type DeltaTone,
   type InsightCard,
   classifySession,
-  clamp,
   formatClockRange,
   formatDelta,
   formatDurationSeconds,
@@ -19,6 +18,7 @@ import {
   stressTone,
 } from '../../shared/dashboard'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
+import { InteractiveLineChart } from '../common/InteractiveLineChart'
 
 type TimelinePoint = {
   slotStartIso: string
@@ -26,6 +26,9 @@ type TimelinePoint = {
   label: string
   stress: number | null
   heartRate: number | null
+  respiratoryRate: number | null
+  rrConfidence: 'none' | 'partial' | 'full'
+  postureScore: number | null
   focusActive: boolean
   breathing: boolean
 }
@@ -35,6 +38,215 @@ type SecondaryMetricSeries = {
   avgFocusSession: number[]
   postureAvg: number[]
   breakMinutes: number[]
+}
+
+function SessionCard({ item }: { item: SessionHistoryItem }) {
+  const started = new Date(item.created_at)
+  const ended = new Date(started.getTime() + item.session_duration_seconds * 1000)
+  const stress = stressIndexFromHistory(item)
+  const narrative = classifySession(item)
+  const isFocus = Boolean(item.focus_mode)
+
+  // Base values
+  const baseStress = stress
+  const baseHr = item.heart_rate_bpm == null ? null : Math.round(item.heart_rate_bpm)
+  const baseRr = item.respiratory_rate > 0 ? item.respiratory_rate : null
+  const baseRrConfidence = item.rr_confidence
+  const basePosture = Math.round(item.posture_score * 100)
+  const baseEmotion = item.dominant_emotion.charAt(0).toUpperCase() + item.dominant_emotion.slice(1)
+
+  // State for hover interaction
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
+
+  // Generate chart data for focus sessions (simulated progression)
+  const stressPoints = useMemo(
+    () =>
+      isFocus
+        ? [
+            { id: '1', label: 'Start', value: Math.max(0, stress - 12) },
+            { id: '2', label: '', value: Math.max(0, stress - 8) },
+            { id: '3', label: '', value: Math.max(0, stress + 2) },
+            { id: '4', label: '', value: Math.max(0, stress - 3) },
+            { id: '5', label: 'End', value: stress },
+          ]
+        : [],
+    [isFocus, stress],
+  )
+
+  const hrPoints = useMemo(
+    () =>
+      isFocus && baseHr
+        ? [
+            Math.max(50, baseHr - 8),
+            Math.max(50, baseHr - 4),
+            Math.max(50, baseHr + 2),
+            Math.max(50, baseHr - 2),
+            baseHr,
+          ]
+        : [],
+    [isFocus, baseHr],
+  )
+
+  const rrPoints = useMemo(
+    () =>
+      isFocus && baseRr
+        ? [
+            Math.max(8, baseRr - 3),
+            Math.max(8, baseRr - 2),
+            Math.max(8, baseRr + 1),
+            Math.max(8, baseRr - 1),
+            baseRr,
+          ]
+        : [],
+    [isFocus, baseRr],
+  )
+
+  const posturePoints = useMemo(
+    () =>
+      isFocus
+        ? [
+            Math.max(0, basePosture - 15),
+            Math.max(0, basePosture - 8),
+            Math.max(0, basePosture + 5),
+            Math.max(0, basePosture - 3),
+            basePosture,
+          ]
+        : [],
+    [isFocus, basePosture],
+  )
+
+  // Current display values (hover or base)
+  const displayStress = hoveredIndex != null && isFocus ? stressPoints[hoveredIndex]?.value ?? baseStress : baseStress
+  const displayHr = hoveredIndex != null && isFocus && hrPoints[hoveredIndex] ? hrPoints[hoveredIndex] : baseHr
+  const displayRr = hoveredIndex != null && isFocus && rrPoints[hoveredIndex] ? rrPoints[hoveredIndex] : baseRr
+  const displayPosture = hoveredIndex != null && isFocus ? posturePoints[hoveredIndex] ?? basePosture : basePosture
+
+  const rrPrefix = baseRrConfidence === 'partial' ? '~' : ''
+  const rrValue = displayRr ? `${rrPrefix}${Math.round(displayRr)}` : '--'
+  const hrValue = displayHr ? Math.round(displayHr) : '--'
+
+  return (
+    <article className={`session-card ${isFocus ? 'session-card--focus' : 'session-card--passive'}`}>
+      <div className="session-card-header">
+        <div className="session-card-info">
+          <div className={`session-dot ${isFocus ? 'is-focus' : 'is-passive'}`} />
+          <p className="session-time">
+            {isFocus ? formatClockRange(started, ended) : started.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </p>
+          {isFocus ? (
+            <>
+              <span className="session-badge session-badge--focus">Focus</span>
+              <span className="session-duration">{formatDurationSeconds(item.session_duration_seconds)}</span>
+            </>
+          ) : (
+            <span className="session-badge session-badge--passive">Check-in</span>
+          )}
+        </div>
+        <p className="session-narrative">{narrative.headline}</p>
+      </div>
+
+      {isFocus && (
+        <div className="session-chart">
+          <InteractiveLineChart
+            points={stressPoints}
+            yMin={0}
+            yMax={100}
+            showAxis={false}
+            chartHeight={56}
+            showTooltip={false}
+            className="session-chart-canvas"
+            lineClassName="session-chart-stress"
+            areaClassName="session-chart-area"
+            areaGradientId={`sessionGradient-${item.id}`}
+            areaGradientColor={stressColor(baseStress)}
+            extraLines={[
+              { values: hrPoints, yMin: 50, yMax: 110, className: 'session-chart-hr', smooth: true },
+              { values: rrPoints, yMin: 8, yMax: 25, className: 'session-chart-rr', smooth: true },
+              { values: posturePoints, yMin: 0, yMax: 100, className: 'session-chart-posture', smooth: true },
+            ]}
+            onHoverChange={(index, direction) => {
+              setHoveredIndex(index)
+              setHoverDirection(direction)
+            }}
+          />
+        </div>
+      )}
+
+      <div className="session-metrics">
+        <div className="session-metric">
+          <span className="session-metric-label">Stress</span>
+          <strong className="session-metric-value" style={{ color: stressColor(displayStress) }}>
+            <AnimatedTickerText value={`${Math.round(displayStress)}`} direction={hoverDirection} />
+          </strong>
+        </div>
+        <div className="session-metric">
+          <span className="session-metric-label">HR</span>
+          <strong className="session-metric-value">
+            <AnimatedTickerText value={`${hrValue}`} staticSuffix=" bpm" direction={hoverDirection} />
+          </strong>
+        </div>
+        <div className="session-metric">
+          <span className="session-metric-label">RR</span>
+          <strong className="session-metric-value">
+            <AnimatedTickerText value={rrValue} staticSuffix=" bpm" direction={hoverDirection} />
+          </strong>
+        </div>
+        <div className="session-metric">
+          <span className="session-metric-label">Posture</span>
+          <strong className="session-metric-value">
+            <AnimatedTickerText value={`${Math.round(displayPosture)}`} staticSuffix="%" direction={hoverDirection} />
+          </strong>
+        </div>
+        <div className="session-metric">
+          <span className="session-metric-label">Emotion</span>
+          <strong className="session-metric-value">{baseEmotion}</strong>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function SecondaryMetric({ data, yMax, value, label }: { data: number[]; yMax: number; value: string | number; label: string }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
+
+  const points = useMemo(
+    () =>
+      data.map((v, i) => ({
+        id: `${i}`,
+        label: `Day ${i + 1}`,
+        value: v,
+      })),
+    [data],
+  )
+
+  const displayValue = hoveredIndex != null ? points[hoveredIndex]?.value ?? value : value
+
+  return (
+    <article className="secondary-cell">
+      <div className="secondary-sparkline">
+        <InteractiveLineChart
+          points={points}
+          yMin={0}
+          yMax={yMax}
+          showAxis={false}
+          chartHeight={32}
+          showTooltip={false}
+          className=""
+          lineClassName="secondary-sparkline-line"
+          onHoverChange={(index, direction) => {
+            setHoveredIndex(index)
+            setHoverDirection(direction)
+          }}
+        />
+      </div>
+      <strong className="secondary-value">
+        <AnimatedTickerText value={`${displayValue}`} direction={hoverDirection} />
+      </strong>
+      <span className="secondary-label">{label}</span>
+    </article>
+  )
 }
 
 export function OverviewTab({
@@ -51,17 +263,12 @@ export function OverviewTab({
   todayBreakCount,
   todaySessions,
   timelineData,
-  chartHoverIndex,
-  setChartHoverIndex,
   timelineBucketMinutes,
   setTimelineBucketMinutes,
   timelineStartLabel,
   onShiftOverviewDay,
   canShiftOverviewPrev,
   canShiftOverviewNext,
-  timelineAreaPath,
-  timelineStressPath,
-  timelineHeartPath,
   insights,
   secondaryMetricSeries,
   dailyReport,
@@ -80,45 +287,30 @@ export function OverviewTab({
   todayBreakCount: number
   todaySessions: SessionHistoryItem[]
   timelineData: TimelinePoint[]
-  chartHoverIndex: number | null
-  setChartHoverIndex: (value: number | null) => void
   timelineBucketMinutes: number
   setTimelineBucketMinutes: (value: number) => void
   timelineStartLabel: string
   onShiftOverviewDay: (delta: number) => void
   canShiftOverviewPrev: boolean
   canShiftOverviewNext: boolean
-  timelineAreaPath: string
-  timelineStressPath: string
-  timelineHeartPath: string
   insights: InsightCard[]
   secondaryMetricSeries: SecondaryMetricSeries
   dailyReport: DailyReport | null
   onViewFocusHistory: () => void
 }) {
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday)}`
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const [hoverPercent, setHoverPercent] = useState<number | null>(null)
-  const [hoverXPx, setHoverXPx] = useState<number | null>(null)
-  const [chartWidthPx, setChartWidthPx] = useState<number>(0)
-  const [chartLeftPx, setChartLeftPx] = useState<number>(0)
-  const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
-  const previousHoverIndexRef = useRef<number | null>(null)
-  const hoveredPoint = chartHoverIndex != null ? timelineData[chartHoverIndex] : null
-  const fallbackRatio = chartHoverIndex == null ? 0 : chartHoverIndex / Math.max(timelineData.length - 1, 1)
-  const hoverXPercent = hoverPercent ?? fallbackRatio * 100
-  const chartStartMs = timelineData[0] ? new Date(timelineData[0].slotStartIso).getTime() : 0
-  const chartEndMs = timelineData[timelineData.length - 1]
-    ? new Date(timelineData[timelineData.length - 1].slotEndIso).getTime()
-    : 0
-  const chartSpanMs = Math.max(chartEndMs - chartStartMs, 1)
-  const fallbackXPx = chartWidthPx > 0 ? chartLeftPx + (hoverXPercent / 100) * chartWidthPx : 0
-  const cursorXPx = hoverXPx ?? fallbackXPx
-  const tooltipWidthPx = 196
-  const tooltipPaddingPx = 8
-  const tooltipMinLeft = chartLeftPx + tooltipPaddingPx
-  const tooltipMaxLeft = chartLeftPx + Math.max(tooltipPaddingPx, chartWidthPx - tooltipWidthPx - tooltipPaddingPx)
-  const tooltipLeftPx = clamp(cursorXPx - tooltipWidthPx / 2, tooltipMinLeft, tooltipMaxLeft)
+
+  const timelinePoints = useMemo(
+    () =>
+      timelineData.map((point) => ({
+        id: point.slotStartIso,
+        label: point.label,
+        value: point.stress,
+      })),
+    [timelineData],
+  )
+
+  const timelineHeartValues = useMemo(() => timelineData.map((point) => point.heartRate), [timelineData])
 
   return (
     <>
@@ -129,9 +321,29 @@ export function OverviewTab({
         animate="visible"
       >
         <div className="hero-left">
-          <p className="hero-date">
-            {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}
-          </p>
+          <div className="hero-date-row">
+            <p className="hero-date">
+              {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}
+            </p>
+            <div className="hero-day-nav">
+              <button
+                className="hero-nav-btn"
+                onClick={() => onShiftOverviewDay(-1)}
+                disabled={!canShiftOverviewPrev}
+                aria-label="Previous day"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                className="hero-nav-btn"
+                onClick={() => onShiftOverviewDay(1)}
+                disabled={!canShiftOverviewNext}
+                aria-label="Next day"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
           <h1>{heroHeadline}</h1>
           <p className="hero-subline">{heroSubline}</p>
         </div>
@@ -183,28 +395,11 @@ export function OverviewTab({
         animate="visible"
       >
         <div className="main-panel-head">
-          <h3>Today</h3>
+          <h3>Timeline · {`${timelineStartLabel} - now`}</h3>
           <div className="overview-chart-controls">
-            <div className="overview-day-nav">
-              <button
-                className="overview-view-more overview-view-more--secondary"
-                onClick={() => onShiftOverviewDay(-1)}
-                disabled={!canShiftOverviewPrev}
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <button
-                className="overview-view-more overview-view-more--secondary"
-                onClick={() => onShiftOverviewDay(1)}
-                disabled={!canShiftOverviewNext}
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
             <button className="overview-view-more overview-view-more--secondary" onClick={onViewFocusHistory}>
               View More
             </button>
-            <span>{`${timelineStartLabel} - now`}</span>
             <label className="timeline-interval-label">
               <span>Interval</span>
               <select
@@ -223,136 +418,63 @@ export function OverviewTab({
         {todaySessions.length === 0 ? (
           <p className="main-empty">No sessions yet today.</p>
         ) : (
-          <div
-            className="overview-chart-canvas interactive-chart-surface"
-            onMouseLeave={() => {
-              setChartHoverIndex(null)
-              setHoverPercent(null)
-              setHoverXPx(null)
-              previousHoverIndexRef.current = null
-            }}
-            onPointerMove={(event) => {
-              const canvasRect = event.currentTarget.getBoundingClientRect()
-              const svgRect = svgRef.current?.getBoundingClientRect() ?? canvasRect
-              const localLeft = Math.max(0, svgRect.left - canvasRect.left)
-              const localWidth = Math.max(svgRect.width, 1)
-              const xWithinSvg = clamp(event.clientX - svgRect.left, 0, localWidth)
-              const ratio = clamp(xWithinSvg / localWidth, 0, 1)
-              const nextIndex = Math.round(ratio * (timelineData.length - 1))
-              const prev = previousHoverIndexRef.current
-              if (prev != null && nextIndex !== prev) {
-                setHoverDirection(nextIndex > prev ? 1 : -1)
-              }
-              previousHoverIndexRef.current = nextIndex
-              setChartLeftPx(localLeft)
-              setChartWidthPx(localWidth)
-              setHoverXPx(localLeft + xWithinSvg)
-              setHoverPercent(ratio * 100)
-              setChartHoverIndex(nextIndex)
-            }}
-          >
-            <svg ref={svgRef} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-              <defs>
-                <linearGradient id="stressGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={stressColor(avgStressToday || 20)} stopOpacity="0.18" />
-                  <stop offset="100%" stopColor={stressColor(avgStressToday || 20)} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {timelineData.map((point) => {
-                if (!point.focusActive) return null
-                const startMs = new Date(point.slotStartIso).getTime()
-                const endMs = new Date(point.slotEndIso).getTime()
-                const xStart = clamp(((startMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
-                const xEnd = clamp(((endMs - chartStartMs) / chartSpanMs) * 100, 0, 100)
-                const width = Math.max(0.2, xEnd - xStart)
+          <div className="overview-chart-canvas">
+            <InteractiveLineChart
+              points={timelinePoints}
+              yMin={0}
+              yMax={100}
+              valueLabel="Stress"
+              lineClassName="timeline-stress"
+              areaClassName="timeline-area"
+              areaGradientId="overviewStressGradient"
+              areaGradientColor={stressColor(avgStressToday || 20)}
+              showAxis={true}
+              chartHeight={160}
+              tooltipWidth={196}
+              extraLines={[{ values: timelineHeartValues, yMin: 50, yMax: 110, className: 'timeline-heart', smooth: true }]}
+              renderTooltip={({ point, index, direction }) => {
+                const dataPoint = timelineData[index]
+                if (!dataPoint) return null
+                const rrPrefix = dataPoint.rrConfidence === 'partial' ? '~' : ''
+                const rrValue = dataPoint.respiratoryRate != null ? `${rrPrefix}${dataPoint.respiratoryRate}` : '--'
                 return (
-                  <rect
-                    key={`${point.slotStartIso}-focus`}
-                    x={xStart}
-                    y={0}
-                    width={width}
-                    height={100}
-                    className="focus-band"
-                  />
-                )
-              })}
-              <path d={timelineAreaPath} className="timeline-area" />
-              <path d={timelineStressPath} className="timeline-stress" />
-              <path d={timelineHeartPath} className="timeline-heart" />
-              {timelineData.map((point, index) => {
-                if (!point.breathing) return null
-                const x = timelineData.length === 1 ? 50 : (index / (timelineData.length - 1)) * 100
-                return (
-                  <line
-                    key={`${point.slotStartIso}-breath`}
-                    x1={x}
-                    x2={x}
-                    y1={0}
-                    y2={100}
-                    className="timeline-breath"
-                  />
-                )
-              })}
-            </svg>
-            <AnimatePresence initial={false}>
-              {hoveredPoint && (
-                <>
-                  <motion.div
-                    className="timeline-cursor"
-                    initial={{ opacity: 0 }}
-                    animate={{ left: `${cursorXPx}px`, opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
-                  />
-                  <motion.div
-                    className="timeline-tooltip"
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ left: `${tooltipLeftPx}px`, opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 6 }}
-                    transition={{ type: 'tween', duration: 0.12, ease: 'easeOut' }}
-                  >
+                  <>
                     <p>
-                      <AnimatedTickerText value={hoveredPoint.label} direction={hoverDirection} />
+                      <AnimatedTickerText value={point.label} direction={direction} />
                     </p>
-                    <div className="timeline-tooltip-row">
+                    <div className="interactive-chart-tooltip-row">
                       <strong>
-                        <AnimatedTickerText value={`${hoveredPoint.stress ?? '--'}`} direction={hoverDirection} />
+                        <AnimatedTickerText value={`${dataPoint.stress ?? '--'}`} direction={direction} />
                       </strong>
                       <span>Stress index</span>
                     </div>
-                    <div className="timeline-tooltip-row">
+                    <div className="interactive-chart-tooltip-row">
                       <strong>
                         <AnimatedTickerText
-                          value={`${hoveredPoint.heartRate ?? '--'}`}
-                          staticSuffix="bpm"
-                          direction={hoverDirection}
+                          value={`${dataPoint.heartRate ?? '--'}`}
+                          staticSuffix=" bpm"
+                          direction={direction}
                         />
                       </strong>
                       <span>Heart rate</span>
                     </div>
-                    {hoveredPoint.focusActive && <em>Focus Mode active</em>}
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-            <div
-              className="timeline-axis"
-              style={{ gridTemplateColumns: `repeat(${timelineData.length}, minmax(0, 1fr))` }}
-            >
-              {/*
-                Keep axis readable as granularity increases.
-              */}
-              {(() => {
-                const labelStep = Math.max(1, Math.ceil(timelineData.length / 8))
-                return timelineData.map((point, index) =>
-                  index % labelStep === 0 || index === timelineData.length - 1 ? (
-                    <span key={point.slotStartIso}>{point.label}</span>
-                  ) : (
-                    <span key={point.slotStartIso} />
-                  ),
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText value={rrValue} staticSuffix=" bpm" direction={direction} />
+                      </strong>
+                      <span>Respiratory rate</span>
+                    </div>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText value={`${dataPoint.postureScore ?? '--'}`} direction={direction} />
+                      </strong>
+                      <span>Posture score</span>
+                    </div>
+                    {dataPoint.focusActive && <em className="overview-tooltip-focus">Focus Mode active</em>}
+                  </>
                 )
-              })()}
-            </div>
+              }}
+            />
           </div>
         )}
       </motion.section>
@@ -381,42 +503,30 @@ export function OverviewTab({
         initial="hidden"
         animate="visible"
       >
-        <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-            <path
-              d={`M ${secondaryMetricSeries.peakStress.map((v, i) => `${(i / Math.max(secondaryMetricSeries.peakStress.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`}
-            />
-          </svg>
-          <strong>{dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}</strong>
-          <span>Today's peak stress</span>
-        </article>
-        <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-            <path
-              d={`M ${secondaryMetricSeries.avgFocusSession.map((v, i) => `${(i / Math.max(secondaryMetricSeries.avgFocusSession.length - 1, 1)) * 100} ${30 - (Math.min(v, 120) / 120) * 30}`).join(' L ')}`}
-            />
-          </svg>
-          <strong>{formatMinutes(Math.round(mean(secondaryMetricSeries.avgFocusSession)))}</strong>
-          <span>Avg focus session len</span>
-        </article>
-        <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-            <path
-              d={`M ${secondaryMetricSeries.postureAvg.map((v, i) => `${(i / Math.max(secondaryMetricSeries.postureAvg.length - 1, 1)) * 100} ${30 - (v / 100) * 30}`).join(' L ')}`}
-            />
-          </svg>
-          <strong>{Math.round(mean(secondaryMetricSeries.postureAvg)) || 0}</strong>
-          <span>Posture score today</span>
-        </article>
-        <article className="secondary-cell">
-          <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-            <path
-              d={`M ${secondaryMetricSeries.breakMinutes.map((v, i) => `${(i / Math.max(secondaryMetricSeries.breakMinutes.length - 1, 1)) * 100} ${30 - (Math.min(v, 60) / 60) * 30}`).join(' L ')}`}
-            />
-          </svg>
-          <strong>{todayBreakCount}</strong>
-          <span>Total break time</span>
-        </article>
+        <SecondaryMetric
+          data={secondaryMetricSeries.peakStress}
+          yMax={100}
+          value={dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}
+          label="Today's peak stress"
+        />
+        <SecondaryMetric
+          data={secondaryMetricSeries.avgFocusSession}
+          yMax={120}
+          value={formatMinutes(Math.round(mean(secondaryMetricSeries.avgFocusSession)))}
+          label="Avg focus session len"
+        />
+        <SecondaryMetric
+          data={secondaryMetricSeries.postureAvg}
+          yMax={100}
+          value={Math.round(mean(secondaryMetricSeries.postureAvg)) || 0}
+          label="Posture score today"
+        />
+        <SecondaryMetric
+          data={secondaryMetricSeries.breakMinutes}
+          yMax={60}
+          value={todayBreakCount}
+          label="Total break time"
+        />
       </motion.section>
 
       <motion.section
@@ -431,32 +541,9 @@ export function OverviewTab({
         ) : (
           <div className="editorial-timeline">
             <div className="editorial-line" />
-            {todaySessions.slice(-12).map((item) => {
-              const started = new Date(item.created_at)
-              const ended = new Date(started.getTime() + item.session_duration_seconds * 1000)
-              const stress = stressIndexFromHistory(item)
-              const narrative = classifySession(item)
-              return (
-                <article key={item.id} className="editorial-entry">
-                  <div className={`entry-dot ${item.focus_mode ? 'is-focus' : 'is-passive'}`} />
-                  <div className="entry-content">
-                    <p className="entry-time">
-                      {formatClockRange(started, ended)}
-                      <span>{formatDurationSeconds(item.session_duration_seconds)}</span>
-                    </p>
-                    <h4>{narrative.headline}</h4>
-                    <p className="entry-stats">
-                      Avg stress {stress} · Heart rate{' '}
-                      {item.heart_rate_bpm == null ? '--' : Math.round(item.heart_rate_bpm)} bpm · Posture{' '}
-                      {friendlyPosture(item.posture_score)}
-                    </p>
-                    <div className="entry-stress-bar">
-                      <div style={{ width: `${stress}%`, background: stressColor(stress) }} />
-                    </div>
-                  </div>
-                </article>
-              )
-            })}
+            {todaySessions.slice(-12).map((item) => (
+              <SessionCard key={item.id} item={item} />
+            ))}
           </div>
         )}
       </motion.section>

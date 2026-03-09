@@ -81,8 +81,8 @@
 
 .interactive-chart-cursor {
   position: absolute;
-  top: 14px;
-  bottom: 40px;
+  top: 0;
+  bottom: 0;
   width: 1px;
   transform: translateX(-50%);
   background: linear-gradient(180deg, rgba(45, 106, 79, 0), rgba(45, 106, 79, 0.75), rgba(45, 106, 79, 0));
@@ -113,7 +113,6 @@
 }
 
 .interactive-chart-tooltip-row {
-  margin-top: 6px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
