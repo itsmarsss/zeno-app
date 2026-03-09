@@ -64,13 +64,17 @@ def log_session(result: dict, db_path: Path) -> int:
                 dominant_emotion,
                 emotion_score,
                 heart_rate_bpm,
+                respiratory_rate,
+                rr_confidence,
                 emotion_backend,
+                mode,
+                focus_duration_seconds,
                 focus_mode,
                 notification_sent,
                 notification_dismissed_by,
                 session_duration_seconds,
                 raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result["timestamp"],
@@ -83,7 +87,11 @@ def log_session(result: dict, db_path: Path) -> int:
                 str(result["dominant_emotion"]),
                 float(result["emotion_score"]),
                 None if result["heart_rate_bpm"] is None else float(result["heart_rate_bpm"]),
+                float(result.get("respiratory_rate", 0.0)),
+                str(result.get("rr_confidence", "none")),
                 str(result["emotion_backend"]),
+                str(result.get("mode", "passive")),
+                int(result.get("focus_duration_seconds", 0)),
                 1 if result.get("focus_mode") else 0,
                 "none",
                 "none",

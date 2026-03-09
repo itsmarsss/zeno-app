@@ -18,7 +18,11 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             dominant_emotion TEXT NOT NULL,
             emotion_score REAL NOT NULL,
             heart_rate_bpm REAL,
+            respiratory_rate REAL NOT NULL DEFAULT 0.0,
+            rr_confidence TEXT NOT NULL DEFAULT 'none',
             emotion_backend TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'passive',
+            focus_duration_seconds INTEGER NOT NULL DEFAULT 0,
             focus_mode INTEGER NOT NULL DEFAULT 0,
             notification_sent TEXT,
             notification_dismissed_by TEXT,
@@ -43,6 +47,14 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN notification_sent TEXT")
     if "notification_dismissed_by" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN notification_dismissed_by TEXT")
+    if "respiratory_rate" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN respiratory_rate REAL NOT NULL DEFAULT 0.0")
+    if "rr_confidence" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN rr_confidence TEXT NOT NULL DEFAULT 'none'")
+    if "mode" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'passive'")
+    if "focus_duration_seconds" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN focus_duration_seconds INTEGER NOT NULL DEFAULT 0")
 
     # Backfill legacy rows so downstream code can treat these fields as present.
     conn.execute(
@@ -53,6 +65,10 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
           baseline_posture_score = COALESCE(baseline_posture_score, 0.0),
           posture_deviation = COALESCE(posture_deviation, 0.0),
           posture_is_poor = COALESCE(posture_is_poor, 0),
+          respiratory_rate = COALESCE(respiratory_rate, 0.0),
+          rr_confidence = COALESCE(NULLIF(rr_confidence, ''), 'none'),
+          mode = COALESCE(NULLIF(mode, ''), 'passive'),
+          focus_duration_seconds = COALESCE(focus_duration_seconds, 0),
           notification_sent = COALESCE(NULLIF(notification_sent, ''), 'none'),
           notification_dismissed_by = COALESCE(NULLIF(notification_dismissed_by, ''), 'none')
         """

@@ -9,7 +9,11 @@ export type SessionResult = {
   dominant_emotion: string
   emotion_score: number
   heart_rate_bpm: number | null
+  respiratory_rate: number
+  rr_confidence: 'none' | 'partial' | 'full'
   emotion_backend: string
+  mode: 'passive' | 'focus'
+  focus_duration_seconds: number
   session_id: number | null
   session_skipped: boolean
   session_duration_seconds: number
@@ -27,7 +31,11 @@ export type SessionHistoryItem = {
   dominant_emotion: string
   emotion_score: number
   heart_rate_bpm: number | null
+  respiratory_rate: number
+  rr_confidence: 'none' | 'partial' | 'full'
   emotion_backend: string
+  mode: 'passive' | 'focus'
+  focus_duration_seconds: number
   focus_mode: number
   notification_sent: string
   notification_dismissed_by: string

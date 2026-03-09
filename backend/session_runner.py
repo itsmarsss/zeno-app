@@ -42,7 +42,11 @@ def run_session(
             "dominant_emotion": "unknown",
             "emotion_score": 0.0,
             "heart_rate_bpm": None,
+            "respiratory_rate": 0.0,
+            "rr_confidence": "none",
             "emotion_backend": emotion_backend,
+            "mode": "focus" if focus_mode else "passive",
+            "focus_duration_seconds": 0 if not focus_mode else int(duration_seconds),
             "session_duration_seconds": duration_seconds,
         }
 
@@ -78,7 +82,11 @@ def run_session(
         "dominant_emotion": dominant_emotion,
         "emotion_score": round(float(emotion_score), 3),
         "heart_rate_bpm": None if heart_rate_bpm <= 0 else round(float(heart_rate_bpm), 1),
+        "respiratory_rate": 0.0,
+        "rr_confidence": "none",
         "emotion_backend": emotion_backend,
+        "mode": "focus" if focus_mode else "passive",
+        "focus_duration_seconds": 0 if not focus_mode else int(duration_seconds),
         "session_duration_seconds": duration_seconds,
     }
 
