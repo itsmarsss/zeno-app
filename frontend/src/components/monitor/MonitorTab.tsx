@@ -228,6 +228,8 @@ export function MonitorTab({
   const hrDelta = hrValue == null ? null : hrValue - restingHr
   const rrDelta = rrValue > 0 ? rrValue - restingRr : null
   const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
+  const rrStage: 'measuring' | 'stabilizing' | 'live' | null =
+    monitorMode === 'focus' ? (focusElapsed < 60 ? 'measuring' : focusElapsed < 90 ? 'stabilizing' : 'live') : null
 
   const stressPath = buildPath(
     focusPoints.map((item) => item.stress),
@@ -399,9 +401,9 @@ export function MonitorTab({
               </div>
               <span className={`monitor-mode-pill monitor-mode-pill--${monitorMode}`}>
                 {monitorMode === 'focus'
-                  ? rrConfidence === 'none'
+                  ? rrStage === 'measuring'
                     ? 'Measuring...'
-                    : rrConfidence === 'partial'
+                    : rrStage === 'stabilizing'
                       ? 'Stabilizing'
                       : 'Live'
                   : monitorMode === 'passive'
@@ -450,9 +452,9 @@ export function MonitorTab({
               </div>
               <span className={`monitor-mode-pill monitor-mode-pill--${monitorMode}`}>
                 {monitorMode === 'focus'
-                  ? rrConfidence === 'none'
+                  ? rrStage === 'measuring'
                     ? 'Measuring...'
-                    : rrConfidence === 'partial'
+                    : rrStage === 'stabilizing'
                       ? 'Stabilizing'
                       : 'Live'
                   : monitorMode === 'passive'
@@ -464,10 +466,10 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode)}`}>
-                {monitorMode === 'focus' && rrConfidence === 'none'
+                {monitorMode === 'focus' && rrStage === 'measuring'
                   ? '—'
                   : rrValue > 0
-                    ? monitorMode === 'passive' || rrConfidence === 'partial'
+                    ? monitorMode === 'passive' || rrStage === 'stabilizing'
                       ? `~${Math.round(rrValue)}`
                       : `${Math.round(rrValue)}`
                     : '—'}
@@ -478,7 +480,7 @@ export function MonitorTab({
               <span>
                 {monitorMode === 'passive'
                   ? 'Approximate'
-                  : monitorMode === 'focus' && rrConfidence !== 'full'
+                  : monitorMode === 'focus' && rrStage !== 'live'
                     ? 'Building signal...'
                     : rrValue <= 0
                       ? 'No data'
@@ -494,7 +496,7 @@ export function MonitorTab({
                 </span>
               )}
             </div>
-            {monitorMode === 'focus' && rrConfidence !== 'full' ? (
+            {monitorMode === 'focus' && rrStage !== 'live' ? (
               <div className="monitor-rr-progress-wrap">
                 <div className="monitor-rr-progress">
                   <div className="monitor-rr-progress-fill" style={{ width: `${rrConfidenceProgress}%` }} />
@@ -502,7 +504,7 @@ export function MonitorTab({
                 <span>Signal ready in {rrConfidenceSeconds}s</span>
               </div>
             ) : null}
-            {monitorMode === 'focus' && rrConfidence === 'full' && (
+            {monitorMode === 'focus' && rrStage === 'live' && (
               <svg viewBox="0 0 100 32" preserveAspectRatio="none">
                 <path className="signal-rr" d={rrPath} />
               </svg>
