@@ -1,0 +1,6 @@
+aws_region      = "us-east-1"
+environment     = "dev"
+jwt_secret      = "your-jwt-secret-change-this"
+anthropic_api_key = "sk-ant-your-key-here"
+rate_limit_free = 10
+rate_limit_paid = 100

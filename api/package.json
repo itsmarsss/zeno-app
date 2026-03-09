@@ -1,0 +1,39 @@
+{
+  "name": "zeno-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && npm run bundle",
+    "bundle": "node scripts/bundle.js",
+    "tf:init": "cd terraform && terraform init",
+    "tf:plan": "cd terraform && terraform plan",
+    "tf:apply": "cd terraform && terraform apply",
+    "tf:destroy": "cd terraform && terraform destroy",
+    "deploy": "npm run build && npm run tf:apply",
+    "deploy:dev": "serverless deploy --stage dev",
+    "deploy:prod": "serverless deploy --stage prod",
+    "local": "serverless offline",
+    "logs": "serverless logs -f",
+    "remove": "serverless remove"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.34.0",
+    "@aws-sdk/client-dynamodb": "^3.710.0",
+    "@aws-sdk/lib-dynamodb": "^3.710.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.13.10",
+    "archiver": "^7.0.1",
+    "esbuild": "^0.24.2",
+    "serverless": "^4.7.0",
+    "serverless-esbuild": "^1.55.1",
+    "serverless-offline": "^14.6.2",
+    "typescript": "^5.7.3"
+  }
+}
