@@ -302,7 +302,7 @@ export function MonitorTab({
       </div>
 
       <div className="monitor-body">
-        <div className="monitor-camera-shell">
+        <div className={`monitor-camera-shell monitor-camera-shell--${monitorMode}`}>
           {monitorMode === 'idle' || monitorMode === 'ended' ? (
             <div className="monitor-camera-idle">
               <CameraOff size={24} />
@@ -339,8 +339,8 @@ export function MonitorTab({
           )}
         </div>
 
-        <div className="monitor-signals">
-          <article className="monitor-card">
+        <div className={`monitor-signals monitor-signals--${monitorMode}`}>
+          <article className="monitor-card monitor-card--stress">
             <header>
               <div className="monitor-card-title">
                 <Wind size={14} />
@@ -369,7 +369,7 @@ export function MonitorTab({
             )}
           </article>
 
-          <article className="monitor-card">
+          <article className="monitor-card monitor-card--hr">
             <header>
               <div className="monitor-card-title">
                 <Activity size={14} />
@@ -415,7 +415,7 @@ export function MonitorTab({
             )}
           </article>
 
-          <article className="monitor-card">
+          <article className="monitor-card monitor-card--rr">
             <header>
               <div className="monitor-card-title">
                 <Waves size={14} />
@@ -477,7 +477,7 @@ export function MonitorTab({
             )}
           </article>
 
-          <article className="monitor-card">
+          <article className="monitor-card monitor-card--posture">
             <header>
               <div className="monitor-card-title">
                 <User size={14} />

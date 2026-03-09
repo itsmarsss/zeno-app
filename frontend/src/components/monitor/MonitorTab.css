@@ -105,6 +105,10 @@
   min-width: 0;
 }
 
+.monitor-camera-shell--focus .monitor-camera-live {
+  animation-delay: 120ms;
+}
+
 .monitor-camera-idle {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
@@ -326,6 +330,32 @@
   margin-top: 10px;
   width: 100%;
   height: 32px;
+}
+
+.monitor-signals--focus .monitor-card--stress svg {
+  animation: signalReveal 400ms ease both;
+  animation-delay: 180ms;
+}
+
+.monitor-signals--focus .monitor-card--hr svg {
+  animation: signalReveal 400ms ease both;
+  animation-delay: 240ms;
+}
+
+.monitor-signals--focus .monitor-card--rr svg {
+  animation: signalReveal 400ms ease both;
+  animation-delay: 300ms;
+}
+
+@keyframes signalReveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .monitor-rr-progress-wrap {
