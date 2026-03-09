@@ -43,8 +43,33 @@ cp .env.example .env
 ```env
 JWT_SECRET=your-random-secret-key-here
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+SES_FROM_EMAIL=noreply@yourdomain.com
 RATE_LIMIT_FREE=10
 RATE_LIMIT_PAID=100
+```
+
+### Configure AWS SES
+
+The API uses AWS SES for sending OTP codes via email. Before deploying:
+
+1. **Verify your sender email** in AWS SES:
+```bash
+aws ses verify-email-identity --email-address noreply@yourdomain.com
+```
+
+2. **Check verification status**:
+```bash
+aws ses get-identity-verification-attributes --identities noreply@yourdomain.com
+```
+
+3. **Request production access** (for production):
+   - By default, SES is in sandbox mode (can only send to verified emails)
+   - Request production access in AWS Console: SES → Account Dashboard → Request production access
+   - This allows sending to any email address
+
+4. **Optional: Verify your domain** (recommended for production):
+```bash
+aws ses verify-domain-identity --domain yourdomain.com
 ```
 
 ### Local Development
@@ -101,16 +126,32 @@ npm run remove
 
 ## API Endpoints
 
-### Authentication
+### Authentication (Passwordless OTP)
 
-#### Register
+#### Request OTP Code
 ```bash
-POST /auth/register
+POST /auth/request-otp
+Content-Type: application/json
+
+{
+  "email": "student@example.com"
+}
+
+Response:
+{
+  "message": "Verification code sent to your email",
+  "expiresIn": 600
+}
+```
+
+#### Verify OTP Code
+```bash
+POST /auth/verify-otp
 Content-Type: application/json
 
 {
   "email": "student@example.com",
-  "password": "securepassword123"
+  "code": "123456"
 }
 
 Response:
@@ -122,19 +163,6 @@ Response:
     "subscriptionTier": "free"
   }
 }
-```
-
-#### Login
-```bash
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "student@example.com",
-  "password": "securepassword123"
-}
-
-Response: Same as register
 ```
 
 #### Get Current User
@@ -205,7 +233,12 @@ Rate limit exceeded response (429):
 ### Users Table
 - **Primary Key**: `id` (String, UUID)
 - **GSI**: `EmailIndex` on `email`
-- **Attributes**: email, passwordHash, subscriptionTier, createdAt, updatedAt
+- **Attributes**: email, subscriptionTier, createdAt, updatedAt
+
+### OTPCodes Table
+- **Primary Key**: `email` (String)
+- **TTL**: `expiresAt` (automatic cleanup after expiration)
+- **Attributes**: code, attempts, expiresAt, createdAt
 
 ### RateLimits Table
 - **Primary Key**: `userId` (String)
@@ -227,11 +260,15 @@ Rate limit exceeded response (429):
 
 ## Security
 
-- Passwords hashed with bcrypt (10 rounds)
+- **Passwordless authentication** via email OTP (more secure than passwords)
+- OTP codes expire after 10 minutes
+- Maximum 5 verification attempts per code
+- Single-use codes (deleted after successful verification)
 - JWT tokens with 7-day expiration
-- Rate limiting per user
+- Rate limiting per user (prevents brute force)
 - CORS enabled for frontend
-- API key stored as environment variable (never exposed to client)
+- API keys stored as environment variables (never exposed to client)
+- SES email delivery with HTML templates
 
 ## Monitoring
 
