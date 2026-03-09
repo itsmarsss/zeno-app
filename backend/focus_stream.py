@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import time
 from datetime import datetime
+from pathlib import Path
 
 from camera_manager import CameraManager
+from db_schema import ensure_sessions_schema
 from posture_analyzer import PostureAnalyzer
 from presence_detector import PresenceDetector
 from respiratory_analyzer import RespiratoryAnalyzer
 from stress_analyzer import StressAnalyzer
+
+DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
 
 
 def _stress_index(
@@ -74,6 +79,7 @@ def _stress_index(
 def stream_focus_updates(
     update_every_seconds: float = 5.0,
     max_seconds: float = 0.0,
+    db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     update_every_seconds = max(1.0, float(update_every_seconds))
     max_seconds = max(0.0, float(max_seconds))
@@ -85,6 +91,27 @@ def stream_focus_updates(
     respiratory = RespiratoryAnalyzer(window_seconds=90.0)
     smoothed_stress: float | None = None
     smoothing_alpha = 0.3
+    baseline_posture_score: float | None = None
+    baseline_calibrated = False
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            ensure_sessions_schema(conn)
+            row = conn.execute(
+                """
+                SELECT posture_baseline_score, is_calibrated
+                FROM baseline
+                WHERE id = 1
+                """
+            ).fetchone()
+            if row:
+                baseline_posture_score = (
+                    float(row[0]) if row[0] is not None and float(row[0]) > 0 else None
+                )
+                baseline_calibrated = bool(row[1])
+    except Exception:
+        baseline_posture_score = None
+        baseline_calibrated = False
 
     started = time.perf_counter()
     next_emit = started + update_every_seconds
@@ -134,6 +161,18 @@ def stream_focus_updates(
                 "rr_confidence": respiratory.latest_result().get("rr_confidence", "none"),
                 "mode": "focus",
             }
+            posture_score = float(payload["posture_score"])
+            if baseline_calibrated and baseline_posture_score and baseline_posture_score > 0:
+                posture_deviation = max(0.0, (baseline_posture_score - posture_score) / baseline_posture_score)
+                posture_is_poor = posture_deviation > 0.15
+                payload["baseline_posture_score"] = round(float(baseline_posture_score), 3)
+                payload["posture_deviation"] = round(float(posture_deviation), 4)
+                payload["posture_is_poor"] = bool(posture_is_poor)
+            else:
+                payload["baseline_posture_score"] = 0.0
+                payload["posture_deviation"] = 0.0
+                payload["posture_is_poor"] = posture_score < 0.45
+
             stress_score = _stress_index(
                 dominant_emotion=str(payload["dominant_emotion"]),
                 emotion_score=float(payload["emotion_score"]),
@@ -162,9 +201,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Shared-camera focus mode stream.")
     parser.add_argument("--update-every", type=float, default=5.0)
     parser.add_argument("--max-seconds", type=float, default=0.0)
+    parser.add_argument("--db-path", type=str, default=str(DEFAULT_DB_PATH))
     args = parser.parse_args()
 
-    stream_focus_updates(update_every_seconds=args.update_every, max_seconds=args.max_seconds)
+    stream_focus_updates(
+        update_every_seconds=args.update_every,
+        max_seconds=args.max_seconds,
+        db_path=Path(args.db_path).expanduser().resolve(),
+    )
 
 
 if __name__ == "__main__":

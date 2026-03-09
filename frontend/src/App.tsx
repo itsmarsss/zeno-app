@@ -389,15 +389,22 @@ function App() {
     const presenceDetected = Boolean(payload.presence_detected)
     const analysisSkipped = Boolean(payload.analysis_skipped) || !presenceDetected
     const postureScore = Number(payload.posture_score ?? 0)
+    const baselinePostureScore = Number(payload.baseline_posture_score ?? 0) || 0
+    const postureDeviation = Number(payload.posture_deviation ?? 0) || 0
     const elapsedSeconds = Number(payload.elapsed_seconds ?? 0)
     return {
       timestamp: String(payload.timestamp ?? new Date().toISOString()),
       presence_detected: presenceDetected,
       analysis_skipped: analysisSkipped,
       posture_score: Number.isFinite(postureScore) ? postureScore : 0,
-      baseline_posture_score: 0,
-      posture_deviation: 0,
-      posture_is_poor: Number.isFinite(postureScore) ? postureScore < 0.45 : false,
+      baseline_posture_score: baselinePostureScore,
+      posture_deviation: postureDeviation,
+      posture_is_poor:
+        typeof payload.posture_is_poor === 'boolean'
+          ? payload.posture_is_poor
+          : Number.isFinite(postureScore)
+            ? postureScore < 0.45
+            : false,
       dominant_emotion: String(payload.dominant_emotion ?? 'unknown'),
       emotion_score: Number(payload.emotion_score ?? 0) || 0,
       heart_rate_bpm: payload.heart_rate_bpm == null ? null : Number(payload.heart_rate_bpm),
