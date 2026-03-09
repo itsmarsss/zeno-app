@@ -195,15 +195,61 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
     return float(baseline_score), float(posture_deviation), True, resting_hr, resting_rr
 
 
+def _posture_quality_flags(
+    *,
+    posture_score: float,
+    baseline_posture_score: float,
+    current_ear: float,
+    baseline_ear: float | None,
+    current_neck: float,
+    baseline_neck: float | None,
+    calibrated: bool,
+) -> tuple[float, float, float, bool]:
+    posture_deviation = (
+        max(0.0, (baseline_posture_score - posture_score) / baseline_posture_score)
+        if baseline_posture_score > 0
+        else 0.0
+    )
+    ear_deviation = 0.0
+    neck_deviation = 0.0
+    if baseline_ear is not None:
+        ear_deviation = max(0.0, (baseline_ear - current_ear) / max(abs(baseline_ear), 0.02))
+    if baseline_neck is not None:
+        neck_deviation = max(0.0, (baseline_neck - current_neck) / max(abs(baseline_neck), 1.0))
+
+    combined = (0.40 * posture_deviation) + (0.25 * ear_deviation) + (0.35 * neck_deviation)
+    posture_is_poor = calibrated and combined > 0.15
+    return posture_deviation, ear_deviation, neck_deviation, posture_is_poor
+
+
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
         posture_score = float(result["posture_score"])
         baseline_score, posture_deviation, is_calibrated, resting_hr, resting_rr = _sync_baseline_state(conn, result)
-        posture_is_poor = 1 if is_calibrated and posture_deviation > 0.15 else 0
+        baseline_geom = conn.execute(
+            """
+            SELECT ear_shoulder_offset, neck_spine_angle
+            FROM baseline
+            WHERE id = 1
+            """
+        ).fetchone()
+        baseline_ear = float(baseline_geom[0]) if baseline_geom and baseline_geom[0] is not None else None
+        baseline_neck = float(baseline_geom[1]) if baseline_geom and baseline_geom[1] is not None else None
+        posture_deviation, ear_deviation, neck_deviation, posture_is_poor = _posture_quality_flags(
+            posture_score=posture_score,
+            baseline_posture_score=baseline_score,
+            current_ear=float(result.get("ear_shoulder_offset", 0.0)),
+            baseline_ear=baseline_ear,
+            current_neck=float(result.get("neck_spine_angle", 0.0)),
+            baseline_neck=baseline_neck,
+            calibrated=is_calibrated,
+        )
 
         result["baseline_posture_score"] = baseline_score
         result["posture_deviation"] = posture_deviation
+        result["ear_shoulder_deviation"] = round(float(ear_deviation), 4)
+        result["neck_spine_deviation"] = round(float(neck_deviation), 4)
         result["posture_is_poor"] = bool(posture_is_poor)
         result["resting_hr"] = None if resting_hr is None else round(float(resting_hr), 1)
         result["resting_rr"] = None if resting_rr is None else round(float(resting_rr), 1)
@@ -217,7 +263,7 @@ def log_session(result: dict, db_path: Path) -> int:
                 posture_score,
                 baseline_posture_score,
                 posture_deviation,
-                posture_is_poor,
+                1 if posture_is_poor else 0,
                 dominant_emotion,
                 emotion_score,
                 heart_rate_bpm,

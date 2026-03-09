@@ -79,7 +79,10 @@ def stream_focus_updates(
     respiratory = RespiratoryAnalyzer(window_seconds=90.0)
     smoothed_stress: float | None = None
     smoothing_alpha = 0.3
+    posture_bad_counter = 0
     baseline_posture_score: float | None = None
+    baseline_ear_offset: float | None = None
+    baseline_neck_angle: float | None = None
     baseline_calibrated = False
     resting_hr = 75.0
     resting_rr = 14.0
@@ -89,7 +92,13 @@ def stream_focus_updates(
             ensure_sessions_schema(conn)
             row = conn.execute(
                 """
-                SELECT posture_baseline_score, is_calibrated, resting_hr, resting_rr
+                SELECT
+                  posture_baseline_score,
+                  ear_shoulder_offset,
+                  neck_spine_angle,
+                  is_calibrated,
+                  resting_hr,
+                  resting_rr
                 FROM baseline
                 WHERE id = 1
                 """
@@ -98,13 +107,17 @@ def stream_focus_updates(
                 baseline_posture_score = (
                     float(row[0]) if row[0] is not None and float(row[0]) > 0 else None
                 )
-                baseline_calibrated = bool(row[1])
-                if row[2] is not None:
-                    resting_hr = float(row[2])
-                if row[3] is not None:
-                    resting_rr = float(row[3])
+                baseline_ear_offset = float(row[1]) if row[1] is not None else None
+                baseline_neck_angle = float(row[2]) if row[2] is not None else None
+                baseline_calibrated = bool(row[3])
+                if row[4] is not None:
+                    resting_hr = float(row[4])
+                if row[5] is not None:
+                    resting_rr = float(row[5])
     except Exception:
         baseline_posture_score = None
+        baseline_ear_offset = None
+        baseline_neck_angle = None
         baseline_calibrated = False
         resting_hr = 75.0
         resting_rr = 14.0
@@ -167,16 +180,40 @@ def stream_focus_updates(
                 "mode": "focus",
             }
             posture_score = float(payload["posture_score"])
+            ear_offset = float(payload["ear_shoulder_offset"])
+            neck_angle = float(payload["neck_spine_angle"])
+            raw_posture_is_poor = False
             if baseline_calibrated and baseline_posture_score and baseline_posture_score > 0:
                 posture_deviation = max(0.0, (baseline_posture_score - posture_score) / baseline_posture_score)
-                posture_is_poor = posture_deviation > 0.15
+                ear_deviation = (
+                    max(0.0, (baseline_ear_offset - ear_offset) / max(abs(baseline_ear_offset), 0.02))
+                    if baseline_ear_offset is not None
+                    else 0.0
+                )
+                neck_deviation = (
+                    max(0.0, (baseline_neck_angle - neck_angle) / max(abs(baseline_neck_angle), 1.0))
+                    if baseline_neck_angle is not None
+                    else 0.0
+                )
+                combined = (0.40 * posture_deviation) + (0.25 * ear_deviation) + (0.35 * neck_deviation)
+                raw_posture_is_poor = combined > 0.15
                 payload["baseline_posture_score"] = round(float(baseline_posture_score), 3)
                 payload["posture_deviation"] = round(float(posture_deviation), 4)
-                payload["posture_is_poor"] = bool(posture_is_poor)
+                payload["ear_shoulder_deviation"] = round(float(ear_deviation), 4)
+                payload["neck_spine_deviation"] = round(float(neck_deviation), 4)
             else:
                 payload["baseline_posture_score"] = 0.0
                 payload["posture_deviation"] = 0.0
-                payload["posture_is_poor"] = posture_score < 0.45
+                payload["ear_shoulder_deviation"] = 0.0
+                payload["neck_spine_deviation"] = 0.0
+                raw_posture_is_poor = posture_score < 0.45
+
+            if raw_posture_is_poor:
+                posture_bad_counter += 1
+            else:
+                posture_bad_counter = max(0, posture_bad_counter - 2)
+            payload["posture_bad_counter"] = int(posture_bad_counter)
+            payload["posture_is_poor"] = bool(posture_bad_counter >= 3)
 
             stress_score = _stress_index(
                 dominant_emotion=str(payload["dominant_emotion"]),
