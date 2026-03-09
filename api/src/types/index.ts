@@ -1,10 +1,17 @@
 export interface User {
   id: string
   email: string
-  passwordHash: string
   subscriptionTier: 'free' | 'paid'
   createdAt: number
   updatedAt: number
+}
+
+export interface OTPCode {
+  email: string
+  code: string
+  attempts: number
+  expiresAt: number
+  createdAt: number
 }
 
 export interface RateLimitRecord {

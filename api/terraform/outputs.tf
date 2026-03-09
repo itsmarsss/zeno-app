@@ -21,9 +21,9 @@ output "analysis_requests_table_name" {
 output "lambda_function_names" {
   description = "Lambda function names"
   value = {
-    register = aws_lambda_function.register.function_name
-    login    = aws_lambda_function.login.function_name
-    me       = aws_lambda_function.me.function_name
-    analyze  = aws_lambda_function.analyze.function_name
+    request_otp = aws_lambda_function.request_otp.function_name
+    verify_otp  = aws_lambda_function.verify_otp.function_name
+    me          = aws_lambda_function.me.function_name
+    analyze     = aws_lambda_function.analyze.function_name
   }
 }

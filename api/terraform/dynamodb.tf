@@ -25,6 +25,27 @@ resource "aws_dynamodb_table" "users" {
   })
 }
 
+# OTP Codes Table
+resource "aws_dynamodb_table" "otp_codes" {
+  name           = "${local.app_name}-otp-codes-${var.environment}"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "email"
+
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.app_name}-otp-codes-${var.environment}"
+  })
+}
+
 # Rate Limits Table
 resource "aws_dynamodb_table" "rate_limits" {
   name           = "${local.app_name}-rate-limits-${var.environment}"

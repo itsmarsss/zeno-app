@@ -57,6 +57,12 @@ variable "rate_limit_paid" {
   default     = 100
 }
 
+variable "ses_from_email" {
+  description = "Verified SES email address for sending OTPs"
+  type        = string
+  default     = "noreply@zeno.app"
+}
+
 # Local variables
 locals {
   app_name = "zeno-api"

@@ -45,16 +45,16 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 }
 
 # Lambda Integrations
-resource "aws_apigatewayv2_integration" "register" {
+resource "aws_apigatewayv2_integration" "request_otp" {
   api_id           = aws_apigatewayv2_api.main.id
   integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.register.invoke_arn
+  integration_uri  = aws_lambda_function.request_otp.invoke_arn
 }
 
-resource "aws_apigatewayv2_integration" "login" {
+resource "aws_apigatewayv2_integration" "verify_otp" {
   api_id           = aws_apigatewayv2_api.main.id
   integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.login.invoke_arn
+  integration_uri  = aws_lambda_function.verify_otp.invoke_arn
 }
 
 resource "aws_apigatewayv2_integration" "me" {
@@ -70,16 +70,16 @@ resource "aws_apigatewayv2_integration" "analyze" {
 }
 
 # Routes
-resource "aws_apigatewayv2_route" "register" {
+resource "aws_apigatewayv2_route" "request_otp" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /auth/register"
-  target    = "integrations/${aws_apigatewayv2_integration.register.id}"
+  route_key = "POST /auth/request-otp"
+  target    = "integrations/${aws_apigatewayv2_integration.request_otp.id}"
 }
 
-resource "aws_apigatewayv2_route" "login" {
+resource "aws_apigatewayv2_route" "verify_otp" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /auth/login"
-  target    = "integrations/${aws_apigatewayv2_integration.login.id}"
+  route_key = "POST /auth/verify-otp"
+  target    = "integrations/${aws_apigatewayv2_integration.verify_otp.id}"
 }
 
 resource "aws_apigatewayv2_route" "me" {
@@ -95,18 +95,18 @@ resource "aws_apigatewayv2_route" "analyze" {
 }
 
 # Lambda Permissions for API Gateway
-resource "aws_lambda_permission" "register" {
+resource "aws_lambda_permission" "request_otp" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.register.function_name
+  function_name = aws_lambda_function.request_otp.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 
-resource "aws_lambda_permission" "login" {
+resource "aws_lambda_permission" "verify_otp" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.login.function_name
+  function_name = aws_lambda_function.verify_otp.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }

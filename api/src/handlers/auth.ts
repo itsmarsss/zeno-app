@@ -7,128 +7,165 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  UpdateCommand,
 } from '../utils/dynamodb.js'
-import {
-  hashPassword,
-  verifyPassword,
-  generateToken,
-  verifyToken,
-  extractToken,
-} from '../utils/auth.js'
+import { generateToken, verifyToken, extractToken } from '../utils/auth.js'
 import { successResponse, errorResponse } from '../utils/response.js'
-import { User } from '../types/index.js'
+import { sendOTPEmail } from '../utils/ses.js'
+import {
+  generateOTP,
+  getOTPExpiry,
+  isOTPExpired,
+  hasExceededAttempts,
+} from '../utils/otp.js'
+import { User, OTPCode } from '../types/index.js'
 
-const registerSchema = z.object({
+const requestOTPSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
 })
 
-const loginSchema = z.object({
+const verifyOTPSchema = z.object({
   email: z.string().email(),
-  password: z.string(),
+  code: z.string().length(6),
 })
 
-// Register handler
-export const register: APIGatewayProxyHandler = async (event) => {
+// Request OTP handler
+export const requestOTP: APIGatewayProxyHandler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
-    const { email, password } = registerSchema.parse(body)
+    const { email } = requestOTPSchema.parse(body)
 
-    // Check if user exists using EmailIndex
-    const existingUserResult = await docClient.send(
-      new QueryCommand({
-        TableName: TABLES.USERS,
-        IndexName: 'EmailIndex',
-        KeyConditionExpression: 'email = :email',
-        ExpressionAttributeValues: {
-          ':email': email,
-        },
-      })
-    )
+    // Generate OTP
+    const code = generateOTP()
+    const expiresAt = getOTPExpiry()
 
-    if (existingUserResult.Items && existingUserResult.Items.length > 0) {
-      return errorResponse('Email already registered', 400)
-    }
-
-    // Create user
-    const userId = randomUUID()
-    const now = Date.now()
-    const passwordHash = await hashPassword(password)
-
-    const user: User = {
-      id: userId,
-      email,
-      passwordHash,
-      subscriptionTier: 'free',
-      createdAt: now,
-      updatedAt: now,
+    // Store OTP in DynamoDB
+    const otpRecord: OTPCode = {
+      email: email.toLowerCase(),
+      code,
+      attempts: 0,
+      expiresAt,
+      createdAt: Date.now(),
     }
 
     await docClient.send(
       new PutCommand({
-        TableName: TABLES.USERS,
-        Item: user,
+        TableName: TABLES.OTP_CODES,
+        Item: otpRecord,
       })
     )
 
-    // Generate token
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      subscriptionTier: user.subscriptionTier,
-    })
+    // Send OTP email via SES
+    await sendOTPEmail(email, code)
 
-    return successResponse(
-      {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          subscriptionTier: user.subscriptionTier,
-        },
-      },
-      201
-    )
+    return successResponse({
+      message: 'Verification code sent to your email',
+      expiresIn: 600, // 10 minutes in seconds
+    })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return errorResponse('Invalid input', 400, error.errors)
     }
-    console.error('Register error:', error)
-    return errorResponse('Internal server error', 500)
+    console.error('Request OTP error:', error)
+    return errorResponse('Failed to send verification code', 500)
   }
 }
 
-// Login handler
-export const login: APIGatewayProxyHandler = async (event) => {
+// Verify OTP handler
+export const verifyOTP: APIGatewayProxyHandler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
-    const { email, password } = loginSchema.parse(body)
+    const { email, code } = verifyOTPSchema.parse(body)
 
-    // Find user by email
-    const result = await docClient.send(
+    const normalizedEmail = email.toLowerCase()
+
+    // Get OTP record
+    const otpResult = await docClient.send(
+      new GetCommand({
+        TableName: TABLES.OTP_CODES,
+        Key: { email: normalizedEmail },
+      })
+    )
+
+    const otpRecord = otpResult.Item as OTPCode | undefined
+
+    if (!otpRecord) {
+      return errorResponse('Invalid or expired code', 401)
+    }
+
+    // Check if code is expired
+    if (isOTPExpired(otpRecord.expiresAt)) {
+      return errorResponse('Code has expired', 401)
+    }
+
+    // Check if max attempts exceeded
+    if (hasExceededAttempts(otpRecord.attempts)) {
+      return errorResponse('Too many failed attempts. Request a new code.', 401)
+    }
+
+    // Verify code
+    if (otpRecord.code !== code) {
+      // Increment attempts
+      await docClient.send(
+        new UpdateCommand({
+          TableName: TABLES.OTP_CODES,
+          Key: { email: normalizedEmail },
+          UpdateExpression: 'SET attempts = attempts + :inc',
+          ExpressionAttributeValues: {
+            ':inc': 1,
+          },
+        })
+      )
+      return errorResponse('Invalid code', 401)
+    }
+
+    // Code is valid - check if user exists
+    const userResult = await docClient.send(
       new QueryCommand({
         TableName: TABLES.USERS,
         IndexName: 'EmailIndex',
         KeyConditionExpression: 'email = :email',
         ExpressionAttributeValues: {
-          ':email': email,
+          ':email': normalizedEmail,
         },
       })
     )
 
-    const user = result.Items?.[0] as User | undefined
+    let user = userResult.Items?.[0] as User | undefined
 
+    // Create user if doesn't exist
     if (!user) {
-      return errorResponse('Invalid credentials', 401)
+      const userId = randomUUID()
+      const now = Date.now()
+
+      user = {
+        id: userId,
+        email: normalizedEmail,
+        subscriptionTier: 'free',
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      await docClient.send(
+        new PutCommand({
+          TableName: TABLES.USERS,
+          Item: user,
+        })
+      )
     }
 
-    // Verify password
-    const isValid = await verifyPassword(password, user.passwordHash)
-    if (!isValid) {
-      return errorResponse('Invalid credentials', 401)
-    }
+    // Delete OTP record (single use)
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLES.OTP_CODES,
+        Item: {
+          ...otpRecord,
+          expiresAt: Math.floor(Date.now() / 1000) - 1, // Expire immediately
+        },
+      })
+    )
 
-    // Generate token
+    // Generate JWT token
     const token = generateToken({
       userId: user.id,
       email: user.email,
@@ -147,15 +184,17 @@ export const login: APIGatewayProxyHandler = async (event) => {
     if (error instanceof z.ZodError) {
       return errorResponse('Invalid input', 400, error.errors)
     }
-    console.error('Login error:', error)
-    return errorResponse('Internal server error', 500)
+    console.error('Verify OTP error:', error)
+    return errorResponse('Authentication failed', 500)
   }
 }
 
 // Get current user handler
 export const me: APIGatewayProxyHandler = async (event) => {
   try {
-    const token = extractToken(event.headers.authorization || event.headers.Authorization)
+    const token = extractToken(
+      event.headers.authorization || event.headers.Authorization
+    )
 
     if (!token) {
       return errorResponse('Access token required', 401)

@@ -37,11 +37,32 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
         Resource = [
           aws_dynamodb_table.users.arn,
           "${aws_dynamodb_table.users.arn}/index/*",
+          aws_dynamodb_table.otp_codes.arn,
           aws_dynamodb_table.rate_limits.arn,
           "${aws_dynamodb_table.rate_limits.arn}/index/*",
           aws_dynamodb_table.analysis_requests.arn,
           "${aws_dynamodb_table.analysis_requests.arn}/index/*"
         ]
+      }
+    ]
+  })
+}
+
+# IAM Policy for SES access
+resource "aws_iam_role_policy" "lambda_ses" {
+  name = "${local.app_name}-lambda-ses-${var.environment}"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -57,10 +78,12 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 locals {
   lambda_environment = {
     USERS_TABLE              = aws_dynamodb_table.users.name
+    OTP_CODES_TABLE          = aws_dynamodb_table.otp_codes.name
     RATE_LIMITS_TABLE        = aws_dynamodb_table.rate_limits.name
     ANALYSIS_REQUESTS_TABLE  = aws_dynamodb_table.analysis_requests.name
     JWT_SECRET               = var.jwt_secret
     ANTHROPIC_API_KEY        = var.anthropic_api_key
+    SES_FROM_EMAIL           = var.ses_from_email
     RATE_LIMIT_FREE          = tostring(var.rate_limit_free)
     RATE_LIMIT_PAID          = tostring(var.rate_limit_paid)
     AWS_NODEJS_CONNECTION_REUSE_ENABLED = "1"
@@ -70,12 +93,12 @@ locals {
 # Lambda functions will be created from deployment artifact
 # You'll need to build and zip your code first
 
-# Register Lambda
-resource "aws_lambda_function" "register" {
+# Request OTP Lambda
+resource "aws_lambda_function" "request_otp" {
   filename         = "../dist/lambda.zip"
-  function_name    = "${local.app_name}-register-${var.environment}"
+  function_name    = "${local.app_name}-request-otp-${var.environment}"
   role            = aws_iam_role.lambda_exec.arn
-  handler         = "handlers/auth.register"
+  handler         = "handlers/auth.requestOTP"
   source_code_hash = fileexists("../dist/lambda.zip") ? filebase64sha256("../dist/lambda.zip") : ""
   runtime         = "nodejs20.x"
   timeout         = 10
@@ -92,12 +115,12 @@ resource "aws_lambda_function" "register" {
   }
 }
 
-# Login Lambda
-resource "aws_lambda_function" "login" {
+# Verify OTP Lambda
+resource "aws_lambda_function" "verify_otp" {
   filename         = "../dist/lambda.zip"
-  function_name    = "${local.app_name}-login-${var.environment}"
+  function_name    = "${local.app_name}-verify-otp-${var.environment}"
   role            = aws_iam_role.lambda_exec.arn
-  handler         = "handlers/auth.login"
+  handler         = "handlers/auth.verifyOTP"
   source_code_hash = fileexists("../dist/lambda.zip") ? filebase64sha256("../dist/lambda.zip") : ""
   runtime         = "nodejs20.x"
   timeout         = 10
