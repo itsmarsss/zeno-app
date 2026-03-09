@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, CameraOff, CheckCircle2, User, Waves, Wind } from 'lucide-react'
 import { PostureFrame } from '../common/PostureFrame'
-import { buildPath, clamp, localDateKey } from '../../shared/dashboard'
+import { buildAreaPath, buildPath, clamp, localDateKey } from '../../shared/dashboard'
 import { sessionFromHistory, stressIndex } from '../../shared/metrics'
 import type { PostureLandmarks, SessionHistoryItem, SessionResult } from '../../shared/types'
 import './MonitorTab.css'
@@ -151,9 +151,12 @@ export function MonitorTab({
   const [transitionPhase, setTransitionPhase] = useState<TransitionPhase>('settled')
   const [passiveCameraClosing, setPassiveCameraClosing] = useState(false)
   const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{ xPct: number; label: string; align: 'left' | 'center' | 'right' } | null>(null)
+  const [timelineHoverIndex, setTimelineHoverIndex] = useState<number | null>(null)
+  const [timelineHoverXPct, setTimelineHoverXPct] = useState<number | null>(null)
   const wasFocusActiveRef = useRef(focusModeActive)
   const previousModeRef = useRef<MonitorMode>('idle')
   const cameraModeRef = useRef<MonitorMode>('idle')
+  const timelinePrevHoverRef = useRef<number | null>(null)
 
   const monitorMode: MonitorMode = recentFocusSummary
     ? 'ended'
@@ -327,10 +330,20 @@ export function MonitorTab({
   const timelineStart = timelinePoints[0]?.at ?? Date.now() - 60 * 60_000
   const timelineEnd = timelinePoints[timelinePoints.length - 1]?.at ?? Date.now()
   const timelineRange = Math.max(1, timelineEnd - timelineStart)
+  const timelineStressValues = timelinePoints.map((p) => p.stress)
+  const timelineHrValues = timelinePoints.map((p) => p.hrNorm)
+  const timelineRrValues = timelinePoints.map((p) => p.rrNorm)
+  const timelineAreaPath = buildAreaPath(timelineStressValues, 0, 100, 100, 36)
+  const timelineStressPath = buildPath(timelineStressValues, 0, 100, 100, 36)
+  const timelineHrPath = buildPath(timelineHrValues, 0, 100, 100, 36)
+  const timelineRrPath = buildPath(timelineRrValues, 0, 100, 100, 36)
   const passiveMarkOffsets = passiveMarks.map((ts) => ({
     ts,
     xPct: clamp(((ts - timelineStart) / timelineRange) * 100, 0, 100),
   }))
+  const hoveredTimelinePoint = timelineHoverIndex != null ? timelinePoints[timelineHoverIndex] : null
+  const fallbackRatio = timelineHoverIndex == null ? 0 : timelineHoverIndex / Math.max(timelinePoints.length - 1, 1)
+  const cursorXPct = timelineHoverXPct ?? fallbackRatio * 100
 
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
@@ -650,7 +663,30 @@ export function MonitorTab({
           </div>
         ) : (
           <div className="monitor-timeline-chart">
-            <svg viewBox="0 0 100 36" preserveAspectRatio="none">
+            <svg
+              viewBox="0 0 100 36"
+              preserveAspectRatio="none"
+              onMouseLeave={() => {
+                setTimelineHoverIndex(null)
+                setTimelineHoverXPct(null)
+                timelinePrevHoverRef.current = null
+              }}
+              onPointerMove={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect()
+                const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1)
+                const nextIndex = Math.round(ratio * Math.max(timelinePoints.length - 1, 0))
+                timelinePrevHoverRef.current = nextIndex
+                setTimelineHoverXPct(ratio * 100)
+                setTimelineHoverIndex(nextIndex)
+              }}
+            >
+              <defs>
+                <linearGradient id="monitorStressGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path className="monitor-timeline-area" d={timelineAreaPath} />
               {passiveMarkOffsets.map((mark, index) => (
                 <g key={`${mark.ts}-${index}`}>
                   <line x1={mark.xPct} y1={0} x2={mark.xPct} y2={36} className="monitor-passive-mark" />
@@ -677,10 +713,30 @@ export function MonitorTab({
                   />
                 </g>
               ))}
-              <path className="signal-stress" d={buildPath(timelinePoints.map((p) => p.stress), 0, 100, 100, 36)} />
-              <path className="signal-hr" d={buildPath(timelinePoints.map((p) => p.hrNorm), 0, 100, 100, 36)} />
-              <path className="signal-rr" d={buildPath(timelinePoints.map((p) => p.rrNorm), 0, 100, 100, 36)} />
+              <path className="signal-stress" d={timelineStressPath} />
+              <path className="signal-hr" d={timelineHrPath} />
+              <path className="signal-rr" d={timelineRrPath} />
+              {hoveredTimelinePoint && (
+                <line className="monitor-timeline-cursor" x1={cursorXPct} y1={0} x2={cursorXPct} y2={36} />
+              )}
             </svg>
+            {hoveredTimelinePoint && (
+              <div className="monitor-timeline-tooltip" style={{ left: `${clamp(cursorXPct, 10, 90)}%` }}>
+                <p>{formatTime(new Date(hoveredTimelinePoint.at).toISOString())}</p>
+                <div className="monitor-timeline-tooltip-row">
+                  <strong>{hoveredTimelinePoint.stress}</strong>
+                  <span>Stress</span>
+                </div>
+                <div className="monitor-timeline-tooltip-row">
+                  <strong>{hoveredTimelinePoint.hrNorm == null ? '--' : `${Math.round((hoveredTimelinePoint.hrNorm / 100) * 60 + 50)}`}</strong>
+                  <span>HR</span>
+                </div>
+                <div className="monitor-timeline-tooltip-row">
+                  <strong>{hoveredTimelinePoint.rrNorm == null ? '--' : `${Math.round((hoveredTimelinePoint.rrNorm / 100) * 24 + 6)}`}</strong>
+                  <span>RR</span>
+                </div>
+              </div>
+            )}
             {hoveredPassiveMark && (
               <div
                 className={`monitor-passive-tooltip monitor-passive-tooltip--${hoveredPassiveMark.align}`}

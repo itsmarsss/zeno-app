@@ -502,6 +502,15 @@
   height: 100%;
 }
 
+.monitor-timeline-area {
+  fill: url(#monitorStressGradient);
+}
+
+.monitor-timeline-cursor {
+  stroke: color-mix(in srgb, var(--accent) 82%, transparent);
+  stroke-width: 0.45;
+}
+
 .monitor-timeline-empty {
   margin-top: 8px;
   text-align: center;
@@ -584,6 +593,48 @@
   pointer-events: none;
   z-index: 5;
   animation: tooltipFade 180ms ease;
+}
+
+.monitor-timeline-tooltip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(45, 106, 79, 0.24);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-surface) 93%, #ffffff 7%);
+  box-shadow: 0 10px 22px rgba(13, 26, 18, 0.14);
+  padding: 6px 8px;
+  min-width: 108px;
+  backdrop-filter: blur(8px);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.monitor-timeline-tooltip p {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.monitor-timeline-tooltip-row {
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.monitor-timeline-tooltip-row strong {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.monitor-timeline-tooltip-row span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .monitor-passive-tooltip--left {
