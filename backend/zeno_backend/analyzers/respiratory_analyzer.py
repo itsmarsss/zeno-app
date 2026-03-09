@@ -8,8 +8,8 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from camera_manager import CameraManager
-from rppg_estimator import _forehead_roi, _largest_face_box
+from zeno_backend.analyzers.rppg_estimator import _forehead_roi, _largest_face_box
+from zeno_backend.core.camera_manager import CameraManager
 
 MIN_RR_BPM = 6.0
 MAX_RR_BPM = 30.0

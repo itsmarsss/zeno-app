@@ -7,14 +7,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from camera_manager import CameraManager
-from db_schema import ensure_sessions_schema
-from posture_analyzer import PostureAnalyzer
-from presence_detector import PresenceDetector
-from respiratory_analyzer import RespiratoryAnalyzer
-from stress_analyzer import StressAnalyzer
+from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.analyzers.posture_analyzer import PostureAnalyzer
+from zeno_backend.analyzers.presence_detector import PresenceDetector
+from zeno_backend.analyzers.respiratory_analyzer import RespiratoryAnalyzer
+from zeno_backend.analyzers.stress_analyzer import StressAnalyzer
+from zeno_backend.core.camera_manager import CameraManager
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def _stress_index(

@@ -5,7 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def init_db(db_path: Path) -> None:

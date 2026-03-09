@@ -10,14 +10,14 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-from camera_manager import CameraManager
+from zeno_backend.core.camera_manager import CameraManager
 
 TASK_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_detector/"
     "blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
 )
 TASK_MODEL_PATH = (
-    Path(__file__).resolve().parent / "models" / "blaze_face_short_range.tflite"
+    Path(__file__).resolve().parents[2] / "models" / "blaze_face_short_range.tflite"
 )
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parent / "data" / "settings.json"
+DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "data" / "settings.json"
 DEFAULT_SETTINGS = {
     "monitoring_paused": False,
     "focus_mode_active": False,

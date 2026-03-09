@@ -4,7 +4,7 @@ import argparse
 import json
 from datetime import datetime
 
-from presence_detector import detect_presence
+from zeno_backend.analyzers.presence_detector import detect_presence
 
 
 def main() -> None:

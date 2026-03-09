@@ -10,8 +10,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from camera_manager import CameraManager
-from rppg_estimator import _estimate_bpm, _forehead_roi, _largest_face_box
+from zeno_backend.analyzers.rppg_estimator import _estimate_bpm, _forehead_roi, _largest_face_box
+from zeno_backend.core.camera_manager import CameraManager
 
 try:
     from fer import FER  # type: ignore

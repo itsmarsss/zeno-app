@@ -356,13 +356,15 @@ pub async fn start_posture_stream(
 
         let root = project_root();
         let python_bin = resolve_python_bin(&root);
-        let script = root.join("backend").join("posture_stream.py");
-        if !script.is_file() {
-            return Err(format!("Missing script: {}", script.display()));
+        let backend_dir = root.join("backend");
+        if !backend_dir.is_dir() {
+            return Err(format!("Missing backend directory: {}", backend_dir.display()));
         }
 
         let mut child = Command::new(python_bin)
-            .arg(script)
+            .current_dir(&backend_dir)
+            .arg("-m")
+            .arg("zeno_backend.runtime.posture_stream")
             .arg("--fps")
             .arg(fps.unwrap_or(8.0).clamp(2.0, 15.0).to_string())
             .args(
@@ -435,13 +437,15 @@ pub async fn start_hr_stream(
 
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("rppg_estimator.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
+    let backend_dir = root.join("backend");
+    if !backend_dir.is_dir() {
+        return Err(format!("Missing backend directory: {}", backend_dir.display()));
     }
 
     let mut child = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.analyzers.rppg_estimator")
         .arg("--continuous")
         .arg("--update-every")
         .arg(update_every.unwrap_or(4.0).clamp(1.0, 10.0).to_string())
@@ -511,13 +515,15 @@ pub async fn start_focus_stream(
 
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("focus_stream.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
+    let backend_dir = root.join("backend");
+    if !backend_dir.is_dir() {
+        return Err(format!("Missing backend directory: {}", backend_dir.display()));
     }
 
     let mut child = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.pipelines.focus_stream")
         .arg("--update-every")
         .arg(update_every.unwrap_or(5.0).clamp(1.0, 10.0).to_string())
         .arg("--max-seconds")

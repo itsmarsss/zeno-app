@@ -5,10 +5,10 @@ import json
 import time
 from datetime import datetime
 
-from camera_manager import CameraManager
-from posture_analyzer import PostureAnalyzer
-from presence_detector import PresenceDetector
-from stress_analyzer import StressAnalyzer
+from zeno_backend.analyzers.posture_analyzer import PostureAnalyzer
+from zeno_backend.analyzers.presence_detector import PresenceDetector
+from zeno_backend.analyzers.stress_analyzer import StressAnalyzer
+from zeno_backend.core.camera_manager import CameraManager
 
 
 def _skipped_payload(duration: float, duration_seconds: float, started_at: datetime) -> dict:

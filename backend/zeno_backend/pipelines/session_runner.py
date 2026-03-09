@@ -4,7 +4,7 @@ import argparse
 import json
 from datetime import datetime
 
-from passive_checkin import run_passive_checkin
+from zeno_backend.pipelines.passive_checkin import run_passive_checkin
 
 
 def run_session(
@@ -19,11 +19,13 @@ def run_session(
     if shared_camera and not focus_mode:
         return run_passive_checkin(duration_seconds=passive_duration_seconds)
 
-    from emotion_analyzer_fer import analyze_emotion as analyze_emotion_fer
-    from emotion_analyzer_hsemotion import analyze_emotion as analyze_emotion_hsemotion
-    from posture_analyzer import analyze_posture
-    from presence_detector import detect_presence
-    from rppg_estimator import estimate_heart_rate
+    from zeno_backend.analyzers.emotion_analyzer_fer import analyze_emotion as analyze_emotion_fer
+    from zeno_backend.analyzers.emotion_analyzer_hsemotion import (
+        analyze_emotion as analyze_emotion_hsemotion,
+    )
+    from zeno_backend.analyzers.posture_analyzer import analyze_posture
+    from zeno_backend.analyzers.presence_detector import detect_presence
+    from zeno_backend.analyzers.rppg_estimator import estimate_heart_rate
 
     started_at = datetime.now()
 

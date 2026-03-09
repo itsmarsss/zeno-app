@@ -10,13 +10,13 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-from camera_manager import CameraManager
+from zeno_backend.core.camera_manager import CameraManager
 
 POSE_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
 )
-POSE_MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_lite.task"
+POSE_MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "pose_landmarker_lite.task"
 
 NOSE = 0
 LEFT_EAR = 7

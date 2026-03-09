@@ -5,9 +5,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-from db_schema import ensure_sessions_schema
+from zeno_backend.data.db_schema import ensure_sessions_schema
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def update_notification(

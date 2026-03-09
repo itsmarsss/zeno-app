@@ -28,6 +28,14 @@ fn resolve_python_bin(root: &Path) -> String {
     }
 }
 
+fn resolve_backend_dir(root: &Path) -> Result<PathBuf, String> {
+    let dir = root.join("backend");
+    if !dir.is_dir() {
+        return Err(format!("Missing backend directory: {}", dir.display()));
+    }
+    Ok(dir)
+}
+
 pub fn parse_json_line(stdout: &str) -> Result<Value, String> {
     for line in stdout.lines().rev() {
         let line = line.trim();
@@ -79,14 +87,13 @@ pub fn run_python_session_blocking(
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let logger_script = root.join("backend").join("sqlite_logger.py");
-    if !logger_script.is_file() {
-        return Err(format!("Missing script: {}", logger_script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let backend = emotion_backend.unwrap_or_else(|| "hsemotion".to_string());
     let mut cmd = Command::new(python_bin);
-    cmd.arg(logger_script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.sqlite_logger")
         .arg("--emotion-backend")
         .arg(backend);
     if focus_mode {
@@ -124,13 +131,12 @@ pub fn run_python_session_blocking(
 pub fn run_gesture_dismiss_blocking(max_seconds: u32) -> Result<bool, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let gesture_script = root.join("backend").join("gesture_dismissal.py");
-    if !gesture_script.is_file() {
-        return Err(format!("Missing script: {}", gesture_script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let output = Command::new(python_bin)
-        .arg(gesture_script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.runtime.gesture_dismissal")
         .arg("--max-seconds")
         .arg(max_seconds.clamp(3, 20).to_string())
         .output()
@@ -158,13 +164,12 @@ pub fn run_gesture_dismiss_blocking(max_seconds: u32) -> Result<bool, String> {
 pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let history_script = root.join("backend").join("session_history.py");
-    if !history_script.is_file() {
-        return Err(format!("Missing script: {}", history_script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(history_script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.session_history")
         .arg("--limit")
         .arg(limit.unwrap_or(20).clamp(1, 100).to_string());
 
@@ -189,13 +194,12 @@ pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String>
 pub fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let report_script = root.join("backend").join("report_aggregator.py");
-    if !report_script.is_file() {
-        return Err(format!("Missing script: {}", report_script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(report_script);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.report_aggregator");
     if let Some(date) = date_iso {
         cmd.arg("--date").arg(date);
     }
@@ -221,13 +225,12 @@ pub fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, Stri
 pub fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("settings_store.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(script);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.settings_store");
     if let Some(patch_value) = patch {
         cmd.arg("--set-json").arg(patch_value.to_string());
     }
@@ -254,13 +257,12 @@ pub fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String
 pub fn run_clear_data_blocking() -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("clear_data.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let output = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.clear_data")
         .output()
         .map_err(|e| format!("Failed to clear local data: {e}"))?;
     if !output.status.success() {
@@ -279,13 +281,12 @@ pub fn run_clear_data_blocking() -> Result<Value, String> {
 pub fn run_calibration_status_blocking() -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("calibration_status.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let output = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.calibration_status")
         .output()
         .map_err(|e| format!("Failed to read calibration status: {e}"))?;
     if !output.status.success() {
@@ -316,13 +317,12 @@ pub fn run_log_breathing_session_blocking(
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("breathing_logger.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.breathing_logger")
         .arg("--exercise-type")
         .arg(exercise_type)
         .arg("--cycles-completed")
@@ -370,13 +370,12 @@ pub fn run_log_breathing_session_blocking(
 pub fn run_presence_check_blocking() -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("presence_check.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let output = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.runtime.presence_check")
         .output()
         .map_err(|e| format!("Failed to run presence check: {e}"))?;
     if !output.status.success() {
@@ -403,13 +402,12 @@ pub fn run_log_break_session_blocking(
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("break_logger.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.break_logger")
         .arg("--break-seconds")
         .arg(break_seconds.to_string())
         .arg("--away-seconds")
@@ -447,13 +445,12 @@ pub fn run_update_session_notification_blocking(
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("session_notification.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.session_notification")
         .arg("--session-id")
         .arg(session_id.to_string());
     if let Some(value) = notification_sent {
@@ -490,13 +487,12 @@ pub fn run_log_exercise_session_blocking(
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("exercise_logger.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let mut cmd = Command::new(python_bin);
-    cmd.arg(script)
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.exercise_logger")
         .arg("--exercise-id")
         .arg(exercise_id)
         .arg("--triggered-by")
@@ -532,13 +528,12 @@ pub fn run_log_exercise_session_blocking(
 pub fn run_export_sessions_csv_blocking() -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
-    let script = root.join("backend").join("export_csv.py");
-    if !script.is_file() {
-        return Err(format!("Missing script: {}", script.display()));
-    }
+    let backend_dir = resolve_backend_dir(&root)?;
 
     let output = Command::new(python_bin)
-        .arg(script)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.export_csv")
         .output()
         .map_err(|e| format!("Failed to export CSV: {e}"))?;
     if !output.status.success() {

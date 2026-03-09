@@ -6,10 +6,10 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from db_schema import ensure_sessions_schema
-from session_runner import run_session
+from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.pipelines.session_runner import run_session
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def init_db(db_path: Path) -> None:
