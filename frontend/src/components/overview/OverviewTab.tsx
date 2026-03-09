@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Activity, TrendingUp, User } from 'lucide-react'
+import { Activity, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
@@ -13,7 +13,6 @@ import {
   formatClockRange,
   formatDelta,
   formatDurationSeconds,
-  formatHourLabel,
   formatMinutes,
   mean,
   stressColor,
@@ -47,6 +46,7 @@ export function OverviewTab({
   heroTrendTone,
   todayFocusedMinutes,
   avgHrToday,
+  avgRrToday,
   hrDeltaBaseline,
   todayBreakCount,
   todaySessions,
@@ -55,6 +55,10 @@ export function OverviewTab({
   setChartHoverIndex,
   timelineBucketMinutes,
   setTimelineBucketMinutes,
+  timelineStartLabel,
+  onShiftOverviewDay,
+  canShiftOverviewPrev,
+  canShiftOverviewNext,
   timelineAreaPath,
   timelineStressPath,
   timelineHeartPath,
@@ -71,6 +75,7 @@ export function OverviewTab({
   heroTrendTone: DeltaTone
   todayFocusedMinutes: number
   avgHrToday: number
+  avgRrToday: number | null
   hrDeltaBaseline: number
   todayBreakCount: number
   todaySessions: SessionHistoryItem[]
@@ -79,6 +84,10 @@ export function OverviewTab({
   setChartHoverIndex: (value: number | null) => void
   timelineBucketMinutes: number
   setTimelineBucketMinutes: (value: number) => void
+  timelineStartLabel: string
+  onShiftOverviewDay: (delta: number) => void
+  canShiftOverviewPrev: boolean
+  canShiftOverviewNext: boolean
   timelineAreaPath: string
   timelineStressPath: string
   timelineHeartPath: string
@@ -151,11 +160,11 @@ export function OverviewTab({
           <p className="narrative-value">
             {avgHrToday || '--'} <span>bpm</span>
           </p>
-          <p className="narrative-label">Avg Heart Rate</p>
+          <p className="narrative-label">Avg Heart / Respiratory</p>
           <p className={`narrative-context ${hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
             {Number.isFinite(hrDeltaBaseline)
-              ? `${Math.abs(hrDeltaBaseline)} ${hrDeltaBaseline <= 0 ? 'below' : 'above'} your baseline`
-              : 'Baseline pending'}
+              ? `${Math.abs(hrDeltaBaseline)} ${hrDeltaBaseline <= 0 ? 'below' : 'above'} baseline · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`
+              : `Baseline pending · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`}
           </p>
         </article>
         <article className="narrative-tile">
@@ -176,10 +185,26 @@ export function OverviewTab({
         <div className="main-panel-head">
           <h3>Today</h3>
           <div className="overview-chart-controls">
+            <div className="overview-day-nav">
+              <button
+                className="overview-view-more overview-view-more--secondary"
+                onClick={() => onShiftOverviewDay(-1)}
+                disabled={!canShiftOverviewPrev}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                className="overview-view-more overview-view-more--secondary"
+                onClick={() => onShiftOverviewDay(1)}
+                disabled={!canShiftOverviewNext}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
             <button className="overview-view-more overview-view-more--secondary" onClick={onViewFocusHistory}>
               View More
             </button>
-            <span>{`${formatHourLabel(6)} - now`}</span>
+            <span>{`${timelineStartLabel} - now`}</span>
             <label className="timeline-interval-label">
               <span>Interval</span>
               <select

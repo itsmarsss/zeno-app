@@ -151,6 +151,18 @@
   gap: 10px;
 }
 
+.overview-day-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overview-day-nav .overview-view-more {
+  min-width: 34px;
+  justify-content: center;
+  padding: 6px 8px;
+}
+
 .timeline-interval-label {
   display: inline-flex;
   align-items: center;
@@ -560,11 +572,6 @@
 }
 
 @media (max-width: 860px) {
-  .overview-chart-controls {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-
   .timeline-tooltip {
     width: 172px;
     padding: 8px 9px;

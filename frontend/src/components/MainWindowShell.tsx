@@ -86,6 +86,11 @@ export function MainWindowShell({
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [chartHoverIndex, setChartHoverIndex] = useState<number | null>(null)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
+  const [overviewDate, setOverviewDate] = useState<Date>(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  })
   const guidedStartedAtRef = useRef<number | null>(null)
   const guidedExerciseIdRef = useRef<string | null>(null)
   const overlayScrollbarOptions = useMemo(
@@ -103,36 +108,44 @@ export function MainWindowShell({
   )
 
   const now = new Date()
+  const todayDate = new Date(now)
+  todayDate.setHours(0, 0, 0, 0)
   const todayKey = localDateKey(now)
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  const yesterdayKey = localDateKey(yesterday)
+  const overviewKey = localDateKey(overviewDate)
 
   const sessionsSortedAsc = [...history].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   )
   const todaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === todayKey)
-  const yesterdaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === yesterdayKey)
+  const overviewSessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === overviewKey)
+  const previousOverviewDate = new Date(overviewDate)
+  previousOverviewDate.setDate(previousOverviewDate.getDate() - 1)
+  const previousOverviewKey = localDateKey(previousOverviewDate)
+  const yesterdaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === previousOverviewKey)
 
   const focusSessions = history.filter((item) => Boolean(item.focus_mode))
-  const todayStressValues = todaySessions.map((item) => stressIndexFromHistory(item))
+  const todayStressValues = overviewSessions.map((item) => stressIndexFromHistory(item))
   const yesterdayStressValues = yesterdaySessions.map((item) => stressIndexFromHistory(item))
   const avgStressToday = Math.round(mean(todayStressValues))
   const avgStressYesterday = Math.round(mean(yesterdayStressValues))
   const stressDeltaVsYesterday = avgStressToday - avgStressYesterday
 
-  const todayFocusedSeconds = todaySessions
+  const todayFocusedSeconds = overviewSessions
     .filter((item) => Boolean(item.focus_mode))
     .reduce((sum, item) => sum + item.session_duration_seconds, 0)
   const todayFocusedMinutes = Math.round(todayFocusedSeconds / 60)
-  const todayBreakCount = todaySessions.filter((item) => !item.focus_mode).length
-  const todayHeartRates = todaySessions
+  const todayBreakCount = overviewSessions.filter((item) => !item.focus_mode).length
+  const todayHeartRates = overviewSessions
     .map((item) => item.heart_rate_bpm)
     .filter((value): value is number => value != null)
   const avgHrToday = Math.round(mean(todayHeartRates))
+  const todayRespRates = overviewSessions
+    .filter((item) => item.mode === 'focus' && item.rr_confidence !== 'none' && item.respiratory_rate > 0)
+    .map((item) => item.respiratory_rate)
+  const avgRrToday = todayRespRates.length ? Math.round(mean(todayRespRates) * 10) / 10 : null
 
   const baselineHrPool = history
-    .filter((item) => localDateKey(new Date(item.created_at)) !== todayKey)
+    .filter((item) => localDateKey(new Date(item.created_at)) !== overviewKey)
     .map((item) => item.heart_rate_bpm)
     .filter((value): value is number => value != null)
   const hrDeltaBaseline = avgHrToday - Math.round(mean(baselineHrPool))
@@ -150,22 +163,25 @@ export function MainWindowShell({
     focusActive: boolean
     breathing: boolean
   }> = []
-  const timelineStart = new Date(now)
+  const timelineStart = new Date(overviewDate)
   timelineStart.setHours(HOUR_START, 0, 0, 0)
-  const timelineEnd = new Date(now)
+  if (overviewKey === todayKey && now < timelineStart) {
+    timelineStart.setHours(0, 0, 0, 0)
+  }
+  const timelineEnd = new Date(overviewDate)
   timelineEnd.setHours(HOUR_END, 59, 59, 999)
-  const clampedEnd = now < timelineEnd ? now : timelineEnd
+  const clampedEnd = overviewKey === todayKey && now < timelineEnd ? now : timelineEnd
   for (
     let slot = new Date(timelineStart);
     slot <= clampedEnd;
     slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
   ) {
     const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
-    const slice = todaySessions.filter((item) => {
+    const slice = overviewSessions.filter((item) => {
       const at = new Date(item.created_at)
       return at >= slot && at < slotEnd
     })
-    const overlapSlice = todaySessions.filter((item) => {
+    const overlapSlice = overviewSessions.filter((item) => {
       const start = new Date(item.created_at)
       const end = new Date(start.getTime() + item.session_duration_seconds * 1000)
       return start < slotEnd && end > slot
@@ -188,8 +204,34 @@ export function MainWindowShell({
   const timelineAreaPath = buildAreaPath(timelineStress, 0, 100, 100, 100)
   const timelineStressPath = buildPath(timelineStress, 0, 100, 100, 100)
   const timelineHeartPath = buildPath(timelineHeart, 50, 110, 100, 100)
+  const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
-  const insights = buildInsights(history, todaySessions)
+  const insights = buildInsights(history, overviewSessions)
+
+  const minOverviewDate = useMemo(() => {
+    if (!sessionsSortedAsc.length) {
+      const fallback = new Date(todayDate)
+      fallback.setDate(fallback.getDate() - 30)
+      return fallback
+    }
+    const earliest = new Date(sessionsSortedAsc[0].created_at)
+    earliest.setHours(0, 0, 0, 0)
+    return earliest
+  }, [sessionsSortedAsc, todayDate])
+
+  function shiftOverviewDay(delta: number) {
+    setOverviewDate((prev) => {
+      const next = new Date(prev)
+      next.setDate(next.getDate() + delta)
+      if (next < minOverviewDate) return new Date(minOverviewDate)
+      if (next > todayDate) return new Date(todayDate)
+      return next
+    })
+    setChartHoverIndex(null)
+  }
+
+  const canShiftOverviewPrev = overviewDate > minOverviewDate
+  const canShiftOverviewNext = overviewDate < todayDate
 
   function handleTimelineBucketMinutesChange(value: number) {
     setTimelineBucketMinutes(value)
@@ -615,7 +657,7 @@ export function MainWindowShell({
             {tab === 'overview' && (
               <motion.div key="tab-overview" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
                 <OverviewTab
-                  now={now}
+                  now={overviewDate}
                   heroHeadline={heroHeadline}
                   heroSubline={heroSubline}
                   avgStressToday={avgStressToday}
@@ -623,14 +665,19 @@ export function MainWindowShell({
                   heroTrendTone={heroTrendTone}
                   todayFocusedMinutes={todayFocusedMinutes}
                   avgHrToday={avgHrToday}
+                  avgRrToday={avgRrToday}
                   hrDeltaBaseline={hrDeltaBaseline}
                   todayBreakCount={todayBreakCount}
-                  todaySessions={todaySessions}
+                  todaySessions={overviewSessions}
                   timelineData={timelineData}
                   chartHoverIndex={chartHoverIndex}
                   setChartHoverIndex={setChartHoverIndex}
                   timelineBucketMinutes={timelineBucketMinutes}
                   setTimelineBucketMinutes={handleTimelineBucketMinutesChange}
+                  timelineStartLabel={timelineStartLabel}
+                  onShiftOverviewDay={shiftOverviewDay}
+                  canShiftOverviewPrev={canShiftOverviewPrev}
+                  canShiftOverviewNext={canShiftOverviewNext}
                   timelineAreaPath={timelineAreaPath}
                   timelineStressPath={timelineStressPath}
                   timelineHeartPath={timelineHeartPath}
