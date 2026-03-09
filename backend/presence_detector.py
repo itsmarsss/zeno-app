@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import threading
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlretrieve
 
 import cv2
 import mediapipe as mp
+import numpy as np
+
+from camera_manager import CameraManager
 
 TASK_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_detector/"
@@ -87,12 +91,52 @@ def _detect_with_legacy(rgb_frame, min_detection_confidence: float) -> bool:
     raise RuntimeError("Legacy MediaPipe Solutions face detection is unavailable.")
 
 
+class PresenceDetector:
+    def __init__(self, min_detection_confidence: float = 0.5) -> None:
+        self._min_detection_confidence = float(min_detection_confidence)
+        self._latest_result = False
+        self._lock = threading.Lock()
+        self._subscriber_name = "presence-detector"
+
+    def analyze_frame(self, frame: np.ndarray) -> bool:
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            return _detect_with_tasks(rgb_frame, self._min_detection_confidence)
+        except Exception as tasks_error:
+            try:
+                return _detect_with_legacy(rgb_frame, self._min_detection_confidence)
+            except Exception as legacy_error:
+                version = getattr(mp, "__version__", "unknown")
+                raise RuntimeError(
+                    "MediaPipe face detection is unavailable in this install "
+                    f"(mediapipe=={version}). "
+                    f"Tasks API error: {tasks_error}. "
+                    f"Legacy API error: {legacy_error}."
+                ) from legacy_error
+
+    def start_live(self, camera_manager: CameraManager) -> None:
+        camera_manager.subscribe(self._subscriber_name, self._process_frame)
+
+    def stop_live(self, camera_manager: CameraManager) -> None:
+        camera_manager.unsubscribe(self._subscriber_name)
+
+    def latest_result(self) -> bool:
+        with self._lock:
+            return bool(self._latest_result)
+
+    def _process_frame(self, frame: np.ndarray) -> None:
+        presence = self.analyze_frame(frame)
+        with self._lock:
+            self._latest_result = bool(presence)
+
+
 def detect_presence(
     camera_index: int = 0,
     min_detection_confidence: float = 0.5,
     warmup_seconds: float = 0.6,
     preview_seconds: float = 0.0,
 ) -> bool:
+    detector = PresenceDetector(min_detection_confidence=min_detection_confidence)
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return False
@@ -108,20 +152,7 @@ def detect_presence(
         if not ok:
             return False
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        try:
-            return _detect_with_tasks(rgb_frame, min_detection_confidence)
-        except Exception as tasks_error:
-            try:
-                return _detect_with_legacy(rgb_frame, min_detection_confidence)
-            except Exception as legacy_error:
-                version = getattr(mp, "__version__", "unknown")
-                raise RuntimeError(
-                    "MediaPipe face detection is unavailable in this install "
-                    f"(mediapipe=={version}). "
-                    f"Tasks API error: {tasks_error}. "
-                    f"Legacy API error: {legacy_error}."
-                ) from legacy_error
+        return detector.analyze_frame(frame)
     finally:
         cap.release()
 

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import threading
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlretrieve
 
 import cv2
 import mediapipe as mp
+import numpy as np
+
+from camera_manager import CameraManager
 
 POSE_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
@@ -74,12 +78,56 @@ def _posture_score_from_landmarks(landmarks) -> float:
     return round(_clamp(score), 3)
 
 
+class PostureAnalyzer:
+    def __init__(self, min_pose_presence_confidence: float = 0.5) -> None:
+        self._min_pose_presence_confidence = float(min_pose_presence_confidence)
+        self._latest_score = 0.0
+        self._lock = threading.Lock()
+        self._subscriber_name = "posture-analyzer"
+
+    def analyze_frame(self, frame: np.ndarray) -> float:
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision
+
+        options = vision.PoseLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=str(_ensure_pose_model())),
+            running_mode=vision.RunningMode.IMAGE,
+            min_pose_presence_confidence=self._min_pose_presence_confidence,
+            num_poses=1,
+        )
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        with vision.PoseLandmarker.create_from_options(options) as landmarker:
+            result = landmarker.detect(mp_image)
+
+        if not result.pose_landmarks:
+            return 0.0
+        return _posture_score_from_landmarks(result.pose_landmarks[0])
+
+    def start_live(self, camera_manager: CameraManager) -> None:
+        camera_manager.subscribe(self._subscriber_name, self._process_frame)
+
+    def stop_live(self, camera_manager: CameraManager) -> None:
+        camera_manager.unsubscribe(self._subscriber_name)
+
+    def latest_score(self) -> float:
+        with self._lock:
+            return float(self._latest_score)
+
+    def _process_frame(self, frame: np.ndarray) -> None:
+        score = self.analyze_frame(frame)
+        with self._lock:
+            self._latest_score = float(score)
+
+
 def analyze_posture(
     camera_index: int = 0,
     min_pose_presence_confidence: float = 0.5,
     warmup_seconds: float = 0.6,
     preview_seconds: float = 0.0,
 ) -> float:
+    analyzer = PostureAnalyzer(min_pose_presence_confidence=min_pose_presence_confidence)
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         return 0.0
@@ -95,26 +143,7 @@ def analyze_posture(
         if not ok:
             return 0.0
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        from mediapipe.tasks import python as mp_python
-        from mediapipe.tasks.python import vision
-
-        options = vision.PoseLandmarkerOptions(
-            base_options=mp_python.BaseOptions(model_asset_path=str(_ensure_pose_model())),
-            running_mode=vision.RunningMode.IMAGE,
-            min_pose_presence_confidence=min_pose_presence_confidence,
-            num_poses=1,
-        )
-
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        with vision.PoseLandmarker.create_from_options(options) as landmarker:
-            result = landmarker.detect(mp_image)
-
-        if not result.pose_landmarks:
-            return 0.0
-
-        return _posture_score_from_landmarks(result.pose_landmarks[0])
+        return analyzer.analyze_frame(frame)
     finally:
         cap.release()
 
