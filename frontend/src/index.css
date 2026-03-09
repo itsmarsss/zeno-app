@@ -1,7 +1,7 @@
+@import './styles/overlayscrollbars.css';
+
 * {
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(45, 106, 79, 0.52) transparent;
 }
 
 html,
@@ -24,58 +24,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-*::-webkit-scrollbar {
-  -webkit-appearance: none;
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: rgba(45, 106, 79, 0.52);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(45, 106, 79, 0.72);
-}
-
 .main-content,
 .content-scroll {
   scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(45, 106, 79, 0.62) rgba(45, 106, 79, 0.08);
 }
 
-.main-content::-webkit-scrollbar,
-.content-scroll::-webkit-scrollbar {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-}
-
-.main-content::-webkit-scrollbar-track,
-.content-scroll::-webkit-scrollbar-track {
-  background: rgba(45, 106, 79, 0.08);
-  border-radius: 999px;
-}
-
-.main-content::-webkit-scrollbar-thumb,
-.content-scroll::-webkit-scrollbar-thumb {
-  background: rgba(45, 106, 79, 0.62);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.main-content::-webkit-scrollbar-thumb:hover,
-.content-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(45, 106, 79, 0.78);
+.os-theme-zeno {
+  --os-size: 11px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-track-border-radius: 999px;
+  --os-handle-border-radius: 999px;
+  --os-track-bg: transparent;
+  --os-handle-bg: rgba(45, 106, 79, 0.45);
+  --os-handle-bg-hover: rgba(45, 106, 79, 0.6);
+  --os-handle-bg-active: rgba(45, 106, 79, 0.75);
+  --os-corner-bg: transparent;
 }

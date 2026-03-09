@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, ChartNoAxesCombined, Ellipsis, House } from 'lucide-react'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import { MainWindowShell } from './components/MainWindowShell'
 import { QuickActionsPopover } from './components/QuickActionsPopover'
 import { AppSettingsProvider } from './context/AppSettingsContext'
@@ -33,6 +34,19 @@ import './App.css'
 
 function App() {
   const isMainWindow = getCurrentWindow().label === 'main-window'
+  const overlayScrollbarOptions = useMemo(
+    () => ({
+      overflow: { x: 'hidden' as const, y: 'scroll' as const },
+      scrollbars: {
+        autoHide: 'leave' as const,
+        autoHideDelay: 550,
+        theme: 'os-theme-zeno',
+        clickScroll: true,
+        dragScroll: true,
+      },
+    }),
+    [],
+  )
   const [status, setStatus] = useState<'Idle' | 'Running' | 'Done' | 'Error'>('Idle')
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SessionResult | null>(null)
@@ -588,7 +602,7 @@ function App() {
               </button>
             </div>
           </header>
-          <div className="content-scroll">
+          <OverlayScrollbarsComponent className="content-scroll" options={overlayScrollbarOptions}>
             <AnimatePresence initial={false}>
               {breakSummary && activePage === 'home' && (
                 <motion.section
@@ -823,7 +837,7 @@ function App() {
                 </motion.section>
               )}
             </AnimatePresence>
-          </div>
+          </OverlayScrollbarsComponent>
 
           <AnimatePresence>
             {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (

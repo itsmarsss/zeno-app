@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Pause, Play, Target, Zap } from 'lucide-react'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import { FocusHistoryTab } from './focus/FocusHistoryTab'
 import { OverviewTab } from './overview/OverviewTab'
 import { PostureTab } from './posture/PostureTab'
@@ -84,6 +85,19 @@ export function MainWindowShell({
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [chartHoverIndex, setChartHoverIndex] = useState<number | null>(null)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
+  const overlayScrollbarOptions = useMemo(
+    () => ({
+      overflow: { x: 'hidden' as const, y: 'scroll' as const },
+      scrollbars: {
+        autoHide: 'leave' as const,
+        autoHideDelay: 550,
+        theme: 'os-theme-zeno',
+        clickScroll: true,
+        dragScroll: true,
+      },
+    }),
+    [],
+  )
 
   const now = new Date()
   const todayKey = localDateKey(now)
@@ -547,7 +561,7 @@ export function MainWindowShell({
       <main className="main-shell">
         <SidebarNav tab={tab} setTab={setTab} />
 
-        <section className="main-content">
+        <OverlayScrollbarsComponent className="main-content" options={overlayScrollbarOptions}>
           <AnimatePresence mode="wait" initial={false}>
             {tab === 'overview' && (
               <motion.div key="tab-overview" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
@@ -660,7 +674,7 @@ export function MainWindowShell({
               </motion.div>
             )}
           </AnimatePresence>
-        </section>
+        </OverlayScrollbarsComponent>
       </main>
     </div>
   )

@@ -319,14 +319,9 @@
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 4px;
   margin-bottom: 18px;
-}
-
-.insight-cards::-webkit-scrollbar {
-  display: none;
 }
 
 .insight-card {

@@ -148,7 +148,7 @@ export function PostureTab({
           </motion.div>
           <div className="posture-feed-gradient">
             <div className="posture-score-badge">
-              <strong>{liveScore}</strong>
+              <strong>{liveScore || '--'}</strong>
               <span>posture score</span>
             </div>
           </div>

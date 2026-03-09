@@ -10,6 +10,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
+#[cfg(target_os = "macos")]
+use tauri::LogicalPosition;
 use tauri::{Emitter, Manager, WebviewWindowBuilder};
 
 #[tauri::command]
@@ -173,8 +175,11 @@ pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
         .find(|w| w.label == "main-window")
         .ok_or_else(|| "Missing main-window config".to_string())?;
 
-    let window = WebviewWindowBuilder::from_config(&app, config)
-        .map_err(|e| format!("Failed to build main window config: {e}"))?
+    let builder = WebviewWindowBuilder::from_config(&app, config)
+        .map_err(|e| format!("Failed to build main window config: {e}"))?;
+    #[cfg(target_os = "macos")]
+    let builder = builder.traffic_light_position(LogicalPosition::new(10.0, 16.0));
+    let window = builder
         .build()
         .map_err(|e| format!("Failed to create main window: {e}"))?;
     let _ = window.show();

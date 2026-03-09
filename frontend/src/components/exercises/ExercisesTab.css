@@ -56,11 +56,6 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.exercise-pill-row::-webkit-scrollbar {
-  display: none;
 }
 
 .exercise-pill-row button {

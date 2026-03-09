@@ -357,11 +357,6 @@
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.posture-reco-strip::-webkit-scrollbar {
-  display: none;
 }
 
 .posture-reco-item {
