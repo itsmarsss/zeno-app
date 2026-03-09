@@ -51,23 +51,23 @@ class ApiClient {
     return response.json()
   }
 
-  async register(email: string, password: string) {
+  async requestOTP(email: string) {
     return this.request<{
-      token: string
-      user: { id: string; email: string; subscriptionTier: string }
-    }>('/auth/register', {
+      message: string
+      expiresIn: number
+    }>('/auth/request-otp', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email }),
     })
   }
 
-  async login(email: string, password: string) {
+  async verifyOTP(email: string, code: string) {
     return this.request<{
       token: string
       user: { id: string; email: string; subscriptionTier: string }
-    }>('/auth/login', {
+    }>('/auth/verify-otp', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, code }),
     })
   }
 

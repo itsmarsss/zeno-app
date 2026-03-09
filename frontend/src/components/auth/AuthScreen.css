@@ -214,3 +214,107 @@
   margin: 0;
   line-height: 1.5;
 }
+
+.auth-step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.auth-step-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.auth-back-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-left: -8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.auth-back-btn:hover:not(:disabled) {
+  background: var(--bg-overlay);
+}
+
+.auth-back-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-code-sent {
+  text-align: center;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--accent-light);
+  border-radius: 8px;
+}
+
+.auth-code-sent p {
+  margin: 0 0 4px 0;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.auth-code-sent strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.auth-code-input {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 24px !important;
+  letter-spacing: 8px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.auth-code-hint {
+  display: block;
+  margin-top: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.auth-resend {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.auth-resend:hover:not(:disabled) {
+  text-decoration-color: var(--accent);
+  color: var(--accent-dim);
+}
+
+.auth-resend:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

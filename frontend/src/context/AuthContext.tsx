@@ -11,8 +11,8 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   isGuest: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string) => Promise<void>
+  requestOTP: (email: string) => Promise<void>
+  verifyOTP: (email: string, code: string) => Promise<void>
   continueAsGuest: () => void
   logout: () => void
   isAuthenticated: boolean
@@ -52,14 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = async (email: string, password: string) => {
-    const response = await apiClient.login(email, password)
-    apiClient.setToken(response.token)
-    setUser(response.user)
+  const requestOTP = async (email: string) => {
+    await apiClient.requestOTP(email)
   }
 
-  const register = async (email: string, password: string) => {
-    const response = await apiClient.register(email, password)
+  const verifyOTP = async (email: string, code: string) => {
+    const response = await apiClient.verifyOTP(email, code)
     apiClient.setToken(response.token)
     setUser(response.user)
   }
@@ -82,8 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         isGuest,
-        login,
-        register,
+        requestOTP,
+        verifyOTP,
         continueAsGuest,
         logout,
         isAuthenticated: !!user || isGuest,
