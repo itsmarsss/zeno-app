@@ -21,7 +21,8 @@
 }
 
 .monitor-banner--passive,
-.monitor-banner--focus {
+.monitor-banner--focus,
+.monitor-banner--ended {
   background: color-mix(in srgb, var(--accent) 11%, var(--bg-surface));
 }
 
@@ -284,6 +285,26 @@
   font-weight: 500;
 }
 
+.signal-value--calm {
+  color: var(--state-calm);
+}
+
+.signal-value--neutral {
+  color: var(--text-primary);
+}
+
+.signal-value--mild {
+  color: var(--state-mild);
+}
+
+.signal-value--high {
+  color: var(--state-elevated);
+}
+
+.signal-value--muted {
+  color: var(--text-tertiary);
+}
+
 .monitor-card-value em {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
@@ -446,4 +467,3 @@
     font-size: 44px;
   }
 }
-
