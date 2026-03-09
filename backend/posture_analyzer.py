@@ -19,8 +19,12 @@ POSE_MODEL_URL = (
 POSE_MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_lite.task"
 
 NOSE = 0
+LEFT_EAR = 7
+RIGHT_EAR = 8
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
+LEFT_HIP = 23
+RIGHT_HIP = 24
 
 
 def _ensure_pose_model() -> Path:
@@ -55,8 +59,49 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(value, high))
 
 
-def _posture_score_from_landmarks(landmarks) -> float:
+def _calculate_angle_degrees(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    ba = a - b
+    bc = c - b
+    ba_norm = np.linalg.norm(ba)
+    bc_norm = np.linalg.norm(bc)
+    if ba_norm < 1e-6 or bc_norm < 1e-6:
+        return 0.0
+    cosine = float(np.dot(ba, bc) / (ba_norm * bc_norm))
+    cosine = max(-1.0, min(1.0, cosine))
+    return float(np.degrees(np.arccos(cosine)))
+
+
+def calculate_ear_shoulder_offset(landmarks) -> float:
+    left_ear = landmarks[LEFT_EAR]
+    right_ear = landmarks[RIGHT_EAR]
+    left_shoulder = landmarks[LEFT_SHOULDER]
+    right_shoulder = landmarks[RIGHT_SHOULDER]
+
+    ear_mid_x = (left_ear.x + right_ear.x) / 2.0
+    shoulder_mid_x = (left_shoulder.x + right_shoulder.x) / 2.0
+    return shoulder_mid_x - ear_mid_x
+
+
+def calculate_neck_spine_angle(landmarks) -> float:
     nose = landmarks[NOSE]
+    left_shoulder = landmarks[LEFT_SHOULDER]
+    right_shoulder = landmarks[RIGHT_SHOULDER]
+    left_hip = landmarks[LEFT_HIP]
+    right_hip = landmarks[RIGHT_HIP]
+
+    shoulder_mid = np.array(
+        [(left_shoulder.x + right_shoulder.x) / 2.0, (left_shoulder.y + right_shoulder.y) / 2.0],
+        dtype=np.float32,
+    )
+    hip_mid = np.array(
+        [(left_hip.x + right_hip.x) / 2.0, (left_hip.y + right_hip.y) / 2.0],
+        dtype=np.float32,
+    )
+    nose_pt = np.array([nose.x, nose.y], dtype=np.float32)
+    return _calculate_angle_degrees(nose_pt, shoulder_mid, hip_mid)
+
+
+def _posture_score_from_landmarks(landmarks) -> float:
     left_shoulder = landmarks[LEFT_SHOULDER]
     right_shoulder = landmarks[RIGHT_SHOULDER]
 
@@ -64,17 +109,21 @@ def _posture_score_from_landmarks(landmarks) -> float:
     if shoulder_width < 1e-6:
         return 0.0
 
-    shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
-
-    # Nose should sit above shoulder midpoint in a neutral seated posture.
-    vertical_head_offset = shoulder_mid_y - nose.y
-    head_upright = _clamp(vertical_head_offset / (shoulder_width * 1.2))
-
     # Shoulder tilt indicates uneven posture; lower tilt means better alignment.
     shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / shoulder_width
     shoulder_alignment = 1.0 - _clamp(shoulder_tilt / 0.35)
 
-    score = 0.7 * head_upright + 0.3 * shoulder_alignment
+    # Dual-signal forward-head estimate:
+    # 1) ear-shoulder horizontal offset catches chin drift,
+    # 2) neck-spine angle catches whole-body forward lean.
+    ear_shoulder_offset = calculate_ear_shoulder_offset(landmarks)
+    neck_spine_angle = calculate_neck_spine_angle(landmarks)
+
+    # Normalize around practical webcam ranges without requiring per-user baseline here.
+    head_forward_alignment = _clamp((ear_shoulder_offset + shoulder_width * 0.05) / (shoulder_width * 0.30))
+    neck_alignment = _clamp((neck_spine_angle - 118.0) / 46.0)
+
+    score = 0.45 * head_forward_alignment + 0.35 * neck_alignment + 0.20 * shoulder_alignment
     return round(_clamp(score), 3)
 
 
