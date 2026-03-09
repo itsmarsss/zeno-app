@@ -70,8 +70,13 @@ function hrTone(value: number | null, resting: number): 'calm' | 'neutral' | 'mi
   return 'high'
 }
 
-function rrTone(value: number, mode: MonitorMode): 'calm' | 'neutral' | 'mild' | 'muted' {
+function rrTone(
+  value: number,
+  mode: MonitorMode,
+  stage: 'measuring' | 'stabilizing' | 'live' | null,
+): 'calm' | 'neutral' | 'mild' | 'muted' {
   if (mode === 'passive') return 'muted'
+  if (mode === 'focus' && stage !== 'live') return 'muted'
   if (value <= 0) return 'muted'
   if (value <= 16) return 'calm'
   if (value <= 20) return 'neutral'
@@ -465,7 +470,7 @@ export function MonitorTab({
               </span>
             </header>
             <div className="monitor-card-value">
-              <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode)}`}>
+              <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
                 {monitorMode === 'focus' && rrStage === 'measuring'
                   ? '—'
                   : rrValue > 0
@@ -477,7 +482,7 @@ export function MonitorTab({
               <em>bpm</em>
             </div>
             <div className="monitor-card-sub">
-              <span>
+              <span className={monitorMode === 'focus' && rrStage !== 'live' ? 'monitor-subtle-status' : undefined}>
                 {monitorMode === 'passive'
                   ? 'Approximate'
                   : monitorMode === 'focus' && rrStage !== 'live'
