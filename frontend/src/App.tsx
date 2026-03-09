@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -31,6 +31,34 @@ import type {
 } from './shared/types'
 import { fadeSlide } from './shared/motion'
 import './App.css'
+
+function ScrollArea({
+  useOverlayScrollbars,
+  overlayScrollbarOptions,
+  children,
+}: {
+  useOverlayScrollbars: boolean
+  overlayScrollbarOptions: {
+    overflow: { x: 'hidden'; y: 'scroll' }
+    scrollbars: {
+      autoHide: 'leave'
+      autoHideDelay: number
+      theme: string
+      clickScroll: boolean
+      dragScroll: boolean
+    }
+  }
+  children: ReactNode
+}) {
+  if (useOverlayScrollbars) {
+    return (
+      <OverlayScrollbarsComponent className="content-scroll" options={overlayScrollbarOptions}>
+        {children}
+      </OverlayScrollbarsComponent>
+    )
+  }
+  return <div className="content-scroll">{children}</div>
+}
 
 function App() {
   const isMainWindow = getCurrentWindow().label === 'main-window'
@@ -295,51 +323,6 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [breakSummary])
 
-  useEffect(() => {
-    if (!settings?.focus_mode_active) {
-      void invoke('stop_focus_stream').catch(() => null)
-      return
-    }
-
-    let unlistenUpdate: (() => void) | null = null
-    let unlistenEnded: (() => void) | null = null
-    let cancelled = false
-
-    const setup = async () => {
-      await invoke('start_focus_stream', { updateEvery: 5, maxSeconds: 0 })
-      if (cancelled) return
-      unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
-        const session = normalizeFocusStreamResult(event.payload)
-        if (session.session_skipped || !session.presence_detected) {
-          setLastNudge('No face detected, focus stream waiting.')
-          setStatus('Done')
-          return
-        }
-        setResult(session)
-        updateNudgeFromResult(session)
-        setLastRunSource('focus-mode')
-        setStatus('Done')
-        setError(null)
-
-        if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(session) > 60) {
-          setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
-          startBreathing('auto')
-        }
-      })
-      unlistenEnded = await listen('focus-stream-ended', () => {
-        // Silent by design.
-      })
-    }
-
-    void setup()
-    return () => {
-      cancelled = true
-      unlistenUpdate?.()
-      unlistenEnded?.()
-      void invoke('stop_focus_stream').catch(() => null)
-    }
-  }, [normalizeFocusStreamResult, settings?.focus_mode_active, startBreathing, updateNudgeFromResult])
-
   const updateNudgeFromResult = useCallback((session: SessionResult) => {
     if (session.posture_score < 0.45 || session.posture_is_poor) {
       setLastNudge('Straighten up and roll your shoulders back.')
@@ -457,6 +440,51 @@ function App() {
     },
     [activePattern.phases, breathingUseHrSensing, result?.heart_rate_bpm],
   )
+
+  useEffect(() => {
+    if (!settings?.focus_mode_active) {
+      void invoke('stop_focus_stream').catch(() => null)
+      return
+    }
+
+    let unlistenUpdate: (() => void) | null = null
+    let unlistenEnded: (() => void) | null = null
+    let cancelled = false
+
+    const setup = async () => {
+      await invoke('start_focus_stream', { updateEvery: 5, maxSeconds: 0 })
+      if (cancelled) return
+      unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
+        const session = normalizeFocusStreamResult(event.payload)
+        if (session.session_skipped || !session.presence_detected) {
+          setLastNudge('No face detected, focus stream waiting.')
+          setStatus('Done')
+          return
+        }
+        setResult(session)
+        updateNudgeFromResult(session)
+        setLastRunSource('focus-mode')
+        setStatus('Done')
+        setError(null)
+
+        if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(session) > 60) {
+          setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
+          startBreathing('auto')
+        }
+      })
+      unlistenEnded = await listen('focus-stream-ended', () => {
+        // Silent by design.
+      })
+    }
+
+    void setup()
+    return () => {
+      cancelled = true
+      unlistenUpdate?.()
+      unlistenEnded?.()
+      void invoke('stop_focus_stream').catch(() => null)
+    }
+  }, [normalizeFocusStreamResult, settings?.focus_mode_active, startBreathing, updateNudgeFromResult])
 
   async function completeOnboarding() {
     await updateSettings({ onboarding_completed: true })
@@ -727,7 +755,7 @@ function App() {
               </button>
             </div>
           </header>
-          <OverlayScrollbarsComponent className="content-scroll" options={overlayScrollbarOptions}>
+          <ScrollArea useOverlayScrollbars={isMainWindow} overlayScrollbarOptions={overlayScrollbarOptions}>
             <AnimatePresence initial={false}>
               {breakSummary && activePage === 'home' && (
                 <motion.section
@@ -962,7 +990,7 @@ function App() {
                 </motion.section>
               )}
             </AnimatePresence>
-          </OverlayScrollbarsComponent>
+          </ScrollArea>
 
           <AnimatePresence>
             {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (

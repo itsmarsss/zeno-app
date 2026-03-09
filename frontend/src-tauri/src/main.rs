@@ -108,12 +108,14 @@ fn position_popover_window(
     tray_rect: &Rect,
 ) {
     let Ok(size) = window.outer_size() else {
+        println!("[tray] could not read window outer_size");
         return;
     };
 
     let width = size.width as i32;
     let height = size.height as i32;
     if width <= 0 || height <= 0 {
+        println!("[tray] invalid window size: {}x{}", width, height);
         return;
     }
 
@@ -127,9 +129,27 @@ fn position_popover_window(
     let target_x = (anchor_x.round() as i32) - width / 2;
     let target_y = anchor_y.round() as i32;
 
-    let _ = window.set_position(Position::Physical(PhysicalPosition::new(
+    println!(
+        "[tray] click=({:.1}, {:.1}) scale={} tray_rect=({:?}, {:?}) anchor=({:.1}, {:.1}) target=({}, {}) size={}x{}",
+        click_position.x,
+        click_position.y,
+        scale_factor,
+        tray_rect.position,
+        tray_rect.size,
+        anchor_x,
+        anchor_y,
+        target_x,
+        target_y,
+        width,
+        height
+    );
+
+    let set_position_result = window.set_position(Position::Physical(PhysicalPosition::new(
         target_x, target_y,
     )));
+    if let Err(err) = set_position_result {
+        println!("[tray] set_position failed: {}", err);
+    }
 }
 
 fn main() {
@@ -221,11 +241,15 @@ fn main() {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
+                                println!("[tray] main window visible -> hide");
                                 let _ = window.hide();
                             } else {
                                 position_popover_window(&window, &position, &rect);
+                                println!("[tray] show main window");
                                 let _ = window.show();
                             }
+                        } else {
+                            println!("[tray] main window not found");
                         }
                     }
                 })
