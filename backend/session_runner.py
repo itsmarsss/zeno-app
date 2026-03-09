@@ -14,12 +14,31 @@ from rppg_estimator import estimate_heart_rate
 def run_session(
     emotion_backend: str = "hsemotion",
     preview: bool = False,
+    focus_mode: bool = False,
     hsemotion_model: str = "enet_b0_8_best_afew",
     hsemotion_model_path: str | None = None,
 ) -> dict:
     started_at = datetime.now()
 
     presence_detected = detect_presence(preview_seconds=1.0 if preview else 0.0)
+    if not presence_detected:
+        completed_at = datetime.now()
+        duration_seconds = round((completed_at - started_at).total_seconds(), 2)
+        return {
+            "timestamp": completed_at.isoformat(timespec="seconds"),
+            "presence_detected": False,
+            "analysis_skipped": True,
+            "posture_score": 0.0,
+            "baseline_posture_score": 0.0,
+            "posture_deviation": 0.0,
+            "posture_is_poor": False,
+            "dominant_emotion": "unknown",
+            "emotion_score": 0.0,
+            "heart_rate_bpm": None,
+            "emotion_backend": emotion_backend,
+            "session_duration_seconds": duration_seconds,
+        }
+
     posture_score = analyze_posture(preview_seconds=1.0 if preview else 0.0)
 
     if emotion_backend == "fer":
@@ -33,7 +52,10 @@ def run_session(
             model_path=hsemotion_model_path,
         )
 
-    heart_rate_bpm = estimate_heart_rate(preview=preview, capture_seconds=10.0)
+    heart_rate_bpm = estimate_heart_rate(
+        preview=preview,
+        capture_seconds=6.0 if focus_mode else 10.0,
+    )
 
     completed_at = datetime.now()
     duration_seconds = round((completed_at - started_at).total_seconds(), 2)
@@ -41,7 +63,11 @@ def run_session(
     return {
         "timestamp": completed_at.isoformat(timespec="seconds"),
         "presence_detected": bool(presence_detected),
+        "analysis_skipped": False,
         "posture_score": float(posture_score),
+        "baseline_posture_score": 0.0,
+        "posture_deviation": 0.0,
+        "posture_is_poor": False,
         "dominant_emotion": dominant_emotion,
         "emotion_score": round(float(emotion_score), 3),
         "heart_rate_bpm": None if heart_rate_bpm <= 0 else round(float(heart_rate_bpm), 1),

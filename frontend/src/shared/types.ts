@@ -1,11 +1,17 @@
 export type SessionResult = {
   timestamp: string
   presence_detected: boolean
+  analysis_skipped: boolean
   posture_score: number
+  baseline_posture_score: number
+  posture_deviation: number
+  posture_is_poor: boolean
   dominant_emotion: string
   emotion_score: number
   heart_rate_bpm: number | null
   emotion_backend: string
+  session_id: number | null
+  session_skipped: boolean
   session_duration_seconds: number
 }
 
@@ -13,12 +19,18 @@ export type SessionHistoryItem = {
   id: number
   created_at: string
   presence_detected: number
+  analysis_skipped: number
   posture_score: number
+  baseline_posture_score: number
+  posture_deviation: number
+  posture_is_poor: number
   dominant_emotion: string
   emotion_score: number
   heart_rate_bpm: number | null
   emotion_backend: string
-  focus_mode?: number
+  focus_mode: number
+  notification_sent: string
+  notification_dismissed_by: string
   session_duration_seconds: number
 }
 

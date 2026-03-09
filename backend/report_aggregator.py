@@ -6,6 +6,8 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
+from db_schema import ensure_sessions_schema
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
 
 
@@ -70,6 +72,7 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        ensure_sessions_schema(conn)
         rows = conn.execute(
             """
             SELECT
@@ -80,6 +83,8 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
                 heart_rate_bpm
             FROM sessions
             WHERE created_at BETWEEN ? AND ?
+              AND presence_detected = 1
+              AND analysis_skipped = 0
             ORDER BY created_at ASC
             """,
             (day_start, day_end),

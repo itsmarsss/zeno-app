@@ -5,6 +5,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from db_schema import ensure_sessions_schema
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
 BASELINE_SESSIONS = 3
 
@@ -22,8 +24,14 @@ def get_calibration_status(db_path: Path) -> dict:
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        ensure_sessions_schema(conn)
         all_rows = conn.execute(
-            "SELECT id, created_at, posture_score FROM sessions ORDER BY id ASC"
+            """
+            SELECT id, created_at, posture_score
+            FROM sessions
+            WHERE presence_detected = 1 AND analysis_skipped = 0
+            ORDER BY id ASC
+            """
         ).fetchall()
 
     sessions_collected = len(all_rows)

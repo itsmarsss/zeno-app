@@ -5,6 +5,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from db_schema import ensure_sessions_schema
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "zeno_sessions.db"
 
 
@@ -14,18 +16,25 @@ def fetch_history(db_path: Path, limit: int = 20) -> list[dict]:
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        ensure_sessions_schema(conn)
         rows = conn.execute(
             """
             SELECT
                 id,
                 created_at,
                 presence_detected,
+                analysis_skipped,
                 posture_score,
+                baseline_posture_score,
+                posture_deviation,
+                posture_is_poor,
                 dominant_emotion,
                 emotion_score,
                 heart_rate_bpm,
                 emotion_backend,
                 focus_mode,
+                notification_sent,
+                notification_dismissed_by,
                 session_duration_seconds
             FROM sessions
             ORDER BY id DESC

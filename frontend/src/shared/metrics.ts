@@ -8,6 +8,7 @@ export function prettyTime(timestamp: string): string {
 
 export function stressIndex(result: SessionResult | null): number {
   if (!result) return 0
+  if (result.session_skipped || !result.presence_detected) return 0
   const emotion = result.dominant_emotion.toLowerCase()
   const emotionPoints =
     ({
@@ -46,11 +47,17 @@ export function stressIndexFromHistory(item: SessionHistoryItem): number {
   return stressIndex({
     timestamp: item.created_at,
     presence_detected: Boolean(item.presence_detected),
+    analysis_skipped: Boolean(item.analysis_skipped),
     posture_score: item.posture_score,
+    baseline_posture_score: item.baseline_posture_score,
+    posture_deviation: item.posture_deviation,
+    posture_is_poor: Boolean(item.posture_is_poor),
     dominant_emotion: item.dominant_emotion,
     emotion_score: item.emotion_score,
     heart_rate_bpm: item.heart_rate_bpm,
     emotion_backend: item.emotion_backend,
+    session_id: item.id,
+    session_skipped: Boolean(item.analysis_skipped),
     session_duration_seconds: item.session_duration_seconds,
   })
 }
@@ -59,11 +66,17 @@ export function sessionFromHistory(item: SessionHistoryItem): SessionResult {
   return {
     timestamp: item.created_at,
     presence_detected: Boolean(item.presence_detected),
+    analysis_skipped: Boolean(item.analysis_skipped),
     posture_score: item.posture_score,
+    baseline_posture_score: item.baseline_posture_score,
+    posture_deviation: item.posture_deviation,
+    posture_is_poor: Boolean(item.posture_is_poor),
     dominant_emotion: item.dominant_emotion,
     emotion_score: item.emotion_score,
     heart_rate_bpm: item.heart_rate_bpm,
     emotion_backend: item.emotion_backend,
+    session_id: item.id,
+    session_skipped: Boolean(item.analysis_skipped),
     session_duration_seconds: item.session_duration_seconds,
   }
 }
