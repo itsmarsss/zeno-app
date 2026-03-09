@@ -1,4 +1,4 @@
-import { ChevronRight, Zap } from 'lucide-react'
+import { ChevronRight, Zap, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useRef, useState } from 'react'
 import './FocusHistoryTab.css'
@@ -7,6 +7,8 @@ import type { SessionHistoryItem } from '../../shared/types'
 import { staggerItem } from '../../shared/motion'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import { InteractiveLineChart } from '../common/InteractiveLineChart'
+import { useAIInsights } from '../../hooks/useAIInsights'
+import { useAuth } from '../../context/AuthContext'
 import {
   type FocusPeriod,
   classifySession,
@@ -107,6 +109,11 @@ export function FocusHistoryTab({
     isPersonalized: boolean
   }
 }) {
+  const { isAuthenticated } = useAuth()
+  const { insights, loading: insightsLoading, error: insightsError, cached } = useAIInsights(
+    focusSessionsSorted,
+    personalizedZones
+  )
   const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<number | null>(null)
   const [rhythmHoverDirection, setRhythmHoverDirection] = useState<1 | -1>(1)
@@ -401,6 +408,44 @@ export function FocusHistoryTab({
               <span><i style={{ background: 'var(--state-high)' }} />High stress</span>
               <span className="scatter-note">Shaded area = your optimal duration</span>
             </div>
+          </div>
+        )}
+
+        {/* AI Insights Section */}
+        {isAuthenticated && focusSessionsSorted.length > 0 && (
+          <div className="ai-insights-section">
+            <div className="ai-insights-header">
+              <div className="ai-insights-title">
+                <Sparkles size={16} className="ai-icon" />
+                <h4>AI Study Coach</h4>
+              </div>
+              {cached && <span className="ai-cached-badge">Cached</span>}
+            </div>
+            {insightsLoading ? (
+              <div className="ai-insights-loading">
+                <div className="ai-spinner" />
+                <p>Analyzing your study patterns...</p>
+              </div>
+            ) : insightsError ? (
+              <div className="ai-insights-error">
+                <p>Unable to load insights. Please try again later.</p>
+                <span className="ai-error-detail">{insightsError}</span>
+              </div>
+            ) : insights ? (
+              <div className="ai-insights-content">
+                {insights.split('\n').map((paragraph, idx) => {
+                  // Format markdown-style bold
+                  const formattedText = paragraph.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  return paragraph.trim() ? (
+                    <p key={idx} dangerouslySetInnerHTML={{ __html: formattedText }} />
+                  ) : null
+                })}
+              </div>
+            ) : (
+              <div className="ai-insights-placeholder">
+                <p>Complete a few more study sessions to unlock personalized AI insights</p>
+              </div>
+            )}
           </div>
         )}
       </motion.section>
