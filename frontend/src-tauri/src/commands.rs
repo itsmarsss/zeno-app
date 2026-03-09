@@ -292,35 +292,32 @@ fn stress_index_from_payload(payload: &Value) -> Option<u64> {
         .get("mode")
         .and_then(|v| v.as_str())
         .unwrap_or("passive");
+    let resting_hr = payload
+        .get("resting_hr")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(75.0);
+    let resting_rr = payload
+        .get("resting_rr")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(14.0);
 
     let emotion_points = match emotion.as_str() {
-        "fear" => 28.0,
-        "angry" | "anger" => 25.0,
-        "disgust" | "contempt" => 22.0,
-        "sad" | "sadness" => 16.0,
-        "neutral" => 8.0,
-        "surprise" => 12.0,
-        "happy" | "happiness" => 4.0,
-        _ => 10.0,
+        "happy" | "happiness" => 20.0,
+        "neutral" => 35.0,
+        "surprise" => 45.0,
+        "sad" | "sadness" => 55.0,
+        "disgust" | "contempt" => 70.0,
+        "fear" | "angry" | "anger" => 85.0,
+        _ => 50.0,
     } * emotion_score.max(0.25);
     let hr_points = match heart_rate {
-        Some(bpm) if bpm >= 105.0 => 52.0,
-        Some(bpm) if bpm >= 95.0 => 40.0,
-        Some(bpm) if bpm >= 85.0 => 28.0,
-        Some(bpm) if bpm >= 75.0 => 14.0,
-        Some(_) => 6.0,
-        None => 8.0,
+        Some(bpm) => ((bpm - resting_hr).max(0.0) * 3.2).clamp(0.0, 100.0),
+        None => 0.0,
     };
     let rr_points = if rr <= 0.0 {
         0.0
-    } else if rr >= 25.0 {
-        28.0
-    } else if rr >= 21.0 {
-        20.0
-    } else if rr >= 17.0 {
-        12.0
     } else {
-        4.0
+        ((rr - resting_rr).max(0.0) * 6.0).clamp(0.0, 100.0)
     };
     let rr_weight = match (mode, rr_conf) {
         ("focus", "full") => 0.30,

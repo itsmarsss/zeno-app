@@ -10,25 +10,29 @@ export function stressIndex(result: SessionResult | null): number {
   if (!result) return 0
   if (result.session_skipped || !result.presence_detected) return 0
   const emotion = result.dominant_emotion.toLowerCase()
-  const emotionPoints =
+  const emotionLevel =
     ({
-      fear: 28,
-      angry: 25,
-      anger: 25,
-      disgust: 22,
-      contempt: 22,
-      sad: 16,
-      sadness: 16,
-      neutral: 8,
-      surprise: 12,
-      happy: 4,
-      happiness: 4,
-    }[emotion as keyof Record<string, number>] ?? 10) * Math.max(result.emotion_score, 0.25)
+      happy: 20,
+      happiness: 20,
+      neutral: 35,
+      surprise: 45,
+      sad: 55,
+      sadness: 55,
+      disgust: 70,
+      contempt: 70,
+      angry: 85,
+      anger: 85,
+      fear: 85,
+    }[emotion as keyof Record<string, number>] ?? 50) * Math.max(result.emotion_score, 0.25)
 
+  const restingHr = result.resting_hr ?? 75
+  const restingRr = result.resting_rr ?? 14
   const hr = result.heart_rate_bpm
-  const hrPoints = hr == null ? 8 : hr >= 105 ? 52 : hr >= 95 ? 40 : hr >= 85 ? 28 : hr >= 75 ? 14 : 6
+  const hrDeviation = hr == null ? 0 : Math.max(0, hr - restingHr)
+  const hrPoints = Math.max(0, Math.min(100, hrDeviation * 3.2))
   const rr = result.respiratory_rate ?? 0
-  const rrPoints = rr <= 0 ? 0 : rr >= 25 ? 28 : rr >= 21 ? 20 : rr >= 17 ? 12 : 4
+  const rrDeviation = rr <= 0 ? 0 : Math.max(0, rr - restingRr)
+  const rrPoints = Math.max(0, Math.min(100, rrDeviation * 6.0))
   const rrConfidence = result.mode === 'focus' ? result.rr_confidence : 'none'
 
   let hrWeight = 0.5
@@ -44,7 +48,7 @@ export function stressIndex(result: SessionResult | null): number {
     emotionWeight = 0.45
   }
 
-  const weighted = hrPoints * hrWeight + rrPoints * rrWeight + emotionPoints * emotionWeight
+  const weighted = hrPoints * hrWeight + rrPoints * rrWeight + emotionLevel * emotionWeight
   return Math.max(0, Math.min(100, Math.round(weighted)))
 }
 

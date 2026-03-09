@@ -26,47 +26,35 @@ def _stress_index(
     respiratory_rate: float,
     rr_confidence: str,
     mode: str,
+    resting_hr: float,
+    resting_rr: float,
 ) -> int:
     emotion = (dominant_emotion or "unknown").lower()
     emotion_points = {
-        "fear": 28.0,
-        "angry": 25.0,
-        "anger": 25.0,
-        "disgust": 22.0,
-        "contempt": 22.0,
-        "sad": 16.0,
-        "sadness": 16.0,
-        "neutral": 8.0,
-        "surprise": 12.0,
-        "happy": 4.0,
-        "happiness": 4.0,
-    }.get(emotion, 10.0)
+        "happy": 20.0,
+        "happiness": 20.0,
+        "neutral": 35.0,
+        "surprise": 45.0,
+        "sad": 55.0,
+        "sadness": 55.0,
+        "disgust": 70.0,
+        "contempt": 70.0,
+        "angry": 85.0,
+        "anger": 85.0,
+        "fear": 85.0,
+    }.get(emotion, 50.0)
     emotion_points *= max(float(emotion_score), 0.25)
 
     if heart_rate_bpm is None:
-        hr_points = 8.0
-    elif heart_rate_bpm >= 105:
-        hr_points = 52.0
-    elif heart_rate_bpm >= 95:
-        hr_points = 40.0
-    elif heart_rate_bpm >= 85:
-        hr_points = 28.0
-    elif heart_rate_bpm >= 75:
-        hr_points = 14.0
+        hr_points = 0.0
     else:
-        hr_points = 6.0
+        hr_points = max(0.0, min(100.0, (float(heart_rate_bpm) - resting_hr) * 3.2))
 
     rr = float(respiratory_rate or 0.0)
     if rr <= 0:
         rr_points = 0.0
-    elif rr >= 25:
-        rr_points = 28.0
-    elif rr >= 21:
-        rr_points = 20.0
-    elif rr >= 17:
-        rr_points = 12.0
     else:
-        rr_points = 4.0
+        rr_points = max(0.0, min(100.0, (rr - resting_rr) * 6.0))
 
     if mode == "focus" and rr_confidence == "full":
         hr_weight, rr_weight, emotion_weight = 0.35, 0.30, 0.35
@@ -79,7 +67,7 @@ def _stress_index(
     return int(max(0, min(100, round(weighted))))
 
 
-def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float, float, bool]:
+def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float, float, bool, float | None, float | None]:
     posture_score = float(result["posture_score"])
     ear_offset = float(result.get("ear_shoulder_offset", 0.0))
     neck_angle = float(result.get("neck_spine_angle", 0.0))
@@ -87,16 +75,6 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
     respiratory_rate = float(result.get("respiratory_rate", 0.0))
     rr_confidence = str(result.get("rr_confidence", "none"))
     mode = str(result.get("mode", "passive"))
-
-    stress = _stress_index(
-        dominant_emotion=str(result.get("dominant_emotion", "unknown")),
-        emotion_score=float(result.get("emotion_score", 0.0)),
-        heart_rate_bpm=None if heart_rate_bpm is None else float(heart_rate_bpm),
-        respiratory_rate=respiratory_rate,
-        rr_confidence=rr_confidence,
-        mode=mode,
-    )
-    calm_for_resting = stress <= 35
 
     baseline_row = conn.execute(
         """
@@ -119,6 +97,18 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
     baseline_score = float(baseline_row[4]) if baseline_row and baseline_row[4] is not None else None
     sessions_completed = int(baseline_row[5]) if baseline_row else 0
     is_calibrated = bool(baseline_row[6]) if baseline_row else False
+
+    stress = _stress_index(
+        dominant_emotion=str(result.get("dominant_emotion", "unknown")),
+        emotion_score=float(result.get("emotion_score", 0.0)),
+        heart_rate_bpm=None if heart_rate_bpm is None else float(heart_rate_bpm),
+        respiratory_rate=respiratory_rate,
+        rr_confidence=rr_confidence,
+        mode=mode,
+        resting_hr=75.0 if resting_hr is None else float(resting_hr),
+        resting_rr=14.0 if resting_rr is None else float(resting_rr),
+    )
+    calm_for_resting = stress <= 35
 
     if not is_calibrated:
         new_completed = min(3, sessions_completed + 1)
@@ -153,7 +143,7 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
                 1 if new_calibrated else 0,
             ),
         )
-        return float(new_baseline), 0.0, False
+        return float(new_baseline), 0.0, False, resting_hr, resting_rr
 
     if baseline_score is None or baseline_score <= 0:
         baseline_score = float(posture_score)
@@ -202,19 +192,21 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
             float(drifted_baseline),
         ),
     )
-    return float(baseline_score), float(posture_deviation), True
+    return float(baseline_score), float(posture_deviation), True, resting_hr, resting_rr
 
 
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
         posture_score = float(result["posture_score"])
-        baseline_score, posture_deviation, is_calibrated = _sync_baseline_state(conn, result)
+        baseline_score, posture_deviation, is_calibrated, resting_hr, resting_rr = _sync_baseline_state(conn, result)
         posture_is_poor = 1 if is_calibrated and posture_deviation > 0.15 else 0
 
         result["baseline_posture_score"] = baseline_score
         result["posture_deviation"] = posture_deviation
         result["posture_is_poor"] = bool(posture_is_poor)
+        result["resting_hr"] = None if resting_hr is None else round(float(resting_hr), 1)
+        result["resting_rr"] = None if resting_rr is None else round(float(resting_rr), 1)
 
         cursor = conn.execute(
             """

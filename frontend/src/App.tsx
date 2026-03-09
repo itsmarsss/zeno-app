@@ -411,6 +411,8 @@ function App() {
       respiratory_rate: Number(payload.respiratory_rate ?? 0) || 0,
       rr_confidence:
         payload.rr_confidence === 'full' || payload.rr_confidence === 'partial' ? payload.rr_confidence : 'none',
+      resting_hr: payload.resting_hr == null ? null : Number(payload.resting_hr),
+      resting_rr: payload.resting_rr == null ? null : Number(payload.resting_rr),
       emotion_backend: 'fer',
       mode: 'focus',
       focus_duration_seconds: Math.max(0, Math.round(Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0)),

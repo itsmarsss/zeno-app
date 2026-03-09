@@ -11,6 +11,8 @@ export type SessionResult = {
   heart_rate_bpm: number | null
   respiratory_rate: number
   rr_confidence: 'none' | 'partial' | 'full'
+  resting_hr?: number | null
+  resting_rr?: number | null
   emotion_backend: string
   mode: 'passive' | 'focus'
   focus_duration_seconds: number

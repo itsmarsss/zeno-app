@@ -23,47 +23,35 @@ def _stress_index(
     heart_rate_bpm: float | None,
     respiratory_rate: float,
     rr_confidence: str,
+    resting_hr: float,
+    resting_rr: float,
 ) -> int:
     emotion = (dominant_emotion or "unknown").lower()
     emotion_points = {
-        "fear": 28.0,
-        "angry": 25.0,
-        "anger": 25.0,
-        "disgust": 22.0,
-        "contempt": 22.0,
-        "sad": 16.0,
-        "sadness": 16.0,
-        "neutral": 8.0,
-        "surprise": 12.0,
-        "happy": 4.0,
-        "happiness": 4.0,
-    }.get(emotion, 10.0)
+        "happy": 20.0,
+        "happiness": 20.0,
+        "neutral": 35.0,
+        "surprise": 45.0,
+        "sad": 55.0,
+        "sadness": 55.0,
+        "disgust": 70.0,
+        "contempt": 70.0,
+        "angry": 85.0,
+        "anger": 85.0,
+        "fear": 85.0,
+    }.get(emotion, 50.0)
     emotion_points *= max(float(emotion_score), 0.25)
 
     if heart_rate_bpm is None:
-        hr_points = 8.0
-    elif heart_rate_bpm >= 105:
-        hr_points = 52.0
-    elif heart_rate_bpm >= 95:
-        hr_points = 40.0
-    elif heart_rate_bpm >= 85:
-        hr_points = 28.0
-    elif heart_rate_bpm >= 75:
-        hr_points = 14.0
+        hr_points = 0.0
     else:
-        hr_points = 6.0
+        hr_points = max(0.0, min(100.0, (float(heart_rate_bpm) - resting_hr) * 3.2))
 
     rr = float(respiratory_rate or 0.0)
     if rr <= 0:
         rr_points = 0.0
-    elif rr >= 25:
-        rr_points = 28.0
-    elif rr >= 21:
-        rr_points = 20.0
-    elif rr >= 17:
-        rr_points = 12.0
     else:
-        rr_points = 4.0
+        rr_points = max(0.0, min(100.0, (rr - resting_rr) * 6.0))
 
     if rr_confidence == "full":
         hr_weight, rr_weight, emotion_weight = 0.35, 0.30, 0.35
@@ -93,13 +81,15 @@ def stream_focus_updates(
     smoothing_alpha = 0.3
     baseline_posture_score: float | None = None
     baseline_calibrated = False
+    resting_hr = 75.0
+    resting_rr = 14.0
 
     try:
         with sqlite3.connect(db_path) as conn:
             ensure_sessions_schema(conn)
             row = conn.execute(
                 """
-                SELECT posture_baseline_score, is_calibrated
+                SELECT posture_baseline_score, is_calibrated, resting_hr, resting_rr
                 FROM baseline
                 WHERE id = 1
                 """
@@ -109,9 +99,15 @@ def stream_focus_updates(
                     float(row[0]) if row[0] is not None and float(row[0]) > 0 else None
                 )
                 baseline_calibrated = bool(row[1])
+                if row[2] is not None:
+                    resting_hr = float(row[2])
+                if row[3] is not None:
+                    resting_rr = float(row[3])
     except Exception:
         baseline_posture_score = None
         baseline_calibrated = False
+        resting_hr = 75.0
+        resting_rr = 14.0
 
     started = time.perf_counter()
     next_emit = started + update_every_seconds
@@ -134,6 +130,8 @@ def stream_focus_updates(
                 "emotion_score": 0.0,
                 "respiratory_rate": 0.0,
                 "rr_confidence": "none",
+                "resting_hr": resting_hr,
+                "resting_rr": resting_rr,
                 "mode": "focus",
                 "analysis_skipped": True,
             }
@@ -164,6 +162,8 @@ def stream_focus_updates(
                 "emotion_score": float(stress.latest_result().get("emotion_score", 0.0)),
                 "respiratory_rate": respiratory.latest_result().get("respiratory_rate_bpm") or 0.0,
                 "rr_confidence": respiratory.latest_result().get("rr_confidence", "none"),
+                "resting_hr": resting_hr,
+                "resting_rr": resting_rr,
                 "mode": "focus",
             }
             posture_score = float(payload["posture_score"])
@@ -184,6 +184,8 @@ def stream_focus_updates(
                 heart_rate_bpm=payload["heart_rate_bpm"],
                 respiratory_rate=float(payload["respiratory_rate"]),
                 rr_confidence=str(payload["rr_confidence"]),
+                resting_hr=resting_hr,
+                resting_rr=resting_rr,
             )
             if smoothed_stress is None:
                 smoothed_stress = float(stress_score)
