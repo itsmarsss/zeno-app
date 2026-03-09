@@ -1,7 +1,7 @@
 use crate::state::AppSettings;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn now_unix_secs() -> u64 {
@@ -34,6 +34,23 @@ fn resolve_backend_dir(root: &Path) -> Result<PathBuf, String> {
         return Err(format!("Missing backend directory: {}", dir.display()));
     }
     Ok(dir)
+}
+
+fn debug_log_python_output(name: &str, output: &Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            eprintln!("[py:{name}:stdout] {trimmed}");
+        }
+    }
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            eprintln!("[py:{name}:stderr] {trimmed}");
+        }
+    }
 }
 
 pub fn parse_json_line(stdout: &str) -> Result<Value, String> {
@@ -111,6 +128,7 @@ pub fn run_python_session_blocking(
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to start Python sidecar: {e}"))?;
+    debug_log_python_output("sqlite_logger", &output);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -141,6 +159,7 @@ pub fn run_gesture_dismiss_blocking(max_seconds: u32) -> Result<bool, String> {
         .arg(max_seconds.clamp(3, 20).to_string())
         .output()
         .map_err(|e| format!("Failed to run gesture sidecar: {e}"))?;
+    debug_log_python_output("gesture_dismissal", &output);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -176,6 +195,7 @@ pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String>
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to read session history: {e}"))?;
+    debug_log_python_output("session_history", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -207,6 +227,7 @@ pub fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, Stri
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to run daily report: {e}"))?;
+    debug_log_python_output("report_aggregator", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -238,6 +259,7 @@ pub fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to read/update settings: {e}"))?;
+    debug_log_python_output("settings_store", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -265,6 +287,7 @@ pub fn run_clear_data_blocking() -> Result<Value, String> {
         .arg("zeno_backend.data.clear_data")
         .output()
         .map_err(|e| format!("Failed to clear local data: {e}"))?;
+    debug_log_python_output("clear_data", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -289,6 +312,7 @@ pub fn run_calibration_status_blocking() -> Result<Value, String> {
         .arg("zeno_backend.data.calibration_status")
         .output()
         .map_err(|e| format!("Failed to read calibration status: {e}"))?;
+    debug_log_python_output("calibration_status", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -352,6 +376,7 @@ pub fn run_log_breathing_session_blocking(
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to log breathing session: {e}"))?;
+    debug_log_python_output("breathing_logger", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -378,6 +403,7 @@ pub fn run_presence_check_blocking() -> Result<Value, String> {
         .arg("zeno_backend.runtime.presence_check")
         .output()
         .map_err(|e| format!("Failed to run presence check: {e}"))?;
+    debug_log_python_output("presence_check", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -423,6 +449,7 @@ pub fn run_log_break_session_blocking(
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to log break session: {e}"))?;
+    debug_log_python_output("break_logger", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -463,6 +490,7 @@ pub fn run_update_session_notification_blocking(
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to update session notification: {e}"))?;
+    debug_log_python_output("session_notification", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -510,6 +538,7 @@ pub fn run_log_exercise_session_blocking(
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to log exercise session: {e}"))?;
+    debug_log_python_output("exercise_logger", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -536,6 +565,7 @@ pub fn run_export_sessions_csv_blocking() -> Result<Value, String> {
         .arg("zeno_backend.data.export_csv")
         .output()
         .map_err(|e| format!("Failed to export CSV: {e}"))?;
+    debug_log_python_output("export_csv", &output);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

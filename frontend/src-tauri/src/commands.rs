@@ -19,6 +19,21 @@ use std::sync::atomic::Ordering;
 use tauri::LogicalPosition;
 use tauri::{Emitter, Manager, WebviewWindowBuilder};
 
+fn log_stream_stderr(name: &'static str, stderr: std::process::ChildStderr) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let reader = BufReader::new(stderr);
+        for line_result in reader.lines() {
+            let Ok(line) = line_result else {
+                break;
+            };
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                eprintln!("[py:{name}:stderr] {trimmed}");
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn run_python_session(
     emotion_backend: Option<String>,
@@ -374,7 +389,7 @@ pub async fn start_posture_stream(
                     .unwrap_or_default(),
             )
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to start posture stream sidecar: {e}"))?;
 
@@ -382,6 +397,9 @@ pub async fn start_posture_stream(
             .stdout
             .take()
             .ok_or_else(|| "Failed to capture posture stream stdout".to_string())?;
+        if let Some(stderr) = child.stderr.take() {
+            log_stream_stderr("posture-stream", stderr);
+        }
         *guard = Some(child);
 
         let app_handle = app.clone();
@@ -397,6 +415,8 @@ pub async fn start_posture_stream(
                 }
                 if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
                     let _ = app_handle.emit("posture-stream-frame", payload);
+                } else {
+                    eprintln!("[py:posture-stream:stdout] {trimmed}");
                 }
             }
             let _ = app_handle.emit("posture-stream-ended", Value::Null);
@@ -454,7 +474,7 @@ pub async fn start_hr_stream(
         .arg("--max-seconds")
         .arg(max_seconds.unwrap_or(0.0).max(0.0).to_string())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start HR stream sidecar: {e}"))?;
 
@@ -462,6 +482,9 @@ pub async fn start_hr_stream(
         .stdout
         .take()
         .ok_or_else(|| "Failed to capture HR stream stdout".to_string())?;
+    if let Some(stderr) = child.stderr.take() {
+        log_stream_stderr("hr-stream", stderr);
+    }
     *guard = Some(child);
 
     let app_handle = app.clone();
@@ -477,6 +500,8 @@ pub async fn start_hr_stream(
             }
             if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
                 let _ = app_handle.emit("hr-stream-update", payload);
+            } else {
+                eprintln!("[py:hr-stream:stdout] {trimmed}");
             }
         }
         let _ = app_handle.emit("hr-stream-ended", Value::Null);
@@ -529,7 +554,7 @@ pub async fn start_focus_stream(
         .arg("--max-seconds")
         .arg(max_seconds.unwrap_or(0.0).max(0.0).to_string())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start focus stream sidecar: {e}"))?;
 
@@ -537,6 +562,9 @@ pub async fn start_focus_stream(
         .stdout
         .take()
         .ok_or_else(|| "Failed to capture focus stream stdout".to_string())?;
+    if let Some(stderr) = child.stderr.take() {
+        log_stream_stderr("focus-stream", stderr);
+    }
     *guard = Some(child);
 
     let app_handle = app.clone();
@@ -550,15 +578,17 @@ pub async fn start_focus_stream(
             if trimmed.is_empty() {
                 continue;
             }
-            if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
-                if let Some(score) = stress_index_from_payload(&payload) {
-                    let timer_state = app_handle.state::<FocusTimerState>();
-                    timer_state.stress_sum.fetch_add(score, Ordering::SeqCst);
-                    timer_state.stress_samples.fetch_add(1, Ordering::SeqCst);
+                if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
+                    if let Some(score) = stress_index_from_payload(&payload) {
+                        let timer_state = app_handle.state::<FocusTimerState>();
+                        timer_state.stress_sum.fetch_add(score, Ordering::SeqCst);
+                        timer_state.stress_samples.fetch_add(1, Ordering::SeqCst);
+                    }
+                    let _ = app_handle.emit("focus-stream-update", payload);
+                } else {
+                    eprintln!("[py:focus-stream:stdout] {trimmed}");
                 }
-                let _ = app_handle.emit("focus-stream-update", payload);
             }
-        }
         let _ = app_handle.emit("focus-stream-ended", Value::Null);
     });
 
