@@ -27,6 +27,12 @@ export type SessionHistoryItem = {
   presence_detected: number
   analysis_skipped: number
   posture_score: number
+  tracking_confidence?: number
+  head_offset_norm?: number
+  shoulder_tilt_signed_norm?: number
+  shoulder_tilt_norm?: number
+  posture_stability_std?: number
+  posture_stability_label?: string
   baseline_posture_score: number
   posture_deviation: number
   posture_is_poor: number
@@ -90,6 +96,12 @@ export type PostureStreamFrame = {
   frame_jpeg_b64: string
   landmarks: PostureLandmarks
   posture_score: number
+  tracking_confidence?: number
+  head_offset_norm?: number
+  shoulder_tilt_signed_norm?: number
+  shoulder_tilt_norm?: number
+  posture_stability_std?: number
+  posture_stability_label?: 'learning' | 'stable' | 'moderate' | 'variable' | string
   exercise_feedback?: string | null
   exercise_metrics?: {
     rep_count: number

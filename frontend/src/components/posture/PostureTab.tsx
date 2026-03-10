@@ -23,9 +23,26 @@ function daysForPeriod(period: PeriodKey): number {
   return 30
 }
 
+function dayStart(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function mean(values: number[]): number | null {
+  if (!values.length) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
 export function PostureTab({
   postureStreamState,
   postureScoreLive,
+  postureTrackingConfidence,
+  postureHeadOffsetNorm,
+  postureShoulderTiltSignedNorm,
+  postureShoulderTiltNorm,
+  postureStabilityStd,
+  postureStabilityLabel,
   postureFrame,
   postureLandmarks,
   postureStreamError,
@@ -35,6 +52,12 @@ export function PostureTab({
 }: {
   postureStreamState: 'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   postureScoreLive: number | null
+  postureTrackingConfidence: number | null
+  postureHeadOffsetNorm: number | null
+  postureShoulderTiltSignedNorm: number | null
+  postureShoulderTiltNorm: number | null
+  postureStabilityStd: number | null
+  postureStabilityLabel: string | null
   postureFrame: string | null
   postureLandmarks: PostureLandmarks
   postureStreamError: string | null
@@ -43,6 +66,10 @@ export function PostureTab({
   onStartExercise: (exerciseId: string) => void
 }) {
   const [period, setPeriod] = useState<PeriodKey>('today')
+  const sortedHistory = useMemo(
+    () => [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    [history],
+  )
 
   const cutoff = useMemo(() => {
     const date = new Date()
@@ -53,25 +80,71 @@ export function PostureTab({
     return date
   }, [period])
 
-  const postureHistory = useMemo(() => history.filter((item) => new Date(item.created_at) >= cutoff), [history, cutoff])
-
-  const postureChartPoints = useMemo(
-    () =>
-      postureHistory
-        .slice(0, 24)
-        .reverse()
-        .map((item, index) => {
-          const at = new Date(item.created_at)
-          return {
-            id: `${item.id}-${index}`,
-            label: at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-            value: Math.round(item.posture_score * 100),
-          }
-        }),
-    [postureHistory],
+  const postureHistory = useMemo(
+    () => sortedHistory.filter((item) => new Date(item.created_at) >= cutoff),
+    [sortedHistory, cutoff],
   )
 
-  const latestHistoryScore = postureHistory[0] ? Math.round(postureHistory[0].posture_score * 100) : 0
+  const postureChartPoints = useMemo(
+    () => {
+      const now = new Date()
+      if (period === 'today') {
+        const start = dayStart(now)
+        const intervalMinutes = 30
+        const points = []
+        for (let i = 0; i < 48; i += 1) {
+          const slotStart = new Date(start.getTime() + i * intervalMinutes * 60_000)
+          const slotEnd = new Date(slotStart.getTime() + intervalMinutes * 60_000)
+          const values = postureHistory
+            .filter((item) => {
+              const t = new Date(item.created_at)
+              return t >= slotStart && t < slotEnd
+            })
+            .map((item) => item.posture_score * 100)
+          const avg = mean(values)
+          points.push({
+            id: `today-${i}`,
+            label: slotStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+            value: avg == null ? null : Math.round(avg),
+          })
+        }
+        return points
+      }
+
+      const dayCount = period === 'week' ? 7 : 30
+      const end = dayStart(now)
+      const start = new Date(end)
+      start.setDate(start.getDate() - (dayCount - 1))
+      const points = []
+      for (let i = 0; i < dayCount; i += 1) {
+        const slotStart = new Date(start)
+        slotStart.setDate(start.getDate() + i)
+        const slotEnd = new Date(slotStart)
+        slotEnd.setDate(slotStart.getDate() + 1)
+        const values = postureHistory
+          .filter((item) => {
+            const t = new Date(item.created_at)
+            return t >= slotStart && t < slotEnd
+          })
+          .map((item) => item.posture_score * 100)
+        const avg = mean(values)
+        points.push({
+          id: `${period}-${i}`,
+          label:
+            period === 'week'
+              ? slotStart.toLocaleDateString([], { weekday: 'short' })
+              : slotStart.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          value: avg == null ? null : Math.round(avg),
+        })
+      }
+      return points
+    },
+    [period, postureHistory],
+  )
+
+  const latestHistoryScore = postureHistory.length
+    ? Math.round(postureHistory[postureHistory.length - 1].posture_score * 100)
+    : 0
   const isStarting = postureStreamState === 'connecting'
   const liveScore = isStarting
     ? null
@@ -88,12 +161,16 @@ export function PostureTab({
           ? { title: 'Chin forward', detail: 'Bring your chin back toward your neck.', tone: 'warn' as const }
           : { title: 'Slouching', detail: 'Roll shoulders back and lift through your chest.', tone: 'bad' as const }
 
-  const shoulderDelta =
-    postureLandmarks?.left_shoulder && postureLandmarks?.right_shoulder
-      ? Math.round((postureLandmarks.left_shoulder.y - postureLandmarks.right_shoulder.y) * 40)
-      : 0
+  const shoulderDelta = useMemo(() => {
+    if (postureShoulderTiltSignedNorm != null) {
+      return Math.round(postureShoulderTiltSignedNorm * 22)
+    }
+    if (postureLandmarks?.left_shoulder && postureLandmarks?.right_shoulder) {
+      return Math.round((postureLandmarks.left_shoulder.y - postureLandmarks.right_shoulder.y) * 40)
+    }
+    return 0
+  }, [postureShoulderTiltSignedNorm, postureLandmarks])
   const spineAngle = liveScore == null ? 0 : Math.max(6, Math.round((100 - liveScore) * 0.22 + 8))
-
   const issueCounts = useMemo(() => {
     const total = postureHistory.length
     const chinForward = postureHistory.filter((item) => item.posture_score < 0.7).length
@@ -123,6 +200,7 @@ export function PostureTab({
         : ['seated-side-bend', 'thoracic-extension']
 
   const recommended = EXERCISE_LIBRARY.filter((item) => recommendedIds.includes(item.id)).slice(0, 3)
+  const coachingState = isStarting ? 'starting' : (liveScore ?? 0) < 75 ? 'action' : 'good'
 
   return (
     <>
@@ -225,26 +303,100 @@ export function PostureTab({
               </div>
               <em>{isStarting ? '...' : `${spineAngle}°`}</em>
             </div>
+
+            <div className="posture-diagnostics">
+              <div className="posture-diagnostic">
+                <span>Head offset</span>
+                <strong>
+                  {isStarting
+                    ? '--'
+                    : postureHeadOffsetNorm != null
+                      ? `${
+                          Math.abs(postureHeadOffsetNorm) < 0.05
+                            ? 'Centered'
+                            : postureHeadOffsetNorm > 0
+                              ? 'Right drift'
+                              : 'Left drift'
+                        } · ${postureHeadOffsetNorm > 0 ? '+' : ''}${Math.round(postureHeadOffsetNorm * 100)}%`
+                      : 'No signal'}
+                </strong>
+              </div>
+              <div className="posture-diagnostic">
+                <span>Shoulder tilt</span>
+                <strong>
+                  {isStarting
+                    ? '--'
+                    : postureShoulderTiltSignedNorm != null
+                      ? `${postureShoulderTiltSignedNorm > 0 ? '+' : ''}${Math.round(postureShoulderTiltSignedNorm * 22)}°`
+                      : postureShoulderTiltNorm != null
+                        ? `${Math.round(postureShoulderTiltNorm * 22)}°`
+                      : 'No signal'}
+                </strong>
+              </div>
+              <div className="posture-diagnostic">
+                <span>Tracking confidence</span>
+                <strong>
+                  {isStarting
+                    ? '--'
+                    : postureTrackingConfidence != null
+                      ? `${Math.round(postureTrackingConfidence * 100)}%`
+                      : 'Unknown'}
+                </strong>
+              </div>
+              <div className="posture-diagnostic">
+                <span>Stability</span>
+                <strong>
+                  {postureStabilityStd != null
+                    ? `${(postureStabilityLabel ?? 'learning').replace(/^./, (c) => c.toUpperCase())} · ±${Math.round(
+                        postureStabilityStd * 100,
+                      )}%`
+                    : 'Learning'}
+                </strong>
+              </div>
+            </div>
           </div>
 
-          {!isStarting && (liveScore ?? 0) < 75 ? (
-            <button
-              className="btn-solid posture-cta"
-              onClick={() => onStartExercise(recommended[0]?.id ?? 'chin-tuck')}
-            >
-              {topIssue?.key === 'chin-forward'
-                ? 'Fix chin position'
-                : topIssue?.key === 'rounded-shoulders'
-                  ? 'Open your chest'
-                  : 'Relax shoulders'}
-            </button>
-          ) : !isStarting ? (
-            <p className="posture-all-good">
-              <Check size={16} /> Looking good
-            </p>
-          ) : (
-            <p className="posture-all-good posture-all-good--muted">Starting camera...</p>
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {coachingState === 'action' ? (
+              <motion.button
+                key="coaching-action"
+                className="btn-solid posture-cta"
+                onClick={() => onStartExercise(recommended[0]?.id ?? 'chin-tuck')}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                {topIssue?.key === 'chin-forward'
+                  ? 'Fix chin position'
+                  : topIssue?.key === 'rounded-shoulders'
+                    ? 'Open your chest'
+                    : 'Relax shoulders'}
+              </motion.button>
+            ) : coachingState === 'good' ? (
+              <motion.p
+                key="coaching-good"
+                className="posture-all-good"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Check size={16} /> Looking good
+              </motion.p>
+            ) : (
+              <motion.p
+                key="coaching-starting"
+                className="posture-all-good posture-all-good--muted"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                Starting camera...
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
       </motion.section>
 
@@ -259,7 +411,7 @@ export function PostureTab({
             ))}
           </div>
         </div>
-        {postureChartPoints.length === 0 ? (
+        {postureChartPoints.every((point) => point.value == null) ? (
           <p className="posture-empty">
             <CheckCircle size={16} /> Not enough posture history yet
           </p>

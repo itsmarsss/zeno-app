@@ -15,6 +15,12 @@
   object-fit: cover;
 }
 
+.posture-video.is-mirrored,
+.posture-landmark-svg.is-mirrored {
+  transform: scaleX(-1);
+  transform-origin: center;
+}
+
 .posture-landmark-svg {
   position: absolute;
   inset: 0;

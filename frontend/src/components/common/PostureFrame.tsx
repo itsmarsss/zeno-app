@@ -6,17 +6,20 @@ export function PostureFrame({
   landmarks,
   alt,
   className,
+  mirrored = true,
 }: {
   frame: string | null
   landmarks: PostureLandmarks
   alt: string
   className?: string
+  mirrored?: boolean
 }) {
+  const mediaClass = mirrored ? 'is-mirrored' : ''
   return (
     <div className={className ?? 'posture-preview'}>
-      {frame ? <img src={frame} className="posture-video" alt={alt} /> : null}
+      {frame ? <img src={frame} className={`posture-video ${mediaClass}`.trim()} alt={alt} /> : null}
       {landmarks?.nose && landmarks.left_shoulder && landmarks.right_shoulder ? (
-        <svg className="posture-landmark-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <svg className={`posture-landmark-svg ${mediaClass}`.trim()} viewBox="0 0 100 100" preserveAspectRatio="none">
           <line
             x1={landmarks.left_shoulder.x * 100}
             y1={landmarks.left_shoulder.y * 100}

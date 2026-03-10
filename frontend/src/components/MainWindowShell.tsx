@@ -98,6 +98,12 @@ export function MainWindowShell({
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
   const [postureScoreLive, setPostureScoreLive] = useState<number | null>(null)
+  const [postureTrackingConfidence, setPostureTrackingConfidence] = useState<number | null>(null)
+  const [postureHeadOffsetNorm, setPostureHeadOffsetNorm] = useState<number | null>(null)
+  const [postureShoulderTiltSignedNorm, setPostureShoulderTiltSignedNorm] = useState<number | null>(null)
+  const [postureShoulderTiltNorm, setPostureShoulderTiltNorm] = useState<number | null>(null)
+  const [postureStabilityStd, setPostureStabilityStd] = useState<number | null>(null)
+  const [postureStabilityLabel, setPostureStabilityLabel] = useState<string | null>(null)
   const [postureStreamState, setPostureStreamState] = useState<
     'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   >('stopped')
@@ -929,6 +935,22 @@ export function MainWindowShell({
           setPostureFrame(`data:image/jpeg;base64,${payload.frame_jpeg_b64}`)
           setPostureLandmarks(payload.landmarks ?? null)
           setPostureScoreLive(payload.posture_score)
+          setPostureTrackingConfidence(
+            typeof payload.tracking_confidence === 'number' ? payload.tracking_confidence : null,
+          )
+          setPostureHeadOffsetNorm(typeof payload.head_offset_norm === 'number' ? payload.head_offset_norm : null)
+          setPostureShoulderTiltSignedNorm(
+            typeof payload.shoulder_tilt_signed_norm === 'number' ? payload.shoulder_tilt_signed_norm : null,
+          )
+          setPostureShoulderTiltNorm(
+            typeof payload.shoulder_tilt_norm === 'number' ? payload.shoulder_tilt_norm : null,
+          )
+          setPostureStabilityStd(
+            typeof payload.posture_stability_std === 'number' ? payload.posture_stability_std : null,
+          )
+          setPostureStabilityLabel(
+            typeof payload.posture_stability_label === 'string' ? payload.posture_stability_label : null,
+          )
           setExerciseFeedback(payload.exercise_feedback ?? null)
           setExerciseMetrics(payload.exercise_metrics ?? null)
           setPostureStreamState(payload.landmarks ? 'running' : 'no-pose')
@@ -988,22 +1010,23 @@ export function MainWindowShell({
         <SidebarNav tab={tab} setTab={setTab} />
 
         <OverlayScrollbarsComponent className="main-content" options={overlayScrollbarOptions}>
-          {/* Monitor is always mounted to preserve streaming data */}
-          <div style={{ display: tab === 'monitor' ? 'block' : 'none' }}>
-            <MonitorTab
-              history={history}
-              currentResult={currentResult}
-              focusModeActive={Boolean(settings?.focus_mode_active)}
-              isCheckInRunning={isCheckInRunning}
-              postureFrame={postureFrame}
-              postureLandmarks={postureLandmarks}
-              postureScoreLive={postureScoreLive}
-              onStartFocusMode={() => void updateSettings({ focus_mode_active: true })}
-              onEndFocusMode={() => void updateSettings({ focus_mode_active: false })}
-            />
-          </div>
-
           <AnimatePresence mode="wait" initial={false}>
+            {tab === 'monitor' && (
+              <motion.div key="tab-monitor" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
+                <MonitorTab
+                  history={history}
+                  currentResult={currentResult}
+                  focusModeActive={Boolean(settings?.focus_mode_active)}
+                  isCheckInRunning={isCheckInRunning}
+                  postureFrame={postureFrame}
+                  postureLandmarks={postureLandmarks}
+                  postureScoreLive={postureScoreLive}
+                  onStartFocusMode={() => void updateSettings({ focus_mode_active: true })}
+                  onEndFocusMode={() => void updateSettings({ focus_mode_active: false })}
+                />
+              </motion.div>
+            )}
+
             {tab === 'overview' && (
               <motion.div key="tab-overview" variants={fadeSlide} initial="hidden" animate="visible" exit="exit">
                 <OverviewTab
@@ -1074,6 +1097,12 @@ export function MainWindowShell({
                 <PostureTab
                   postureStreamState={postureStreamState}
                   postureScoreLive={postureScoreLive}
+                  postureTrackingConfidence={postureTrackingConfidence}
+                  postureHeadOffsetNorm={postureHeadOffsetNorm}
+                  postureShoulderTiltSignedNorm={postureShoulderTiltSignedNorm}
+                  postureShoulderTiltNorm={postureShoulderTiltNorm}
+                  postureStabilityStd={postureStabilityStd}
+                  postureStabilityLabel={postureStabilityLabel}
                   postureFrame={postureFrame}
                   postureLandmarks={postureLandmarks}
                   postureStreamError={postureStreamError}
