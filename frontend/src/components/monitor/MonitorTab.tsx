@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, CameraOff, CheckCircle2, User, Waves, Wind } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion'
 import { InteractiveLineChart, type InteractiveLineChartPoint } from '../common/InteractiveLineChart'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import { PostureFrame } from '../common/PostureFrame'
@@ -46,6 +47,47 @@ const WINDOW_FETCH_INTERVAL_MS = 5_000
 
 const FOCUS_LATCH_KEY = 'zeno.monitor.focusLatched'
 const FOCUS_STARTED_AT_KEY = 'zeno.monitor.focusStartedAt'
+
+const monitorContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.02,
+    },
+  },
+}
+
+const monitorItemVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.22,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+}
+
+function FadeSwapText({ value, className }: { value: string; className?: string }) {
+  return (
+    <span className={className}>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={value}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  )
+}
 
 function readStoredBoolean(key: string): boolean | null {
   try {
@@ -245,6 +287,7 @@ export function MonitorTab({
   onStartFocusMode: () => void
   onEndFocusMode: () => void
 }) {
+  const sectionControls = useAnimationControls()
   const [now, setNow] = useState(() => Date.now())
   const [passiveStartedAt, setPassiveStartedAt] = useState<number | null>(() =>
     monitorRuntimeCache.passiveStartedAt != null && Number.isFinite(monitorRuntimeCache.passiveStartedAt)
@@ -302,6 +345,14 @@ export function MonitorTab({
       window.clearTimeout(settleTimer)
     }
   }, [monitorMode])
+
+  useEffect(() => {
+    sectionControls.set('hidden')
+    const raf = window.requestAnimationFrame(() => {
+      void sectionControls.start('visible')
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [monitorMode, sectionControls])
 
   useEffect(() => {
     const previous = cameraModeRef.current
@@ -496,6 +547,7 @@ export function MonitorTab({
   const hrDelta = hrValue == null ? null : hrValue - restingHr
   const rrDelta = rrValue > 0 ? rrValue - restingRr : null
   const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
+  const postureStatus = postureLabel(displayResult)
 
   const stressChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.stress), [cardPoints])
   const hrChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.heartRate), [cardPoints])
@@ -539,8 +591,13 @@ export function MonitorTab({
   }
 
   return (
-    <section className={`monitor-tab monitor-tab--phase-${transitionPhase}`}>
-      <div className={`monitor-banner monitor-banner--${monitorMode}`}>
+    <motion.section
+      className={`monitor-tab monitor-tab--phase-${transitionPhase}`}
+      variants={monitorContainerVariants}
+      initial={false}
+      animate={sectionControls}
+    >
+      <motion.div className={`monitor-banner monitor-banner--${monitorMode}`} variants={monitorItemVariants}>
         <div className="monitor-banner-left">
           <span className={`monitor-pulse monitor-pulse--${monitorMode}`} />
           {monitorMode === 'idle' && (
@@ -596,12 +653,13 @@ export function MonitorTab({
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
 
-      <div className="monitor-body">
-        <div className="monitor-top">
-          <div
+      <motion.div className="monitor-body" variants={monitorItemVariants}>
+        <motion.div className="monitor-top" variants={monitorItemVariants}>
+          <motion.div
             className={`monitor-camera-shell monitor-camera-shell--${monitorMode} ${cameraStageActive ? 'is-stage-active' : ''}`}
+            variants={monitorItemVariants}
           >
             {!showLiveCamera ? (
               <div className="monitor-camera-idle">
@@ -632,21 +690,21 @@ export function MonitorTab({
                 {monitorMode === 'focus' && (
                   <div className="monitor-camera-overlay">
                     <div className="monitor-camera-status">
-                      {postureLabel(displayResult) === 'Good alignment' ? (
+                      {postureStatus === 'Good alignment' ? (
                         <CheckCircle2 size={14} />
                       ) : (
                         <AlertCircle size={14} />
                       )}
-                      <span>{postureLabel(displayResult)}</span>
+                      <FadeSwapText value={postureStatus} className="monitor-fade-swap" />
                     </div>
                     <span className="monitor-camera-score">{postureValue} / 100</span>
                   </div>
                 )}
               </div>
             )}
-          </div>
+          </motion.div>
 
-          <div className={`monitor-vitals ${cardsStageActive ? 'is-stage-active' : ''}`}>
+          <motion.div className={`monitor-vitals ${cardsStageActive ? 'is-stage-active' : ''}`} variants={monitorItemVariants}>
             <article className="monitor-vital">
               <span className="monitor-vital-label">Stress</span>
               <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
@@ -701,12 +759,15 @@ export function MonitorTab({
               <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
                 {displayResult ? postureValue : '--'}
               </strong>
-              <em>{postureLabel(displayResult)}</em>
+              <FadeSwapText value={postureStatus} className="monitor-fade-swap monitor-fade-swap--em" />
             </article>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        <div className={`monitor-signals monitor-signals--${monitorMode} ${cardsStageActive ? 'is-stage-active' : ''}`}>
+        <motion.div
+          className={`monitor-signals monitor-signals--${monitorMode} ${cardsStageActive ? 'is-stage-active' : ''}`}
+          variants={monitorItemVariants}
+        >
           <article className="monitor-card monitor-card--stress">
             <header>
               <div className="monitor-card-title">
@@ -943,7 +1004,7 @@ export function MonitorTab({
               <em>/ 100</em>
             </div>
             <div className="monitor-card-sub">
-              <span>{postureLabel(displayResult)}</span>
+              <FadeSwapText value={postureStatus} className="monitor-fade-swap" />
               {monitorMode === 'focus' && (
                 <span className={`monitor-delta monitor-delta--${deltaTone(postureDelta)}`}>
                   {formatDelta(postureDelta) ? `${formatDelta(postureDelta)} from baseline` : 'at baseline'}
@@ -974,10 +1035,10 @@ export function MonitorTab({
               </div>
             )}
           </article>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      <div className="monitor-timeline">
+      <motion.div className="monitor-timeline" variants={monitorItemVariants}>
         <header>
           <span>Session timeline</span>
           <em>
@@ -1086,7 +1147,7 @@ export function MonitorTab({
             />
           </div>
         )}
-      </div>
-    </section>
+      </motion.div>
+    </motion.section>
   )
 }
