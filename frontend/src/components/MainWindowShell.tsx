@@ -16,6 +16,7 @@ import { stressIndexFromHistory } from '../shared/metrics'
 import type {
   CalibrationStatus,
   DailyReport,
+  OverviewAggregates,
   PostureLandmarks,
   PostureStreamFrame,
   SessionHistoryItem,
@@ -58,6 +59,13 @@ type MonitorTimelinePoint = {
   emotion_score?: number | null
   stress_index?: number | null
   presence_detected?: number | null
+}
+
+type SessionDayIndexResponse = {
+  days?: Array<{ date: string; sessions: number }>
+  min_date?: string | null
+  max_date?: string | null
+  total_days?: number
 }
 
 function isTauriRuntime(): boolean {
@@ -114,6 +122,9 @@ export function MainWindowShell({
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
   const [overviewTimelinePoints, setOverviewTimelinePoints] = useState<MonitorTimelinePoint[]>([])
+  const [overviewAggregates, setOverviewAggregates] = useState<OverviewAggregates | null>(null)
+  const [overviewDaySessions, setOverviewDaySessions] = useState<SessionHistoryItem[]>([])
+  const [sessionDayIndex, setSessionDayIndex] = useState<SessionDayIndexResponse | null>(null)
   const [overviewDate, setOverviewDate] = useState<Date>(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -140,45 +151,24 @@ export function MainWindowShell({
   todayDate.setHours(0, 0, 0, 0)
   const todayKey = localDateKey(now)
   const overviewKey = localDateKey(overviewDate)
+  const historyRevision = `${history.length}:${history[0]?.id ?? 0}:${history[history.length - 1]?.id ?? 0}`
 
   const sessionsSortedAsc = [...history].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   )
   const todaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === todayKey)
-  const overviewSessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === overviewKey)
-  const previousOverviewDate = new Date(overviewDate)
-  previousOverviewDate.setDate(previousOverviewDate.getDate() - 1)
-  const previousOverviewKey = localDateKey(previousOverviewDate)
-  const yesterdaySessions = sessionsSortedAsc.filter(
-    (item) => localDateKey(new Date(item.created_at)) === previousOverviewKey,
+  const overviewSessions = [...overviewDaySessions].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   )
 
   const focusSessions = history.filter((item) => Boolean(item.focus_mode))
-  const todayStressValues = overviewSessions.map((item) => stressIndexFromHistory(item))
-  const yesterdayStressValues = yesterdaySessions.map((item) => stressIndexFromHistory(item))
-  const avgStressToday = Math.round(mean(todayStressValues))
-  const avgStressYesterday = Math.round(mean(yesterdayStressValues))
-  const stressDeltaVsYesterday = avgStressToday - avgStressYesterday
-
-  const todayFocusedSeconds = overviewSessions
-    .filter((item) => Boolean(item.focus_mode))
-    .reduce((sum, item) => sum + item.session_duration_seconds, 0)
-  const todayFocusedMinutes = Math.round(todayFocusedSeconds / 60)
-  const todayBreakCount = overviewSessions.filter((item) => !item.focus_mode).length
-  const todayHeartRates = overviewSessions
-    .map((item) => item.heart_rate_bpm)
-    .filter((value): value is number => value != null)
-  const avgHrToday = Math.round(mean(todayHeartRates))
-  const todayRespRates = overviewSessions
-    .filter((item) => item.mode === 'focus' && item.rr_confidence !== 'none' && item.respiratory_rate > 0)
-    .map((item) => item.respiratory_rate)
-  const avgRrToday = todayRespRates.length ? Math.round(mean(todayRespRates) * 10) / 10 : null
-
-  const baselineHrPool = history
-    .filter((item) => localDateKey(new Date(item.created_at)) !== overviewKey)
-    .map((item) => item.heart_rate_bpm)
-    .filter((value): value is number => value != null)
-  const hrDeltaBaseline = avgHrToday - Math.round(mean(baselineHrPool))
+  const avgStressToday = overviewAggregates?.average_stress_index ?? 0
+  const stressDeltaVsYesterday = overviewAggregates?.stress_delta_vs_yesterday ?? 0
+  const todayFocusedMinutes = overviewAggregates?.focused_minutes ?? 0
+  const todayBreakCount = overviewAggregates?.break_count ?? 0
+  const avgHrToday = overviewAggregates?.average_heart_rate ?? 0
+  const avgRrToday = overviewAggregates?.average_respiratory_rate ?? null
+  const hrDeltaBaseline = overviewAggregates?.hr_delta_baseline ?? null
 
   const heroHeadline = generateHeadline(avgStressToday, todayFocusedMinutes, stressDeltaVsYesterday)
   const heroSubline = `Average stress ${avgStressToday || 0} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
@@ -281,6 +271,13 @@ export function MainWindowShell({
   const insights = buildInsights(history, overviewSessions)
 
   const minOverviewDate = useMemo(() => {
+    if (sessionDayIndex?.min_date) {
+      const fromIndex = new Date(`${sessionDayIndex.min_date}T00:00:00`)
+      if (!Number.isNaN(fromIndex.getTime())) {
+        fromIndex.setHours(0, 0, 0, 0)
+        return fromIndex
+      }
+    }
     if (!sessionsSortedAsc.length) {
       const fallback = new Date(todayDate)
       fallback.setDate(fallback.getDate() - 30)
@@ -289,7 +286,7 @@ export function MainWindowShell({
     const earliest = new Date(sessionsSortedAsc[0].created_at)
     earliest.setHours(0, 0, 0, 0)
     return earliest
-  }, [sessionsSortedAsc, todayDate])
+  }, [sessionDayIndex?.min_date, sessionsSortedAsc, todayDate])
 
   function shiftOverviewDay(delta: number) {
     setOverviewDate((prev) => {
@@ -299,6 +296,22 @@ export function MainWindowShell({
       if (next > todayDate) return new Date(todayDate)
       return next
     })
+  }
+
+  function setOverviewDayFromIso(isoDate: string) {
+    if (!isoDate) return
+    const parsed = new Date(`${isoDate}T00:00:00`)
+    if (Number.isNaN(parsed.getTime())) return
+    parsed.setHours(0, 0, 0, 0)
+    if (parsed < minOverviewDate) {
+      setOverviewDate(new Date(minOverviewDate))
+      return
+    }
+    if (parsed > todayDate) {
+      setOverviewDate(new Date(todayDate))
+      return
+    }
+    setOverviewDate(parsed)
   }
 
   const canShiftOverviewPrev = overviewDate > minOverviewDate
@@ -344,39 +357,91 @@ export function MainWindowShell({
     }
   }, [overviewDate, timelineBucketMinutes])
 
-  const sevenDayDays: string[] = []
-  for (let offset = 6; offset >= 0; offset -= 1) {
-    const d = new Date()
-    d.setDate(d.getDate() - offset)
-    sevenDayDays.push(localDateKey(d))
-  }
+  useEffect(() => {
+    let cancelled = false
 
-  const dayBuckets = new Map<string, SessionHistoryItem[]>()
-  sevenDayDays.forEach((key) => dayBuckets.set(key, []))
-  history.forEach((item) => {
-    const key = localDateKey(new Date(item.created_at))
-    dayBuckets.get(key)?.push(item)
-  })
+    async function fetchOverviewAggregates() {
+      if (!isTauriRuntime()) {
+        setOverviewAggregates(null)
+        return
+      }
+      try {
+        const response = await invoke<OverviewAggregates>('run_overview_aggregates', {
+          dateIso: overviewKey,
+        })
+        if (cancelled) return
+        setOverviewAggregates(response ?? null)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch overview aggregates:', err)
+        setOverviewAggregates(null)
+      }
+    }
+
+    void fetchOverviewAggregates()
+    return () => {
+      cancelled = true
+    }
+  }, [historyRevision, overviewKey])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchSessionDayIndex() {
+      if (!isTauriRuntime()) {
+        setSessionDayIndex(null)
+        return
+      }
+      try {
+        const response = await invoke<SessionDayIndexResponse>('run_session_days')
+        if (cancelled) return
+        setSessionDayIndex(response ?? null)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch session day index:', err)
+        setSessionDayIndex(null)
+      }
+    }
+
+    void fetchSessionDayIndex()
+    return () => {
+      cancelled = true
+    }
+  }, [historyRevision])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOverviewDaySessions() {
+      if (!isTauriRuntime()) {
+        setOverviewDaySessions([])
+        return
+      }
+      try {
+        const response = await invoke<{ items?: SessionHistoryItem[] }>('run_session_history', {
+          startDate: overviewKey,
+          endDate: overviewKey,
+        })
+        if (cancelled) return
+        setOverviewDaySessions(Array.isArray(response?.items) ? response.items : [])
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch overview day sessions:', err)
+        setOverviewDaySessions([])
+      }
+    }
+
+    void fetchOverviewDaySessions()
+    return () => {
+      cancelled = true
+    }
+  }, [overviewKey, historyRevision])
 
   const secondaryMetricSeries = {
-    peakStress: sevenDayDays.map((key) => {
-      const items = dayBuckets.get(key) ?? []
-      return items.length ? Math.max(...items.map((item) => stressIndexFromHistory(item))) : 0
-    }),
-    avgFocusSession: sevenDayDays.map((key) => {
-      const focus = (dayBuckets.get(key) ?? []).filter((item) => Boolean(item.focus_mode))
-      if (!focus.length) return 0
-      return Math.round(mean(focus.map((item) => item.session_duration_seconds / 60)))
-    }),
-    postureAvg: sevenDayDays.map((key) => {
-      const items = dayBuckets.get(key) ?? []
-      if (!items.length) return 0
-      return Math.round(mean(items.map((item) => item.posture_score * 100)))
-    }),
-    breakMinutes: sevenDayDays.map((key) => {
-      const passive = (dayBuckets.get(key) ?? []).filter((item) => !item.focus_mode)
-      return Math.round(passive.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
-    }),
+    peakStress: overviewAggregates?.secondary_metric_series?.peak_stress ?? [0, 0, 0, 0, 0, 0, 0],
+    avgFocusSession: overviewAggregates?.secondary_metric_series?.avg_focus_session ?? [0, 0, 0, 0, 0, 0, 0],
+    postureAvg: overviewAggregates?.secondary_metric_series?.posture_avg ?? [0, 0, 0, 0, 0, 0, 0],
+    breakMinutes: overviewAggregates?.secondary_metric_series?.break_minutes ?? [0, 0, 0, 0, 0, 0, 0],
   }
 
   const periodStart = useMemo(() => startDateForPeriod(focusPeriod), [focusPeriod])
@@ -1041,6 +1106,10 @@ export function MainWindowShell({
                   setTimelineBucketMinutes={handleTimelineBucketMinutesChange}
                   timelineStartLabel={timelineStartLabel}
                   onShiftOverviewDay={shiftOverviewDay}
+                  onSetOverviewDay={setOverviewDayFromIso}
+                  selectedDayIso={overviewKey}
+                  minDayIso={localDateKey(minOverviewDate)}
+                  maxDayIso={todayKey}
                   canShiftOverviewPrev={canShiftOverviewPrev}
                   canShiftOverviewNext={canShiftOverviewNext}
                   insights={insights}

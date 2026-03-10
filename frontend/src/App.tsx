@@ -460,7 +460,7 @@ function App() {
 
   const loadHistory = useCallback(async () => {
     try {
-      const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history', { limit: 20 })
+      const payload = await invoke<{ items: SessionHistoryItem[] }>('run_session_history')
       const items = payload.items ?? []
       setHistory(items)
       if (items.length > 0) {

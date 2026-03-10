@@ -3,8 +3,9 @@ use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
     run_export_sessions_csv_blocking, run_log_break_session_blocking,
     run_log_breathing_session_blocking, run_log_exercise_session_blocking,
-    run_monitor_timeline_blocking, run_presence_check_blocking, run_python_session_blocking,
-    run_session_history_blocking, run_settings_blocking, run_update_session_notification_blocking,
+    run_monitor_timeline_blocking, run_overview_aggregates_blocking, run_presence_check_blocking,
+    run_python_session_blocking, run_session_days_blocking, run_session_history_blocking, run_settings_blocking,
+    run_update_session_notification_blocking,
 };
 use crate::state::{
     FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
@@ -88,10 +89,23 @@ pub async fn run_python_session(
 }
 
 #[tauri::command]
-pub async fn run_session_history(limit: Option<u32>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_session_history_blocking(limit))
+pub async fn run_session_history(
+    limit: Option<u32>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_session_history_blocking(limit, start_date, end_date)
+    })
         .await
         .map_err(|e| format!("History task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_session_days() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_session_days_blocking)
+        .await
+        .map_err(|e| format!("Session days task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -99,6 +113,13 @@ pub async fn run_daily_report(date_iso: Option<String>) -> Result<Value, String>
     tauri::async_runtime::spawn_blocking(move || run_daily_report_blocking(date_iso))
         .await
         .map_err(|e| format!("Report task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_overview_aggregates(date_iso: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_overview_aggregates_blocking(date_iso))
+        .await
+        .map_err(|e| format!("Overview aggregates task join error: {e}"))?
 }
 
 #[tauri::command]

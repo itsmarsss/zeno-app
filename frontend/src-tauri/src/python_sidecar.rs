@@ -180,7 +180,11 @@ pub fn run_gesture_dismiss_blocking(max_seconds: u32) -> Result<bool, String> {
         .unwrap_or(false))
 }
 
-pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String> {
+pub fn run_session_history_blocking(
+    limit: Option<u32>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
     let backend_dir = resolve_backend_dir(&root)?;
@@ -188,9 +192,16 @@ pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String>
     let mut cmd = Command::new(python_bin);
     cmd.current_dir(&backend_dir)
         .arg("-m")
-        .arg("zeno_backend.data.session_history")
-        .arg("--limit")
-        .arg(limit.unwrap_or(20).clamp(1, 100).to_string());
+        .arg("zeno_backend.data.session_history");
+    if let Some(value) = limit {
+        cmd.arg("--limit").arg(value.max(1).to_string());
+    }
+    if let Some(value) = start_date {
+        cmd.arg("--start-date").arg(value);
+    }
+    if let Some(value) = end_date {
+        cmd.arg("--end-date").arg(value);
+    }
 
     let output = cmd
         .output()
@@ -201,6 +212,33 @@ pub fn run_session_history_blocking(limit: Option<u32>) -> Result<Value, String>
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         return Err(format!(
             "Session history failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_session_days_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let output = Command::new(python_bin)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.session_days")
+        .output()
+        .map_err(|e| format!("Failed to read session days: {e}"))?;
+    debug_log_python_output("session_days", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Session days failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
             output.status.code(),
             stdout,
             stderr
@@ -233,6 +271,38 @@ pub fn run_daily_report_blocking(date_iso: Option<String>) -> Result<Value, Stri
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         return Err(format!(
             "Daily report failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_overview_aggregates_blocking(date_iso: Option<String>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.overview_aggregates");
+    if let Some(date) = date_iso {
+        cmd.arg("--date").arg(date);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run overview aggregates: {e}"))?;
+    debug_log_python_output("overview_aggregates", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Overview aggregates failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
             output.status.code(),
             stdout,
             stderr

@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react'
-import { Activity, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
+import { Activity, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
@@ -278,6 +278,10 @@ export function OverviewTab({
   setTimelineBucketMinutes,
   timelineStartLabel,
   onShiftOverviewDay,
+  onSetOverviewDay,
+  selectedDayIso,
+  minDayIso,
+  maxDayIso,
   canShiftOverviewPrev,
   canShiftOverviewNext,
   insights,
@@ -294,7 +298,7 @@ export function OverviewTab({
   todayFocusedMinutes: number
   avgHrToday: number
   avgRrToday: number | null
-  hrDeltaBaseline: number
+  hrDeltaBaseline: number | null
   todayBreakCount: number
   todaySessions: SessionHistoryItem[]
   timelineData: TimelinePoint[]
@@ -302,6 +306,10 @@ export function OverviewTab({
   setTimelineBucketMinutes: (value: number) => void
   timelineStartLabel: string
   onShiftOverviewDay: (delta: number) => void
+  onSetOverviewDay: (isoDate: string) => void
+  selectedDayIso: string
+  minDayIso: string
+  maxDayIso: string
   canShiftOverviewPrev: boolean
   canShiftOverviewNext: boolean
   insights: InsightCard[]
@@ -310,6 +318,7 @@ export function OverviewTab({
   onViewFocusHistory: () => void
 }) {
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday)}`
+  const hasHrBaseline = typeof hrDeltaBaseline === 'number' && Number.isFinite(hrDeltaBaseline)
 
   const timelinePoints = useMemo(
     () =>
@@ -338,6 +347,16 @@ export function OverviewTab({
               {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}
             </p>
             <div className="hero-day-nav">
+              <label className="hero-date-picker" aria-label="Pick day">
+                <CalendarDays size={13} />
+                <input
+                  type="date"
+                  value={selectedDayIso}
+                  min={minDayIso}
+                  max={maxDayIso}
+                  onChange={(event) => onSetOverviewDay(event.target.value)}
+                />
+              </label>
               <button
                 className="hero-nav-btn"
                 onClick={() => onShiftOverviewDay(-1)}
@@ -385,8 +404,8 @@ export function OverviewTab({
             {avgHrToday || '--'} <span>bpm</span>
           </p>
           <p className="narrative-label">Avg Heart / Respiratory</p>
-          <p className={`narrative-context ${hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
-            {Number.isFinite(hrDeltaBaseline)
+          <p className={`narrative-context ${!hasHrBaseline || hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
+            {hasHrBaseline
               ? `${Math.abs(hrDeltaBaseline)} ${hrDeltaBaseline <= 0 ? 'below' : 'above'} baseline · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`
               : `Baseline pending · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`}
           </p>

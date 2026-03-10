@@ -65,6 +65,25 @@ export type DailyReport = {
   recommendation: string
 }
 
+export type OverviewAggregates = {
+  date: string
+  sessions: number
+  average_stress_index: number
+  previous_average_stress_index: number
+  stress_delta_vs_yesterday: number
+  focused_minutes: number
+  break_count: number
+  average_heart_rate: number
+  average_respiratory_rate: number | null
+  hr_delta_baseline: number | null
+  secondary_metric_series: {
+    peak_stress: number[]
+    avg_focus_session: number[]
+    posture_avg: number[]
+    break_minutes: number[]
+  }
+}
+
 export type CalibrationStatus = {
   calibrated: boolean
   baseline_sessions_required: number
