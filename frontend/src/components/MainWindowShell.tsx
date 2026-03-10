@@ -45,6 +45,24 @@ const HEATMAP_START = 8
 const HEATMAP_END = 19
 const PATTERN_MIN_SESSIONS = 10
 
+type MonitorTimelinePoint = {
+  created_at: string
+  posture_score: number | null
+  heart_rate_bpm: number | null
+  respiratory_rate: number | null
+  rr_confidence: 'none' | 'partial' | 'full'
+  point_type?: 'passive' | 'focus' | 'filled' | 'unknown'
+  mode?: string | null
+  emotion_backend?: string | null
+  dominant_emotion?: string | null
+  emotion_score?: number | null
+  presence_detected?: number | null
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+}
+
 export function MainWindowShell({
   history,
   dailyReport,
@@ -88,6 +106,7 @@ export function MainWindowShell({
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
+  const [overviewTimelinePoints, setOverviewTimelinePoints] = useState<MonitorTimelinePoint[]>([])
   const [overviewDate, setOverviewDate] = useState<Date>(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -158,6 +177,29 @@ export function MainWindowShell({
   const heroSubline = `Average stress ${avgStressToday || 0} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
   const heroTrendTone = trendTone(stressDeltaVsYesterday)
 
+  const timelineStart = new Date(overviewDate)
+  timelineStart.setHours(HOUR_START, 0, 0, 0)
+  const timelineEnd = new Date(overviewDate)
+  timelineEnd.setHours(HOUR_END, 59, 59, 999)
+  const nowMs = now.getTime()
+  const fallbackTimelinePoints = useMemo(() => {
+    return overviewSessions.map((item) => ({
+      created_at: item.created_at,
+      posture_score: item.posture_score,
+      heart_rate_bpm: item.heart_rate_bpm,
+      respiratory_rate: item.respiratory_rate,
+      rr_confidence: item.rr_confidence,
+      point_type: item.mode === 'focus' ? 'focus' : item.mode === 'passive' ? 'passive' : 'unknown',
+      mode: item.mode,
+      emotion_backend: item.emotion_backend,
+      dominant_emotion: item.dominant_emotion,
+      emotion_score: item.emotion_score,
+      presence_detected: item.presence_detected,
+    }))
+  }, [overviewSessions])
+
+  const timelineSourcePoints = overviewTimelinePoints.length > 0 ? overviewTimelinePoints : fallbackTimelinePoints
+
   const timelineData: Array<{
     slotStartIso: string
     slotEndIso: string
@@ -171,11 +213,6 @@ export function MainWindowShell({
     breathing: boolean
     pointType: 'passive' | 'focus' | 'filled' | 'unknown'
   }> = []
-  const timelineStart = new Date(overviewDate)
-  timelineStart.setHours(HOUR_START, 0, 0, 0)
-  const timelineEnd = new Date(overviewDate)
-  timelineEnd.setHours(HOUR_END, 59, 59, 999)
-  const nowMs = now.getTime()
   for (
     let slot = new Date(timelineStart);
     slot <= timelineEnd;
@@ -184,86 +221,59 @@ export function MainWindowShell({
     const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
     const slotStartMs = slot.getTime()
     const isFutureSlot = overviewKey === todayKey && slotStartMs > nowMs
-    const slice = overviewSessions.filter((item) => {
+    const slice = timelineSourcePoints.filter((item) => {
       const at = new Date(item.created_at)
       return at >= slot && at < slotEnd
     })
-    const overlapSlice = overviewSessions.filter((item) => {
-      const start = new Date(item.created_at)
-      const end = new Date(start.getTime() + item.session_duration_seconds * 1000)
-      return start < slotEnd && end > slot
-    })
-    const stressAvg = slice.length ? mean(slice.map((item) => stressIndexFromHistory(item))) : null
-    const hrAvg = mean(slice.map((item) => item.heart_rate_bpm).filter((value): value is number => value != null))
-    const rrValues = slice.filter((item) => item.respiratory_rate > 0)
-    const rrAvg = rrValues.length ? mean(rrValues.map((item) => item.respiratory_rate)) : null
-    const rrConfidence =
-      rrValues.length === 0
-        ? 'none'
-        : rrValues.some((item) => item.rr_confidence === 'full')
-          ? 'full'
-          : rrValues.some((item) => item.rr_confidence === 'partial')
-            ? 'partial'
-            : 'none'
-    const postureValues = slice.map((item) => item.posture_score).filter((value) => value > 0)
-    const postureAvg = postureValues.length ? mean(postureValues) : null
+    // Preserve backend step semantics: take the latest point in this bucket.
+    const latestPoint = slice.length > 0 ? slice[slice.length - 1] : null
+    let stressValue: number | null = null
+    if (
+      latestPoint &&
+      latestPoint.dominant_emotion &&
+      typeof latestPoint.emotion_score === 'number' &&
+      latestPoint.presence_detected != null
+    ) {
+      stressValue = stressIndexFromHistory(latestPoint as SessionHistoryItem)
+    }
+    const heartRateValue =
+      latestPoint && typeof latestPoint.heart_rate_bpm === 'number' && latestPoint.heart_rate_bpm > 0
+        ? latestPoint.heart_rate_bpm
+        : null
+    const respiratoryValue =
+      latestPoint && typeof latestPoint.respiratory_rate === 'number' && latestPoint.respiratory_rate > 0
+        ? latestPoint.respiratory_rate
+        : null
+    const rrConfidence = latestPoint?.rr_confidence ?? 'none'
+    const postureValue =
+      latestPoint && typeof latestPoint.posture_score === 'number' && latestPoint.posture_score > 0
+        ? latestPoint.posture_score
+        : null
+    const pointType: 'passive' | 'focus' | 'filled' | 'unknown' = isFutureSlot
+      ? 'unknown'
+      : latestPoint?.point_type === 'focus'
+        ? 'focus'
+        : latestPoint?.point_type === 'passive'
+          ? 'passive'
+          : latestPoint?.point_type === 'filled'
+            ? 'filled'
+            : 'unknown'
+
     timelineData.push({
       slotStartIso: slot.toISOString(),
       slotEndIso: slotEnd.toISOString(),
       label: slot.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      stress: isFutureSlot ? null : stressAvg == null ? null : Math.round(stressAvg),
-      heartRate: isFutureSlot ? null : Number.isFinite(hrAvg) && hrAvg > 0 ? Math.round(hrAvg) : null,
-      respiratoryRate: isFutureSlot ? null : rrAvg != null && Number.isFinite(rrAvg) && rrAvg > 0 ? Math.round(rrAvg) : null,
+      stress: isFutureSlot ? null : stressValue == null ? null : Math.round(stressValue),
+      heartRate: isFutureSlot ? null : heartRateValue == null ? null : Math.round(heartRateValue),
+      respiratoryRate: isFutureSlot ? null : respiratoryValue == null ? null : Math.round(respiratoryValue),
       rrConfidence: rrConfidence as 'none' | 'partial' | 'full',
-      postureScore: isFutureSlot ? null : postureAvg != null ? Math.round(postureAvg * 100) : null,
-      focusActive: isFutureSlot ? false : overlapSlice.some((item) => Boolean(item.focus_mode)),
-      breathing: isFutureSlot ? false : overlapSlice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
-      pointType: isFutureSlot
-        ? 'unknown'
-        : overlapSlice.some((item) => Boolean(item.focus_mode))
-          ? 'focus'
-          : overlapSlice.length > 0
-            ? 'passive'
-            : 'unknown',
+      postureScore: isFutureSlot ? null : postureValue != null ? Math.round(postureValue * 100) : null,
+      focusActive: isFutureSlot ? false : latestPoint?.point_type === 'focus',
+      breathing: isFutureSlot
+        ? false
+        : (latestPoint?.emotion_backend ?? '').toLowerCase().includes('breath'),
+      pointType,
     })
-  }
-
-  const copyPointValues = (target: (typeof timelineData)[number], source: (typeof timelineData)[number]) => {
-    target.stress = source.stress
-    target.heartRate = source.heartRate
-    target.respiratoryRate = source.respiratoryRate
-    target.rrConfidence = source.rrConfidence
-    target.postureScore = source.postureScore
-    target.focusActive = source.focusActive
-    target.breathing = source.breathing
-    target.pointType = 'filled'
-  }
-
-  // Gap-fill timeline buckets so slots without direct samples still show continuity.
-  const firstMeasured = timelineData.find((point) => point.pointType === 'focus' || point.pointType === 'passive')
-  if (firstMeasured) {
-    let lastKnown: (typeof timelineData)[number] | null = null
-
-    for (const point of timelineData) {
-      const pointStartMs = new Date(point.slotStartIso).getTime()
-      const isFutureSlot = overviewKey === todayKey && pointStartMs > nowMs
-      if (isFutureSlot) continue
-      if (point.pointType === 'focus' || point.pointType === 'passive') {
-        lastKnown = point
-        continue
-      }
-      if (lastKnown) {
-        copyPointValues(point, lastKnown)
-      }
-    }
-
-    for (const point of timelineData) {
-      const pointStartMs = new Date(point.slotStartIso).getTime()
-      const isFutureSlot = overviewKey === todayKey && pointStartMs > nowMs
-      if (isFutureSlot) continue
-      if (point.pointType !== 'unknown') break
-      copyPointValues(point, firstMeasured)
-    }
   }
 
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
@@ -295,8 +305,44 @@ export function MainWindowShell({
   const canShiftOverviewNext = overviewDate < todayDate
 
   function handleTimelineBucketMinutesChange(value: number) {
-    setTimelineBucketMinutes(value)
+    const allowed = new Set([15, 30, 60, 180])
+    setTimelineBucketMinutes(allowed.has(value) ? value : DEFAULT_TIMELINE_BUCKET_MINUTES)
   }
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOverviewTimeline() {
+      if (!isTauriRuntime()) {
+        setOverviewTimelinePoints([])
+        return
+      }
+      try {
+        const start = new Date(overviewDate)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(overviewDate)
+        end.setHours(23, 59, 59, 999)
+        const response = await invoke<{ points?: MonitorTimelinePoint[] }>('run_monitor_timeline', {
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          resolution: timelineBucketMinutes <= 15 ? 'medium' : 'coarse',
+          fillFromPrevious: false,
+        })
+        if (cancelled) return
+        const points = Array.isArray(response?.points) ? response.points : []
+        setOverviewTimelinePoints(points)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch overview timeline:', err)
+        setOverviewTimelinePoints([])
+      }
+    }
+
+    void fetchOverviewTimeline()
+    return () => {
+      cancelled = true
+    }
+  }, [overviewDate, timelineBucketMinutes])
 
   const sevenDayDays: string[] = []
   for (let offset = 6; offset >= 0; offset -= 1) {

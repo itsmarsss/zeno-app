@@ -22,14 +22,6 @@ type FocusPoint = {
   pointType: 'passive' | 'focus' | 'filled' | 'unknown'
 }
 
-type PassiveAnchorSnapshot = {
-  stress: number | null
-  heartRate: number | null
-  respiratoryRate: number | null
-  postureScore: number | null
-  rrConfidence: 'none' | 'partial' | 'full'
-}
-
 type MonitorTimelineResponse = {
   points?: Array<{
     created_at: string
@@ -232,38 +224,6 @@ function sameTimelineShape(a: FocusPoint[], b: FocusPoint[]): boolean {
   return true
 }
 
-function smoothAnchoredValues(
-  values: Array<number | null>,
-  anchors: Map<number, number | null>,
-  neighborWeight = 0.35,
-): Array<number | null> {
-  const next = [...values]
-  const anchoredIndexes = new Set(Array.from(anchors.keys()))
-
-  for (const [index, anchorValue] of anchors.entries()) {
-    if (anchorValue == null || Number.isNaN(anchorValue)) continue
-    next[index] = anchorValue
-
-    const prevIndex = index - 1
-    if (prevIndex >= 0 && !anchoredIndexes.has(prevIndex)) {
-      const prev = values[prevIndex]
-      if (prev != null && !Number.isNaN(prev)) {
-        next[prevIndex] = prev + (anchorValue - prev) * neighborWeight
-      }
-    }
-
-    const nextIndex = index + 1
-    if (nextIndex < values.length && !anchoredIndexes.has(nextIndex)) {
-      const value = values[nextIndex]
-      if (value != null && !Number.isNaN(value)) {
-        next[nextIndex] = value + (anchorValue - value) * neighborWeight
-      }
-    }
-  }
-
-  return next
-}
-
 export function MonitorTab({
   history,
   currentResult,
@@ -449,7 +409,8 @@ export function MonitorTab({
       const response = await invoke<MonitorTimelineResponse>('run_monitor_timeline', {
         startTime,
         endTime,
-        intervalSeconds: 5,
+        resolution: 'fine',
+        fillFromPrevious: true,
       })
       const next = mapTimelineResponseToPoints(response)
       setWindowTimelinePoints((prev) => (sameTimelineShape(prev, next) ? prev : next))
@@ -545,142 +506,6 @@ export function MonitorTab({
   const timelineHrValues = useMemo(() => timelinePoints.map((p) => p.heartRate), [timelinePoints])
   const timelineRrValues = useMemo(() => timelinePoints.map((p) => p.respiratoryRate), [timelinePoints])
   const timelinePostureValues = useMemo(() => timelinePoints.map((p) => p.postureScore), [timelinePoints])
-
-  const passiveSnapshotPointsInWindow = useMemo(() => {
-    if (timelinePoints.length === 0) return [] as Array<{ ts: number; snapshot: PassiveAnchorSnapshot }>
-    const startAt = timelinePoints[0]?.at ?? 0
-    const endAt = timelinePoints[timelinePoints.length - 1]?.at ?? 0
-    return history
-      .filter((item) => item.mode === 'passive')
-      .map((item) => {
-        const ts = new Date(item.created_at).getTime()
-        const session = sessionFromHistory(item)
-        return {
-          ts,
-          snapshot: {
-            stress: stressIndex(session),
-            heartRate: item.heart_rate_bpm,
-            respiratoryRate: item.respiratory_rate > 0 ? item.respiratory_rate : null,
-            postureScore: Math.round(item.posture_score * 100),
-            rrConfidence: item.rr_confidence,
-          } as PassiveAnchorSnapshot,
-        }
-      })
-      .filter((entry) => Number.isFinite(entry.ts) && entry.ts >= startAt && entry.ts <= endAt)
-      .sort((a, b) => a.ts - b.ts)
-  }, [history, timelinePoints])
-
-  const passiveAnchorByIndex = useMemo(() => {
-    if (timelinePoints.length === 0 || passiveSnapshotPointsInWindow.length === 0) {
-      return new Map<number, PassiveAnchorSnapshot>()
-    }
-    const anchors = new Map<number, PassiveAnchorSnapshot>()
-    const slotMs =
-      timelinePoints.length > 1
-        ? Math.max(1, Math.round((timelinePoints[1].at ?? timelinePoints[0].at) - timelinePoints[0].at))
-        : 5_000
-    const maxAttachDistanceMs = Math.max(2_000, Math.round(slotMs * 1.5))
-    for (const entry of passiveSnapshotPointsInWindow) {
-      const ts = entry.ts
-      let bestIndex = -1
-      let bestDistance = Number.POSITIVE_INFINITY
-      for (let i = 0; i < timelinePoints.length; i += 1) {
-        const at = timelinePoints[i]?.at
-        if (!Number.isFinite(at)) continue
-        const distance = Math.abs((at as number) - ts)
-        if (distance < bestDistance) {
-          bestDistance = distance
-          bestIndex = i
-        }
-      }
-      if (bestIndex >= 0 && bestDistance <= maxAttachDistanceMs) {
-        anchors.set(bestIndex, entry.snapshot)
-      }
-    }
-    return anchors
-  }, [timelinePoints, passiveSnapshotPointsInWindow])
-
-  const timelineStressPointsWithPassiveAnchors = useMemo(
-    () =>
-      timelineStressPoints.map((point, index) => {
-        const anchor = passiveAnchorByIndex.get(index)
-        if (!anchor) return point
-        return {
-          ...point,
-          value: anchor.stress,
-          pointType: point.pointType === 'focus' ? 'focus' : 'passive',
-        }
-      }),
-    [timelineStressPoints, passiveAnchorByIndex],
-  )
-
-  const passiveStressAnchors = useMemo(() => {
-    const map = new Map<number, number | null>()
-    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.stress))
-    return map
-  }, [passiveAnchorByIndex])
-  const passiveHrAnchors = useMemo(() => {
-    const map = new Map<number, number | null>()
-    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.heartRate))
-    return map
-  }, [passiveAnchorByIndex])
-  const passiveRrAnchors = useMemo(() => {
-    const map = new Map<number, number | null>()
-    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.respiratoryRate))
-    return map
-  }, [passiveAnchorByIndex])
-  const passivePostureAnchors = useMemo(() => {
-    const map = new Map<number, number | null>()
-    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.postureScore))
-    return map
-  }, [passiveAnchorByIndex])
-
-  const timelineStressValuesWithAnchors = useMemo(
-    () => smoothAnchoredValues(timelineStressPointsWithPassiveAnchors.map((p) => p.value), passiveStressAnchors),
-    [timelineStressPointsWithPassiveAnchors, passiveStressAnchors],
-  )
-
-  const timelineStressPointsSmoothed = useMemo(
-    () =>
-      timelineStressPointsWithPassiveAnchors.map((point, index) => ({
-        ...point,
-        value: timelineStressValuesWithAnchors[index] ?? point.value,
-      })),
-    [timelineStressPointsWithPassiveAnchors, timelineStressValuesWithAnchors],
-  )
-
-  const timelineHrValuesWithAnchors = useMemo(
-    () => smoothAnchoredValues(timelineHrValues, passiveHrAnchors),
-    [timelineHrValues, passiveHrAnchors],
-  )
-
-  const timelineRrValuesWithAnchors = useMemo(
-    () => smoothAnchoredValues(timelineRrValues, passiveRrAnchors),
-    [timelineRrValues, passiveRrAnchors],
-  )
-
-  const timelinePostureValuesWithAnchors = useMemo(
-    () => smoothAnchoredValues(timelinePostureValues, passivePostureAnchors),
-    [timelinePostureValues, passivePostureAnchors],
-  )
-
-  const timelinePointsWithAnchors = useMemo(
-    () =>
-      timelinePoints.map((row, index) => {
-        const anchor = passiveAnchorByIndex.get(index)
-        if (!anchor) return row
-        return {
-          ...row,
-          stress: anchor.stress,
-          heartRate: anchor.heartRate,
-          respiratoryRate: anchor.respiratoryRate,
-          postureScore: anchor.postureScore,
-          rrConfidence: anchor.rrConfidence,
-          pointType: row.pointType === 'focus' ? 'focus' : 'passive',
-        }
-      }),
-    [timelinePoints, passiveAnchorByIndex],
-  )
 
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
@@ -825,14 +650,14 @@ export function MonitorTab({
             <article className="monitor-vital">
               <span className="monitor-vital-label">Stress</span>
               <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
-                {displayResult ? stressValue : '—'}
+                {displayResult ? stressValue : '--'}
               </strong>
               <em>{displayResult ? stressLabel(stressValue) : 'No data'}</em>
             </article>
             <article className="monitor-vital">
               <span className="monitor-vital-label">Heart Rate</span>
               <strong className={`signal-value signal-value--${hrTone(hrValue, restingHr)}`}>
-                {hrValue == null ? '—' : Math.round(hrValue)}
+                {hrValue == null ? '--' : Math.round(hrValue)}
               </strong>
               <em>
                 {hrValue == null
@@ -850,12 +675,12 @@ export function MonitorTab({
               <span className="monitor-vital-label">Respiratory Rate</span>
               <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
                 {monitorMode === 'focus' && rrStage === 'measuring'
-                  ? '—'
+                  ? '--'
                   : rrValue > 0
                     ? monitorMode === 'passive' || rrStage === 'stabilizing'
                       ? `~${Math.round(rrValue)}`
                       : `${Math.round(rrValue)}`
-                    : '—'}
+                    : '--'}
               </strong>
               <em>
                 {monitorMode === 'passive'
@@ -874,7 +699,7 @@ export function MonitorTab({
             <article className="monitor-vital">
               <span className="monitor-vital-label">Posture</span>
               <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
-                {displayResult ? postureValue : '—'}
+                {displayResult ? postureValue : '--'}
               </strong>
               <em>{postureLabel(displayResult)}</em>
             </article>
@@ -900,7 +725,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
-                {displayResult ? stressValue : '—'}
+                {displayResult ? stressValue : '--'}
               </strong>
             </div>
             <div className="monitor-card-sub">
@@ -951,7 +776,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${hrTone(hrValue, restingHr)}`}>
-                {hrValue == null ? '—' : Math.round(hrValue)}
+                {hrValue == null ? '--' : Math.round(hrValue)}
               </strong>
               <em>bpm</em>
             </div>
@@ -1015,12 +840,12 @@ export function MonitorTab({
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
                 {monitorMode === 'focus' && rrStage === 'measuring'
-                  ? '—'
+                  ? '--'
                   : rrValue > 0
                     ? monitorMode === 'passive' || rrStage === 'stabilizing'
                       ? `~${Math.round(rrValue)}`
                       : `${Math.round(rrValue)}`
-                    : '—'}
+                    : '--'}
               </strong>
               <em>bpm</em>
             </div>
@@ -1113,7 +938,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
-                {displayResult ? postureValue : '—'}
+                {displayResult ? postureValue : '--'}
               </strong>
               <em>/ 100</em>
             </div>
@@ -1170,7 +995,7 @@ export function MonitorTab({
           <div className="monitor-timeline-chart">
             <InteractiveLineChart
               className="monitor-timeline-interactive"
-              points={timelineStressPointsSmoothed}
+              points={timelineStressPoints}
               yMin={0}
               yMax={100}
               valueLabel="Stress"
@@ -1186,15 +1011,14 @@ export function MonitorTab({
               snapToPointTypes={['passive']}
               snapRadiusPx={12}
               extraLines={[
-                { values: timelineHrValuesWithAnchors, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
-                { values: timelineRrValuesWithAnchors, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
-                { values: timelinePostureValuesWithAnchors, yMin: 0, yMax: 100, className: 'signal-posture', smooth: false },
+                { values: timelineHrValues, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
+                { values: timelineRrValues, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
+                { values: timelinePostureValues, yMin: 0, yMax: 100, className: 'signal-posture', smooth: false },
               ]}
               renderTooltip={({ point, index, direction }) => {
-                const row = timelinePointsWithAnchors[index]
-                const anchoredPoint = timelineStressPointsSmoothed[index]
+                const row = timelinePoints[index]
                 if (!row) return null
-                const sourceType = anchoredPoint?.pointType ?? row.pointType
+                const sourceType = row.pointType
                 return (
                   <>
                     <p>

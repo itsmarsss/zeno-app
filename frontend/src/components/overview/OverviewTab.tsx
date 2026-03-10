@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Activity, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { stressIndexFromHistory } from '../../shared/metrics'
@@ -217,6 +217,7 @@ function SecondaryMetric({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
+  const gradientId = `secondaryMetricGradient-${useId().replace(/:/g, '')}`
 
   const points = useMemo(
     () =>
@@ -242,6 +243,9 @@ function SecondaryMetric({
           showTooltip={false}
           className=""
           lineClassName="secondary-sparkline-line"
+          areaClassName="secondary-sparkline-area"
+          areaGradientId={gradientId}
+          areaGradientColor="var(--accent)"
           onHoverChange={(index, direction) => {
             setHoveredIndex(index)
             setHoverDirection(direction)
@@ -415,10 +419,10 @@ export function OverviewTab({
                 value={timelineBucketMinutes}
                 onChange={(event) => setTimelineBucketMinutes(Number(event.target.value))}
               >
-                <option value={5}>5m</option>
                 <option value={15}>15m</option>
                 <option value={30}>30m</option>
-                <option value={60}>60m</option>
+                <option value={60}>1h</option>
+                <option value={180}>3h</option>
               </select>
             </label>
           </div>
@@ -539,29 +543,30 @@ export function OverviewTab({
         initial="hidden"
         animate="visible"
       >
+        <div className="secondary-metrics-head">Last 7 days</div>
         <SecondaryMetric
           data={secondaryMetricSeries.peakStress}
           yMax={100}
           value={dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}
-          label="Today's peak stress"
+          label="Peak stress"
         />
         <SecondaryMetric
           data={secondaryMetricSeries.avgFocusSession}
           yMax={120}
           value={formatMinutes(Math.round(mean(secondaryMetricSeries.avgFocusSession)))}
-          label="Avg focus session len"
+          label="Avg focus session"
         />
         <SecondaryMetric
           data={secondaryMetricSeries.postureAvg}
           yMax={100}
           value={Math.round(mean(secondaryMetricSeries.postureAvg)) || 0}
-          label="Posture score today"
+          label="Avg posture score"
         />
         <SecondaryMetric
           data={secondaryMetricSeries.breakMinutes}
           yMax={60}
           value={todayBreakCount}
-          label="Total break time"
+          label="Break minutes"
         />
       </motion.section>
 

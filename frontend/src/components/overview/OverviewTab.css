@@ -322,6 +322,18 @@
   overflow: hidden;
 }
 
+.secondary-metrics-head {
+  grid-column: 1 / -1;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-surface));
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .secondary-cell {
   background: var(--bg-surface);
   padding: 14px;
@@ -358,17 +370,20 @@
   width: 100%;
   height: 32px;
   display: block;
-  padding: 0;
 }
 
 .secondary-sparkline-line {
   fill: none;
   stroke: var(--accent);
   stroke-width: 2;
-  opacity: 0.75;
+  opacity: 0.9;
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.secondary-sparkline-area {
+  opacity: 0.48;
 }
 
 .secondary-value {
@@ -651,10 +666,6 @@
 }
 
 @media (max-width: 860px) {
-  .secondary-metrics {
-    grid-template-columns: 1fr;
-  }
-
   .session-metrics {
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;

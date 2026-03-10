@@ -231,9 +231,17 @@ pub async fn run_monitor_timeline(
     start_time: String,
     end_time: String,
     interval_seconds: Option<u32>,
+    resolution: Option<String>,
+    fill_from_previous: Option<bool>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        run_monitor_timeline_blocking(start_time, end_time, interval_seconds)
+        run_monitor_timeline_blocking(
+            start_time,
+            end_time,
+            interval_seconds,
+            resolution,
+            fill_from_previous,
+        )
     })
     .await
     .map_err(|e| format!("Monitor timeline task join error: {e}"))?

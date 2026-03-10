@@ -9,12 +9,13 @@ from pathlib import Path
 from zeno_backend.data.db_schema import ensure_sessions_schema
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
+LOCAL_TZ = datetime.now().astimezone().tzinfo or timezone.utc
 
 
 def parse_iso_utc(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
+        return parsed.replace(tzinfo=LOCAL_TZ).astimezone(timezone.utc)
     return parsed.astimezone(timezone.utc)
 
 
@@ -26,11 +27,38 @@ def normalize_point_type(mode: str | None) -> str:
     return "unknown"
 
 
+def resolve_interval_seconds(
+    start_time: str,
+    end_time: str,
+    interval_seconds: int | None,
+    resolution: str | None,
+) -> int:
+    if interval_seconds is not None:
+        return max(1, min(interval_seconds, 600))
+
+    if not resolution:
+        return 5
+
+    start_dt = parse_iso_utc(start_time)
+    end_dt = parse_iso_utc(end_time)
+    span_seconds = max(1.0, (end_dt - start_dt).total_seconds())
+
+    if resolution == "fine":
+        # User-preferred monitor density: interval = duration / 60.
+        return max(1, min(int(span_seconds / 60.0), 600))
+    if resolution == "coarse":
+        return max(5, min(int(span_seconds / 20.0), 600))
+    # medium default
+    return max(2, min(int(span_seconds / 40.0), 600))
+
+
 def fetch_monitor_timeline(
     db_path: Path,
     start_time: str,
     end_time: str,
-    interval_seconds: int = 5,
+    interval_seconds: int | None = None,
+    resolution: str | None = None,
+    fill_from_previous: bool = False,
 ) -> list[dict]:
     """
     Fetch sessions in time range and fill gaps with interpolated points every interval_seconds.
@@ -39,13 +67,20 @@ def fetch_monitor_timeline(
         db_path: Path to SQLite database
         start_time: ISO format start time
         end_time: ISO format end time
-        interval_seconds: Seconds between interpolated points (default 5)
+        interval_seconds: Optional fixed seconds between interpolated points
+        resolution: Optional quality hint (fine|medium|coarse)
+        fill_from_previous: Start filling from range start using last pre-range sample
 
     Returns:
         List of data points (actual sessions + interpolated points)
     """
     if not db_path.exists():
         return []
+
+    start_dt = parse_iso_utc(start_time)
+    end_dt = parse_iso_utc(end_time)
+    start_local_text = start_dt.astimezone(LOCAL_TZ).replace(tzinfo=None).isoformat(timespec="seconds")
+    end_local_text = end_dt.astimezone(LOCAL_TZ).replace(tzinfo=None).isoformat(timespec="seconds")
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -77,56 +112,57 @@ def fetch_monitor_timeline(
             WHERE created_at BETWEEN ? AND ?
             ORDER BY created_at ASC
             """,
-            (start_time, end_time),
+            (start_local_text, end_local_text),
         ).fetchall()
 
         sessions = [dict(row) for row in rows]
 
-        # Always fetch baseline from before range so we can fill from start_time onward.
-        last_session_row = conn.execute(
-            """
-            SELECT
-                id,
-                created_at,
-                presence_detected,
-                analysis_skipped,
-                posture_score,
-                baseline_posture_score,
-                posture_deviation,
-                posture_is_poor,
-                dominant_emotion,
-                emotion_score,
-                heart_rate_bpm,
-                respiratory_rate,
-                rr_confidence,
-                emotion_backend,
-                mode,
-                focus_duration_seconds,
-                focus_mode,
-                session_duration_seconds
-            FROM sessions
-            WHERE created_at < ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (start_time,),
-        ).fetchone()
-        baseline_session = dict(last_session_row) if last_session_row else None
+        previous_session = None
+        if fill_from_previous:
+            previous_row = conn.execute(
+                """
+                SELECT
+                    id,
+                    created_at,
+                    presence_detected,
+                    analysis_skipped,
+                    posture_score,
+                    baseline_posture_score,
+                    posture_deviation,
+                    posture_is_poor,
+                    dominant_emotion,
+                    emotion_score,
+                    heart_rate_bpm,
+                    respiratory_rate,
+                    rr_confidence,
+                    emotion_backend,
+                    mode,
+                    focus_duration_seconds,
+                    focus_mode,
+                    session_duration_seconds
+                FROM sessions
+                WHERE created_at < ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (start_local_text,),
+            ).fetchone()
+            if previous_row is not None:
+                previous_session = dict(previous_row)
 
-        if not sessions and baseline_session is None:
+        if not sessions and previous_session is None:
             return []  # No usable data in database
 
     # Build timeline preserving all real sessions, while adding regular fillers in gaps.
     timeline_points = []
-    start_dt = parse_iso_utc(start_time)
-    end_dt = parse_iso_utc(end_time)
+    resolved_interval_seconds = resolve_interval_seconds(start_time, end_time, interval_seconds, resolution)
 
     current_time = start_dt
-    last_known_values = baseline_session
+    last_known_values = previous_session
     now_utc = datetime.now(timezone.utc)
     fill_end_dt = min(end_dt, now_utc)
 
-    interval_delta = timedelta(seconds=interval_seconds)
+    interval_delta = timedelta(seconds=resolved_interval_seconds)
 
     for session in sessions:
         session_time = parse_iso_utc(session["created_at"])
@@ -161,6 +197,7 @@ def fetch_monitor_timeline(
                 )
             current_time += interval_delta
 
+        session["created_at"] = session_time.isoformat()
         session["point_type"] = normalize_point_type(session.get("mode"))
         session["interpolated"] = False
         timeline_points.append(session)
@@ -247,8 +284,19 @@ def main() -> None:
     parser.add_argument(
         "--interval-seconds",
         type=int,
-        default=5,
-        help="Seconds between interpolated points (default: 5).",
+        default=None,
+        help="Fixed seconds between interpolated points.",
+    )
+    parser.add_argument(
+        "--resolution",
+        choices=["fine", "medium", "coarse"],
+        default=None,
+        help="Resolution hint; backend computes interval from range.",
+    )
+    parser.add_argument(
+        "--fill-from-previous",
+        action="store_true",
+        help="Fill initial gap from latest sample before start-time.",
     )
     args = parser.parse_args()
 
@@ -258,6 +306,8 @@ def main() -> None:
         start_time=args.start_time,
         end_time=args.end_time,
         interval_seconds=args.interval_seconds,
+        resolution=args.resolution,
+        fill_from_previous=args.fill_from_previous,
     )
     print(json.dumps({"points": points}))
 

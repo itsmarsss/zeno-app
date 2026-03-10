@@ -585,6 +585,8 @@ pub fn run_monitor_timeline_blocking(
     start_time: String,
     end_time: String,
     interval_seconds: Option<u32>,
+    resolution: Option<String>,
+    fill_from_previous: Option<bool>,
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -597,9 +599,25 @@ pub fn run_monitor_timeline_blocking(
         .arg("--start-time")
         .arg(start_time)
         .arg("--end-time")
-        .arg(end_time)
-        .arg("--interval-seconds")
-        .arg(interval_seconds.unwrap_or(5).clamp(1, 60).to_string());
+        .arg(end_time);
+
+    if let Some(interval) = interval_seconds {
+        cmd.arg("--interval-seconds")
+            .arg(interval.clamp(1, 600).to_string());
+    } else if let Some(resolution_value) = resolution {
+        let normalized = resolution_value.to_lowercase();
+        if normalized == "fine" || normalized == "medium" || normalized == "coarse" {
+            cmd.arg("--resolution").arg(normalized);
+        } else {
+            cmd.arg("--resolution").arg("medium");
+        }
+    } else {
+        cmd.arg("--resolution").arg("medium");
+    }
+
+    if fill_from_previous.unwrap_or(false) {
+        cmd.arg("--fill-from-previous");
+    }
 
     let output = cmd
         .output()
