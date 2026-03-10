@@ -569,11 +569,25 @@
     var(--bg-surface) 60%
   );
   border: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.session-chart-time {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: right;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .session-chart-canvas {
   margin: 0;
-  padding: 0;
+  padding: 12px 0 0;
   border: 0;
   background: transparent;
   border-radius: 0;

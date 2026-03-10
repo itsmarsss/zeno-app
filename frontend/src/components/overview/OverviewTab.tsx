@@ -121,6 +121,12 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
   const rrPrefix = baseRrConfidence === 'partial' ? '~' : ''
   const rrValue = displayRr ? `${rrPrefix}${Math.round(displayRr)}` : '--'
   const hrValue = displayHr ? Math.round(displayHr) : '--'
+  const hoverTimeLabel = useMemo(() => {
+    if (!isFocus || hoveredIndex == null || stressPoints.length < 2) return null
+    const ratio = hoveredIndex / Math.max(stressPoints.length - 1, 1)
+    const at = new Date(started.getTime() + ratio * item.session_duration_seconds * 1000)
+    return at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }, [hoveredIndex, isFocus, item.session_duration_seconds, started, stressPoints.length])
 
   return (
     <article className={`session-card ${isFocus ? 'session-card--focus' : 'session-card--passive'}`}>
@@ -146,6 +152,11 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
 
       {isFocus && (
         <div className="session-chart">
+          {hoverTimeLabel ? (
+            <p className="session-chart-time">
+              <AnimatedTickerText value={hoverTimeLabel} direction={hoverDirection} />
+            </p>
+          ) : null}
           <InteractiveLineChart
             points={stressPoints}
             yMin={0}
