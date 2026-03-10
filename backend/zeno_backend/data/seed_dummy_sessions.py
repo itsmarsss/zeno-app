@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.daily_aggregates import refresh_all_daily_aggregates
+from zeno_backend.data.posture_daily_insights import refresh_all_posture_daily_insights
 from zeno_backend.core.stress_index import compute_stress_index
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
@@ -260,6 +262,9 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                     ),
                 )
                 inserted += 1
+        conn.commit()
+        refresh_all_daily_aggregates(conn)
+        refresh_all_posture_daily_insights(conn)
         conn.commit()
 
     return inserted

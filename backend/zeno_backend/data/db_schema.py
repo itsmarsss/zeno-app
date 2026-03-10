@@ -38,6 +38,7 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)")
     columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
 
     if "focus_mode" not in columns:
@@ -132,5 +133,41 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         INSERT INTO baseline (id, updated_at, calibration_sessions_completed, is_calibrated)
         VALUES (1, CURRENT_TIMESTAMP, 0, 0)
         ON CONFLICT(id) DO NOTHING
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS daily_aggregates (
+            date TEXT PRIMARY KEY,
+            sessions_count INTEGER NOT NULL DEFAULT 0,
+            average_stress_index REAL NOT NULL DEFAULT 0.0,
+            average_posture_score REAL NOT NULL DEFAULT 0.0,
+            average_heart_rate REAL,
+            average_respiratory_rate REAL,
+            focused_minutes INTEGER NOT NULL DEFAULT 0,
+            break_count INTEGER NOT NULL DEFAULT 0,
+            break_minutes INTEGER NOT NULL DEFAULT 0,
+            avg_focus_session_minutes INTEGER NOT NULL DEFAULT 0,
+            peak_stress_index INTEGER,
+            peak_stress_time TEXT,
+            recommendation TEXT NOT NULL DEFAULT 'No data yet. Run a few check-ins to generate insights.',
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS posture_daily_insights (
+            date TEXT PRIMARY KEY,
+            sessions_count INTEGER NOT NULL DEFAULT 0,
+            chin_forward_count INTEGER NOT NULL DEFAULT 0,
+            rounded_shoulders_count INTEGER NOT NULL DEFAULT 0,
+            head_tilt_right_count INTEGER NOT NULL DEFAULT 0,
+            top_issue TEXT NOT NULL DEFAULT 'chin-forward',
+            recommended_ids_json TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
         """
     )

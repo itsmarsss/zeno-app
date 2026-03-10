@@ -313,6 +313,37 @@ pub fn run_overview_aggregates_blocking(date_iso: Option<String>) -> Result<Valu
     parse_json_line(&stdout)
 }
 
+pub fn run_posture_insights_blocking(days: Option<u32>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.posture_insights")
+        .arg("--days")
+        .arg(days.unwrap_or(7).clamp(1, 30).to_string());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run posture insights: {e}"))?;
+    debug_log_python_output("posture_insights", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Posture insights failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 pub fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);

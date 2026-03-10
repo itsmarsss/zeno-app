@@ -14,6 +14,18 @@ def clear_data(db_path: Path) -> int:
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.execute("DELETE FROM sessions")
+        for table in ("daily_aggregates", "posture_daily_insights", "breathing_sessions", "break_sessions", "exercise_sessions"):
+            try:
+                conn.execute(f"DELETE FROM {table}")
+            except sqlite3.OperationalError:
+                # Table may not exist in older local schemas.
+                continue
+        try:
+            conn.execute(
+                "UPDATE sqlite_sequence SET seq = 0 WHERE name IN ('sessions','breathing_sessions','break_sessions','exercise_sessions')"
+            )
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
         return int(cursor.rowcount)
 

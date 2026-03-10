@@ -162,17 +162,17 @@ export function MainWindowShell({
   )
 
   const focusSessions = history.filter((item) => Boolean(item.focus_mode))
-  const avgStressToday = overviewAggregates?.average_stress_index ?? 0
-  const stressDeltaVsYesterday = overviewAggregates?.stress_delta_vs_yesterday ?? 0
+  const avgStressToday = overviewAggregates ? overviewAggregates.average_stress_index : null
+  const stressDeltaVsYesterday = overviewAggregates ? overviewAggregates.stress_delta_vs_yesterday : null
   const todayFocusedMinutes = overviewAggregates?.focused_minutes ?? 0
   const todayBreakCount = overviewAggregates?.break_count ?? 0
-  const avgHrToday = overviewAggregates?.average_heart_rate ?? 0
+  const avgHrToday = overviewAggregates ? overviewAggregates.average_heart_rate : null
   const avgRrToday = overviewAggregates?.average_respiratory_rate ?? null
   const hrDeltaBaseline = overviewAggregates?.hr_delta_baseline ?? null
 
-  const heroHeadline = generateHeadline(avgStressToday, todayFocusedMinutes, stressDeltaVsYesterday)
-  const heroSubline = `Average stress ${avgStressToday || 0} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
-  const heroTrendTone = trendTone(stressDeltaVsYesterday)
+  const heroHeadline = generateHeadline(avgStressToday ?? 0, todayFocusedMinutes, stressDeltaVsYesterday ?? 0)
+  const heroSubline = `Average stress ${avgStressToday == null ? '--' : avgStressToday} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
+  const heroTrendTone = trendTone(stressDeltaVsYesterday ?? 0)
 
   const timelineStart = new Date(overviewDate)
   timelineStart.setHours(HOUR_START, 0, 0, 0)

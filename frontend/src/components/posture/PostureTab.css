@@ -1,3 +1,35 @@
+.posture-scope-bar {
+  margin-top: 8px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.posture-scope-bar > span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.posture-scope-note {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.posture-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .posture-live-grid {
   margin-top: 12px;
   margin-bottom: 14px;
@@ -273,10 +305,6 @@
   margin: 0;
   font-family: 'DM Serif Display', serif;
   font-size: 18px;
-}
-
-.posture-period-toggle {
-  min-width: 210px;
 }
 
 .posture-history-chart {

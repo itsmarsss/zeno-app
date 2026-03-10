@@ -84,6 +84,18 @@ export type OverviewAggregates = {
   }
 }
 
+export type PostureInsights = {
+  days: number
+  total_sessions: number
+  issue_rows: Array<{
+    key: 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
+    label: string
+    pct: number
+  }>
+  top_issue: 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
+  recommended_ids: string[]
+}
+
 export type CalibrationStatus = {
   calibrated: boolean
   baseline_sessions_required: number

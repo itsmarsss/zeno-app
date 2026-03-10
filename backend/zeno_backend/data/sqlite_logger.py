@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.daily_aggregates import recompute_daily_aggregate
+from zeno_backend.data.posture_daily_insights import recompute_posture_daily_insight
 from zeno_backend.core.stress_index import compute_stress_index
 from zeno_backend.pipelines.session_runner import run_session
 
@@ -286,6 +288,9 @@ def log_session(result: dict, db_path: Path) -> int:
                 json.dumps(result),
             ),
         )
+        day_key = str(result["timestamp"])[:10]
+        recompute_daily_aggregate(conn, day_key)
+        recompute_posture_daily_insight(conn, day_key)
         conn.commit()
         return int(cursor.lastrowid)
 

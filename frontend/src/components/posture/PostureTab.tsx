@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CameraOff, Check, CheckCircle, ChevronRight } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import { EXERCISE_LIBRARY } from '../../shared/constants'
-import type { PostureLandmarks, SessionHistoryItem } from '../../shared/types'
+import type { PostureInsights, PostureLandmarks, SessionHistoryItem } from '../../shared/types'
 import { PostureFrame } from '../common/PostureFrame'
 import { InteractiveLineChart } from '../common/InteractiveLineChart'
 import './PostureTab.css'
@@ -11,11 +12,6 @@ import { staggerItem } from '../../shared/motion'
 type IssueKey = 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
 
 type PeriodKey = 'today' | 'week' | 'month'
-
-function percent(numerator: number, denominator: number): number {
-  if (denominator <= 0) return 0
-  return Math.round((numerator / denominator) * 100)
-}
 
 function daysForPeriod(period: PeriodKey): number {
   if (period === 'today') return 1
@@ -32,6 +28,10 @@ function dayStart(date: Date): Date {
 function mean(values: number[]): number | null {
   if (!values.length) return null
   return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 }
 
 export function PostureTab({
@@ -66,6 +66,7 @@ export function PostureTab({
   onStartExercise: (exerciseId: string) => void
 }) {
   const [period, setPeriod] = useState<PeriodKey>('today')
+  const [postureInsights, setPostureInsights] = useState<PostureInsights | null>(null)
   const sortedHistory = useMemo(
     () => [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [history],
@@ -171,40 +172,61 @@ export function PostureTab({
     return 0
   }, [postureShoulderTiltSignedNorm, postureLandmarks])
   const spineAngle = liveScore == null ? 0 : Math.max(6, Math.round((100 - liveScore) * 0.22 + 8))
-  const issueCounts = useMemo(() => {
-    const total = postureHistory.length
-    const chinForward = postureHistory.filter((item) => item.posture_score < 0.7).length
-    const rounded = postureHistory.filter((item) => item.posture_score < 0.6).length
-    const tilt = postureHistory.filter((item) => item.posture_score < 0.5).length
-    return {
-      total,
-      'chin-forward': percent(chinForward, total),
-      'rounded-shoulders': percent(rounded, total),
-      'head-tilt-right': percent(tilt, total),
-    }
-  }, [postureHistory])
-
-  const issueRows: Array<{ key: IssueKey; label: string; pct: number }> = [
-    { key: 'chin-forward', label: 'Chin forward', pct: issueCounts['chin-forward'] },
-    { key: 'rounded-shoulders', label: 'Rounded shoulders', pct: issueCounts['rounded-shoulders'] },
-    { key: 'head-tilt-right', label: 'Head tilt right', pct: issueCounts['head-tilt-right'] },
-  ]
-
-  const topIssue = [...issueRows].sort((a, b) => b.pct - a.pct)[0]
-
-  const recommendedIds =
-    topIssue?.key === 'chin-forward'
-      ? ['chin-tuck', 'scap-squeeze']
-      : topIssue?.key === 'rounded-shoulders'
-        ? ['wall-angels', 'doorway-pec-stretch']
-        : ['seated-side-bend', 'thoracic-extension']
-
+  const issueRows: Array<{ key: IssueKey; label: string; pct: number }> = postureInsights?.issue_rows ?? []
+  const topIssue = issueRows[0] ?? null
+  const recommendedIds = postureInsights?.recommended_ids ?? []
   const recommended = EXERCISE_LIBRARY.filter((item) => recommendedIds.includes(item.id)).slice(0, 3)
   const coachingState = isStarting ? 'starting' : (liveScore ?? 0) < 75 ? 'action' : 'good'
+  const historyRevision = `${history.length}:${history[0]?.id ?? 0}:${history[history.length - 1]?.id ?? 0}`
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchPostureInsights() {
+      if (!isTauriRuntime()) {
+        setPostureInsights(null)
+        return
+      }
+
+      const days = daysForPeriod(period)
+      try {
+        const payload = await invoke<PostureInsights>('run_posture_insights', { days })
+        if (cancelled) return
+        const sortedRows = [...(payload?.issue_rows ?? [])].sort((a, b) => b.pct - a.pct)
+        setPostureInsights(
+          payload
+            ? {
+                ...payload,
+                issue_rows: sortedRows,
+              }
+            : null,
+        )
+      } catch (error) {
+        if (cancelled) return
+        console.error('Failed to fetch posture insights:', error)
+        setPostureInsights(null)
+      }
+    }
+
+    void fetchPostureInsights()
+    return () => {
+      cancelled = true
+    }
+  }, [period, historyRevision])
 
   return (
     <>
       <h1>Posture</h1>
+      <motion.section className="posture-scope-bar" variants={staggerItem(0)} initial="hidden" animate="visible">
+        <span>Scope</span>
+        <div className="period-toggle posture-period-toggle">
+          {(['today', 'week', 'month'] as PeriodKey[]).map((p) => (
+            <button key={p} className={period === p ? 'is-active' : ''} onClick={() => setPeriod(p)}>
+              {p === 'today' ? 'Today' : p === 'week' ? 'Week' : 'Month'}
+            </button>
+          ))}
+        </div>
+      </motion.section>
 
       <motion.section className="posture-live-grid" variants={staggerItem(0)} initial="hidden" animate="visible">
         <div className="posture-feed-wrap">
@@ -403,13 +425,6 @@ export function PostureTab({
       <motion.section className="posture-card" variants={staggerItem(0.04)} initial="hidden" animate="visible">
         <div className="main-panel-head">
           <h3>Posture over time</h3>
-          <div className="period-toggle posture-period-toggle">
-            {(['today', 'week', 'month'] as PeriodKey[]).map((p) => (
-              <button key={p} className={period === p ? 'is-active' : ''} onClick={() => setPeriod(p)}>
-                {p === 'today' ? 'Today' : p === 'week' ? 'Week' : 'Month'}
-              </button>
-            ))}
-          </div>
         </div>
         {postureChartPoints.every((point) => point.value == null) ? (
           <p className="posture-empty">
@@ -435,8 +450,13 @@ export function PostureTab({
       </motion.section>
 
       <motion.section className="posture-card" variants={staggerItem(0.08)} initial="hidden" animate="visible">
-        <h3>Common issues</h3>
-        {issueCounts.total === 0 ? (
+        <div className="main-panel-head">
+          <h3>Common issues</h3>
+          <span className="posture-scope-note">
+            {period === 'today' ? 'Today' : period === 'week' ? 'Last 7 days' : 'Last 30 days'}
+          </span>
+        </div>
+        {!postureInsights || postureInsights.total_sessions === 0 ? (
           <p className="posture-empty">
             <CheckCircle size={16} /> No recurring issues detected
           </p>
@@ -466,9 +486,14 @@ export function PostureTab({
       >
         <div className="main-panel-head">
           <h3>Recommended for you</h3>
-          <button className="posture-see-all" onClick={onSeeAllExercises}>
-            See all <ChevronRight size={12} />
-          </button>
+          <div className="posture-head-actions">
+            <span className="posture-scope-note">
+              {period === 'today' ? 'Today' : period === 'week' ? 'Last 7 days' : 'Last 30 days'}
+            </span>
+            <button className="posture-see-all" onClick={onSeeAllExercises}>
+              See all <ChevronRight size={12} />
+            </button>
+          </div>
         </div>
         <div className="posture-reco-strip">
           {recommended.map((exercise) => (

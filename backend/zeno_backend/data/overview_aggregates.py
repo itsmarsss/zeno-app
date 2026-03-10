@@ -3,24 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
+from zeno_backend.data.daily_aggregates import fetch_daily_aggregate, recompute_daily_aggregate
 from zeno_backend.data.db_schema import ensure_sessions_schema
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
-
-
-def _mean(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    return sum(values) / len(values)
-
-
-def _to_day_bounds(target_day: date) -> tuple[str, str]:
-    start = datetime.combine(target_day, datetime.min.time()).isoformat(timespec="seconds")
-    end = datetime.combine(target_day, datetime.max.time()).isoformat(timespec="seconds")
-    return start, end
 
 
 def _base_series_payload() -> dict[str, list[int]]:
@@ -30,6 +19,34 @@ def _base_series_payload() -> dict[str, list[int]]:
         "posture_avg": [0, 0, 0, 0, 0, 0, 0],
         "break_minutes": [0, 0, 0, 0, 0, 0, 0],
     }
+
+
+def _ensure_day(conn: sqlite3.Connection, day_key: str) -> dict:
+    cached = fetch_daily_aggregate(conn, day_key)
+    if cached is not None:
+        return cached
+    return recompute_daily_aggregate(conn, day_key)
+
+
+def _baseline_hr_delta(conn: sqlite3.Connection, day_key: str, current_avg_hr: float | None) -> int | None:
+    if current_avg_hr is None or current_avg_hr <= 0:
+        return None
+    rows = conn.execute(
+        """
+        SELECT heart_rate_bpm
+        FROM sessions
+        WHERE substr(created_at, 1, 10) <> ?
+          AND presence_detected = 1
+          AND analysis_skipped = 0
+          AND heart_rate_bpm IS NOT NULL
+          AND heart_rate_bpm > 0
+        """,
+        (day_key,),
+    ).fetchall()
+    if not rows:
+        return None
+    baseline = sum(float(row[0]) for row in rows) / len(rows)
+    return int(round(float(current_avg_hr) - baseline))
 
 
 def compute_overview_aggregates(db_path: Path, target_day: date) -> dict:
@@ -49,152 +66,47 @@ def compute_overview_aggregates(db_path: Path, target_day: date) -> dict:
     if not db_path.exists():
         return default_payload
 
-    today_start, today_end = _to_day_bounds(target_day)
-    yesterday = target_day - timedelta(days=1)
-    yesterday_start, yesterday_end = _to_day_bounds(yesterday)
-    seven_day_start, _ = _to_day_bounds(target_day - timedelta(days=6))
+    target_key = target_day.isoformat()
+    previous_key = (target_day - timedelta(days=1)).isoformat()
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         ensure_sessions_schema(conn)
 
-        today_rows = conn.execute(
-            """
-            SELECT
-                created_at,
-                stress_index,
-                focus_mode,
-                mode,
-                session_duration_seconds,
-                heart_rate_bpm,
-                respiratory_rate,
-                rr_confidence
-            FROM sessions
-            WHERE created_at BETWEEN ? AND ?
-              AND presence_detected = 1
-              AND analysis_skipped = 0
-            ORDER BY created_at ASC
-            """,
-            (today_start, today_end),
-        ).fetchall()
+        today = _ensure_day(conn, target_key)
+        previous = _ensure_day(conn, previous_key)
 
-        yesterday_rows = conn.execute(
-            """
-            SELECT stress_index
-            FROM sessions
-            WHERE created_at BETWEEN ? AND ?
-              AND presence_detected = 1
-              AND analysis_skipped = 0
-            """,
-            (yesterday_start, yesterday_end),
-        ).fetchall()
+        peak_stress: list[int] = []
+        avg_focus_session: list[int] = []
+        posture_avg: list[int] = []
+        break_minutes: list[int] = []
+        for offset in range(6, -1, -1):
+            day_key = (target_day - timedelta(days=offset)).isoformat()
+            day_row = _ensure_day(conn, day_key)
+            peak_stress.append(int(day_row.get("peak_stress_index") or 0))
+            avg_focus_session.append(int(day_row.get("avg_focus_session_minutes") or 0))
+            posture_avg.append(int(round(float(day_row.get("average_posture_score") or 0.0) * 100)))
+            break_minutes.append(int(day_row.get("break_minutes") or 0))
 
-        baseline_rows = conn.execute(
-            """
-            SELECT heart_rate_bpm
-            FROM sessions
-            WHERE created_at NOT BETWEEN ? AND ?
-              AND presence_detected = 1
-              AND analysis_skipped = 0
-              AND heart_rate_bpm IS NOT NULL
-              AND heart_rate_bpm > 0
-            """,
-            (today_start, today_end),
-        ).fetchall()
+        average_heart_rate = today.get("average_heart_rate")
+        hr_delta_baseline = _baseline_hr_delta(conn, target_key, average_heart_rate)
 
-        seven_day_rows = conn.execute(
-            """
-            SELECT created_at, stress_index, focus_mode, posture_score, session_duration_seconds
-            FROM sessions
-            WHERE created_at BETWEEN ? AND ?
-              AND presence_detected = 1
-              AND analysis_skipped = 0
-            ORDER BY created_at ASC
-            """,
-            (seven_day_start, today_end),
-        ).fetchall()
-
-    today_stress = [int(row["stress_index"] or 0) for row in today_rows]
-    yesterday_stress = [int(row["stress_index"] or 0) for row in yesterday_rows]
-    avg_stress_today = round(_mean([float(value) for value in today_stress]))
-    avg_stress_yesterday = round(_mean([float(value) for value in yesterday_stress]))
-
-    focused_seconds = sum(
-        float(row["session_duration_seconds"] or 0.0)
-        for row in today_rows
-        if int(row["focus_mode"] or 0) == 1
-    )
-    break_count = sum(1 for row in today_rows if int(row["focus_mode"] or 0) == 0)
-
-    today_hr_values = [
-        float(row["heart_rate_bpm"])
-        for row in today_rows
-        if row["heart_rate_bpm"] is not None and float(row["heart_rate_bpm"]) > 0
-    ]
-    avg_hr_today = round(_mean(today_hr_values))
-
-    today_rr_values = [
-        float(row["respiratory_rate"])
-        for row in today_rows
-        if float(row["respiratory_rate"] or 0.0) > 0
-        and str(row["rr_confidence"] or "none") != "none"
-        and (int(row["focus_mode"] or 0) == 1 or str(row["mode"] or "passive") == "focus")
-    ]
-    avg_rr_today = round(_mean(today_rr_values), 1) if today_rr_values else None
-
-    baseline_hr_values = [float(row["heart_rate_bpm"]) for row in baseline_rows]
-    baseline_hr_avg = round(_mean(baseline_hr_values)) if baseline_hr_values else None
-    hr_delta_baseline = (
-        int(avg_hr_today - baseline_hr_avg)
-        if baseline_hr_avg is not None and avg_hr_today > 0
-        else None
-    )
-
-    day_buckets: dict[str, list[sqlite3.Row]] = {}
-    for offset in range(6, -1, -1):
-        bucket_day = target_day - timedelta(days=offset)
-        day_buckets[bucket_day.isoformat()] = []
-
-    for row in seven_day_rows:
-        key = str(row["created_at"]).split("T")[0]
-        if key in day_buckets:
-            day_buckets[key].append(row)
-
-    peak_stress: list[int] = []
-    avg_focus_session: list[int] = []
-    posture_avg: list[int] = []
-    break_minutes: list[int] = []
-
-    for rows in day_buckets.values():
-        if not rows:
-            peak_stress.append(0)
-            avg_focus_session.append(0)
-            posture_avg.append(0)
-            break_minutes.append(0)
-            continue
-
-        day_stress_values = [int(row["stress_index"] or 0) for row in rows]
-        day_focus_rows = [row for row in rows if int(row["focus_mode"] or 0) == 1]
-        day_passive_rows = [row for row in rows if int(row["focus_mode"] or 0) == 0]
-        focus_minutes_list = [float(row["session_duration_seconds"] or 0.0) / 60.0 for row in day_focus_rows]
-        posture_scores = [float(row["posture_score"] or 0.0) * 100.0 for row in rows]
-        passive_minutes = sum(float(row["session_duration_seconds"] or 0.0) for row in day_passive_rows) / 60.0
-
-        peak_stress.append(max(day_stress_values) if day_stress_values else 0)
-        avg_focus_session.append(round(_mean(focus_minutes_list)) if focus_minutes_list else 0)
-        posture_avg.append(round(_mean(posture_scores)) if posture_scores else 0)
-        break_minutes.append(round(passive_minutes))
-
+    avg_stress_today = int(round(float(today.get("average_stress_index") or 0.0)))
+    avg_stress_previous = int(round(float(previous.get("average_stress_index") or 0.0)))
     return {
-        "date": target_day.isoformat(),
-        "sessions": len(today_rows),
-        "average_stress_index": int(avg_stress_today),
-        "previous_average_stress_index": int(avg_stress_yesterday),
-        "stress_delta_vs_yesterday": int(avg_stress_today - avg_stress_yesterday),
-        "focused_minutes": int(round(focused_seconds / 60.0)),
-        "break_count": int(break_count),
-        "average_heart_rate": int(avg_hr_today),
-        "average_respiratory_rate": avg_rr_today,
+        "date": target_key,
+        "sessions": int(today.get("sessions_count") or 0),
+        "average_stress_index": avg_stress_today,
+        "previous_average_stress_index": avg_stress_previous,
+        "stress_delta_vs_yesterday": avg_stress_today - avg_stress_previous,
+        "focused_minutes": int(today.get("focused_minutes") or 0),
+        "break_count": int(today.get("break_count") or 0),
+        "average_heart_rate": int(round(float(average_heart_rate or 0.0))),
+        "average_respiratory_rate": (
+            round(float(today["average_respiratory_rate"]), 1)
+            if today.get("average_respiratory_rate") is not None
+            else None
+        ),
         "hr_delta_baseline": hr_delta_baseline,
         "secondary_metric_series": {
             "peak_stress": peak_stress,

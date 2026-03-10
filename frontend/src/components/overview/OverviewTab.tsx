@@ -292,11 +292,11 @@ export function OverviewTab({
   now: Date
   heroHeadline: string
   heroSubline: string
-  avgStressToday: number
-  stressDeltaVsYesterday: number
+  avgStressToday: number | null
+  stressDeltaVsYesterday: number | null
   heroTrendTone: DeltaTone
   todayFocusedMinutes: number
-  avgHrToday: number
+  avgHrToday: number | null
   avgRrToday: number | null
   hrDeltaBaseline: number | null
   todayBreakCount: number
@@ -317,7 +317,7 @@ export function OverviewTab({
   dailyReport: DailyReport | null
   onViewFocusHistory: () => void
 }) {
-  const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday)}`
+  const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday ?? 0)}`
   const hasHrBaseline = typeof hrDeltaBaseline === 'number' && Number.isFinite(hrDeltaBaseline)
 
   const timelinePoints = useMemo(
@@ -380,9 +380,11 @@ export function OverviewTab({
         </div>
         <div className="hero-divider" />
         <div className="hero-right">
-          <p className={heroStressClass}>{avgStressToday || 0}</p>
+          <p className={heroStressClass}>{avgStressToday == null ? '--' : avgStressToday}</p>
           <p className="hero-stress-label">stress index</p>
-          <p className={`hero-stress-trend is-${heroTrendTone}`}>{formatDelta(stressDeltaVsYesterday)}</p>
+          <p className={`hero-stress-trend is-${heroTrendTone}`}>
+            {stressDeltaVsYesterday == null ? '--' : formatDelta(stressDeltaVsYesterday)}
+          </p>
         </div>
       </motion.section>
 
@@ -401,7 +403,7 @@ export function OverviewTab({
         </article>
         <article className="narrative-tile">
           <p className="narrative-value">
-            {avgHrToday || '--'} <span>bpm</span>
+            {avgHrToday == null ? '--' : avgHrToday} <span>bpm</span>
           </p>
           <p className="narrative-label">Avg Heart / Respiratory</p>
           <p className={`narrative-context ${!hasHrBaseline || hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
@@ -458,7 +460,7 @@ export function OverviewTab({
               lineClassName="timeline-stress"
               areaClassName="timeline-area"
               areaGradientId="overviewStressGradient"
-              areaGradientColor={stressColor(avgStressToday || 20)}
+              areaGradientColor={stressColor(avgStressToday ?? 20)}
               showAxis={true}
               chartHeight={160}
               tooltipWidth={196}
@@ -566,7 +568,7 @@ export function OverviewTab({
         <SecondaryMetric
           data={secondaryMetricSeries.peakStress}
           yMax={100}
-          value={dailyReport?.peak_stress?.stress_index ?? (avgStressToday || 0)}
+          value={dailyReport?.peak_stress?.stress_index ?? (avgStressToday == null ? '--' : avgStressToday)}
           label="Peak stress"
         />
         <SecondaryMetric
