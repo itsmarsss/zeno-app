@@ -329,6 +329,11 @@
   stroke-linejoin: round;
 }
 
+.posture-passive-marker {
+  fill: color-mix(in srgb, var(--state-mild) 24%, var(--bg-surface));
+  stroke: var(--state-mild);
+}
+
 .posture-threshold-label {
   color: var(--text-tertiary);
 }

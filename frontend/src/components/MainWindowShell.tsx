@@ -59,6 +59,8 @@ type MonitorTimelinePoint = {
   emotion_score?: number | null
   stress_index?: number | null
   presence_detected?: number | null
+  focus_active?: boolean | null
+  passive_marker_active?: boolean | null
 }
 
 type SessionDayIndexResponse = {
@@ -179,24 +181,7 @@ export function MainWindowShell({
   const timelineEnd = new Date(overviewDate)
   timelineEnd.setHours(HOUR_END, 59, 59, 999)
   const nowMs = now.getTime()
-  const fallbackTimelinePoints = useMemo(() => {
-    return overviewSessions.map((item) => ({
-      created_at: item.created_at,
-      posture_score: item.posture_score,
-      heart_rate_bpm: item.heart_rate_bpm,
-      respiratory_rate: item.respiratory_rate,
-      rr_confidence: item.rr_confidence,
-      point_type: item.mode === 'focus' ? 'focus' : item.mode === 'passive' ? 'passive' : 'unknown',
-      mode: item.mode,
-      emotion_backend: item.emotion_backend,
-      dominant_emotion: item.dominant_emotion,
-      emotion_score: item.emotion_score,
-      stress_index: item.stress_index ?? null,
-      presence_detected: item.presence_detected,
-    }))
-  }, [overviewSessions])
-
-  const timelineSourcePoints = overviewTimelinePoints.length > 0 ? overviewTimelinePoints : fallbackTimelinePoints
+  const timelineSourcePoints = overviewTimelinePoints
 
   const timelineData: Array<{
     slotStartIso: string
@@ -208,63 +193,42 @@ export function MainWindowShell({
     rrConfidence: 'none' | 'partial' | 'full'
     postureScore: number | null
     focusActive: boolean
+    passiveMarkerActive: boolean
     breathing: boolean
     pointType: 'passive' | 'focus' | 'filled' | 'unknown'
-  }> = []
-  for (
-    let slot = new Date(timelineStart);
-    slot <= timelineEnd;
-    slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
-  ) {
+  }> = timelineSourcePoints.map((point) => {
+    const slot = new Date(point.created_at)
     const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
-    const slotStartMs = slot.getTime()
-    const isFutureSlot = overviewKey === todayKey && slotStartMs > nowMs
-    const slice = timelineSourcePoints.filter((item) => {
-      const at = new Date(item.created_at)
-      return at >= slot && at < slotEnd
-    })
-    // Preserve backend step semantics: take the latest point in this bucket.
-    const latestPoint = slice.length > 0 ? slice[slice.length - 1] : null
-    const stressValue = latestPoint && typeof latestPoint.stress_index === 'number' ? latestPoint.stress_index : null
+    const stressValue = typeof point.stress_index === 'number' ? point.stress_index : null
     const heartRateValue =
-      latestPoint && typeof latestPoint.heart_rate_bpm === 'number' && latestPoint.heart_rate_bpm > 0
-        ? latestPoint.heart_rate_bpm
-        : null
+      typeof point.heart_rate_bpm === 'number' && point.heart_rate_bpm > 0 ? point.heart_rate_bpm : null
     const respiratoryValue =
-      latestPoint && typeof latestPoint.respiratory_rate === 'number' && latestPoint.respiratory_rate > 0
-        ? latestPoint.respiratory_rate
-        : null
-    const rrConfidence = latestPoint?.rr_confidence ?? 'none'
+      typeof point.respiratory_rate === 'number' && point.respiratory_rate > 0 ? point.respiratory_rate : null
     const postureValue =
-      latestPoint && typeof latestPoint.posture_score === 'number' && latestPoint.posture_score > 0
-        ? latestPoint.posture_score
-        : null
-    const pointType: 'passive' | 'focus' | 'filled' | 'unknown' = isFutureSlot
-      ? 'unknown'
-      : latestPoint?.point_type === 'focus'
+      typeof point.posture_score === 'number' && point.posture_score > 0 ? point.posture_score : null
+    const pointType: 'passive' | 'focus' | 'filled' | 'unknown' =
+      point.point_type === 'focus'
         ? 'focus'
-        : latestPoint?.point_type === 'passive'
+        : point.point_type === 'passive'
           ? 'passive'
-          : latestPoint?.point_type === 'filled'
+          : point.point_type === 'filled'
             ? 'filled'
             : 'unknown'
-
-    timelineData.push({
+    return {
       slotStartIso: slot.toISOString(),
       slotEndIso: slotEnd.toISOString(),
       label: slot.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      stress: isFutureSlot ? null : stressValue == null ? null : Math.round(stressValue),
-      heartRate: isFutureSlot ? null : heartRateValue == null ? null : Math.round(heartRateValue),
-      respiratoryRate: isFutureSlot ? null : respiratoryValue == null ? null : Math.round(respiratoryValue),
-      rrConfidence: rrConfidence as 'none' | 'partial' | 'full',
-      postureScore: isFutureSlot ? null : postureValue != null ? Math.round(postureValue * 100) : null,
-      focusActive: isFutureSlot ? false : latestPoint?.point_type === 'focus',
-      breathing: isFutureSlot
-        ? false
-        : (latestPoint?.emotion_backend ?? '').toLowerCase().includes('breath'),
+      stress: stressValue == null ? null : Math.round(stressValue),
+      heartRate: heartRateValue == null ? null : Math.round(heartRateValue),
+      respiratoryRate: respiratoryValue == null ? null : Math.round(respiratoryValue),
+      rrConfidence: (point.rr_confidence ?? 'none') as 'none' | 'partial' | 'full',
+      postureScore: postureValue != null ? Math.round(postureValue * 100) : null,
+      focusActive: Boolean(point.focus_active ?? (pointType === 'focus' || (point.mode ?? '') === 'focus')),
+      passiveMarkerActive: Boolean(point.passive_marker_active ?? pointType === 'passive'),
+      breathing: (point.emotion_backend ?? '').toLowerCase().includes('breath'),
       pointType,
-    })
-  }
+    }
+  })
 
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
@@ -340,6 +304,8 @@ export function MainWindowShell({
           endTime: end.toISOString(),
           resolution: timelineBucketMinutes <= 15 ? 'medium' : 'coarse',
           fillFromPrevious: false,
+          bucketSeconds: timelineBucketMinutes * 60,
+          aggregateMode: 'latest',
         })
         if (cancelled) return
         const points = Array.isArray(response?.points) ? response.points : []

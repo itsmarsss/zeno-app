@@ -688,6 +688,8 @@ pub fn run_monitor_timeline_blocking(
     interval_seconds: Option<u32>,
     resolution: Option<String>,
     fill_from_previous: Option<bool>,
+    bucket_seconds: Option<u32>,
+    aggregate_mode: Option<String>,
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -718,6 +720,16 @@ pub fn run_monitor_timeline_blocking(
 
     if fill_from_previous.unwrap_or(false) {
         cmd.arg("--fill-from-previous");
+    }
+    if let Some(bucket) = bucket_seconds {
+        cmd.arg("--bucket-seconds")
+            .arg(bucket.max(1).to_string());
+    }
+    if let Some(mode) = aggregate_mode {
+        let normalized = mode.to_lowercase();
+        if normalized == "latest" || normalized == "mean" {
+            cmd.arg("--aggregate-mode").arg(normalized);
+        }
     }
 
     let output = cmd

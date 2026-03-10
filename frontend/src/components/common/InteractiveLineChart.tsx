@@ -40,8 +40,13 @@ export function InteractiveLineChart({
   onHoverChange,
   markerPointTypes = [],
   markerClassName = '',
+  markerMask,
+  bandPointTypes = [],
+  bandClassName = '',
+  bandMask,
   snapToPointTypes = [],
   snapRadiusPx = 10,
+  snapCursorToIndex = false,
 }: {
   points: InteractiveLineChartPoint[]
   yMin: number
@@ -71,8 +76,13 @@ export function InteractiveLineChart({
   onHoverChange?: (index: number | null, direction: 1 | -1) => void
   markerPointTypes?: Array<NonNullable<InteractiveLineChartPoint['pointType']>>
   markerClassName?: string
+  markerMask?: boolean[]
+  bandPointTypes?: Array<NonNullable<InteractiveLineChartPoint['pointType']>>
+  bandClassName?: string
+  bandMask?: boolean[]
   snapToPointTypes?: Array<NonNullable<InteractiveLineChartPoint['pointType']>>
   snapRadiusPx?: number
+  snapCursorToIndex?: boolean
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
@@ -104,7 +114,10 @@ export function InteractiveLineChart({
     .filter((point): point is { x: number; y: number; index: number } => point != null)
   const timelineMarkers = points
     .map((point, index) => {
-      if (!point.pointType || !markerPointTypes.includes(point.pointType)) return null
+      const useMask = Array.isArray(markerMask) && markerMask.length === points.length
+      const shouldDrawByMask = useMask ? Boolean(markerMask[index]) : false
+      const shouldDrawByType = Boolean(point.pointType && markerPointTypes.includes(point.pointType))
+      if (!shouldDrawByMask && !shouldDrawByType) return null
       const raw = point.value
       if (raw == null || Number.isNaN(raw)) return null
       const x = values.length === 1 ? 50 : (index / Math.max(values.length - 1, 1)) * 100
@@ -113,6 +126,37 @@ export function InteractiveLineChart({
       return { x, y, index }
     })
     .filter((point): point is { x: number; y: number; index: number } => point != null)
+  const timelineBands = (() => {
+    if (points.length === 0) return []
+    const useMask = Array.isArray(bandMask) && bandMask.length === points.length
+    if (!useMask && bandPointTypes.length === 0) return []
+    const segments: Array<{ start: number; end: number }> = []
+    let activeStart: number | null = null
+    for (let i = 0; i < points.length; i += 1) {
+      const isBand = useMask
+        ? Boolean(bandMask[i])
+        : Boolean(points[i]?.pointType && bandPointTypes.includes(points[i].pointType as NonNullable<InteractiveLineChartPoint['pointType']>))
+      if (isBand && activeStart == null) activeStart = i
+      if (!isBand && activeStart != null) {
+        segments.push({ start: activeStart, end: i - 1 })
+        activeStart = null
+      }
+    }
+    if (activeStart != null) segments.push({ start: activeStart, end: points.length - 1 })
+
+    if (points.length === 1) {
+      return segments.map(() => ({ x: 0, width: 100 }))
+    }
+    return segments.map((segment) => {
+      const left =
+        segment.start === 0 ? 0 : ((segment.start - 0.5) / Math.max(points.length - 1, 1)) * 100
+      const right =
+        segment.end >= points.length - 1
+          ? 100
+          : ((segment.end + 0.5) / Math.max(points.length - 1, 1)) * 100
+      return { x: clamp(left, 0, 100), width: clamp(right - left, 0, 100) }
+    })
+  })()
   const singletonRx = svgWidthPx > 0 ? (0.8 * chartHeight) / svgWidthPx : 0.12
   const markerRx = svgWidthPx > 0 ? (0.55 * chartHeight) / svgWidthPx : 0.09
   const markerRy = 0.55
@@ -167,12 +211,12 @@ export function InteractiveLineChart({
         const rawIndex = Math.round(ratio * (points.length - 1))
         let nextIndex = rawIndex
         let hoverXForCursor = xWithinSvg
+        const xForIndex = (index: number) => (index / Math.max(points.length - 1, 1)) * svgWidth
         if (snapToPointTypes.length > 0 && points.length > 1) {
           const snapped = points.reduce(
             (best, point, index) => {
               if (!point.pointType || !snapToPointTypes.includes(point.pointType)) return best
-              const xForIndex = (index / Math.max(points.length - 1, 1)) * svgWidth
-              const distance = Math.abs(xForIndex - xWithinSvg)
+              const distance = Math.abs(xForIndex(index) - xWithinSvg)
               if (distance < best.distance) return { index, distance }
               return best
             },
@@ -180,8 +224,11 @@ export function InteractiveLineChart({
           )
           if (snapped.distance <= snapRadiusPx) {
             nextIndex = snapped.index
-            hoverXForCursor = (nextIndex / Math.max(points.length - 1, 1)) * svgWidth
+            hoverXForCursor = xForIndex(nextIndex)
           }
+        }
+        if (snapCursorToIndex && points.length > 1) {
+          hoverXForCursor = xForIndex(nextIndex)
         }
         const prev = previousHoverIndexRef.current
         let nextDirection = hoverDirection
@@ -221,6 +268,16 @@ export function InteractiveLineChart({
             className={`interactive-chart-threshold ${thresholdClassName}`.trim()}
           />
         )}
+        {timelineBands.map((band, index) => (
+          <rect
+            key={`band-${index}`}
+            x={band.x}
+            y="0"
+            width={band.width}
+            height="100"
+            className={`interactive-chart-band ${bandClassName}`.trim()}
+          />
+        ))}
         {areaPath ? (
           <path
             d={areaPath}
@@ -296,7 +353,13 @@ export function InteractiveLineChart({
               </div>
               {hoveredPoint.pointType && (
                 <div className="interactive-chart-tooltip-row">
-                  <strong>
+                  <strong
+                    className={
+                      hoveredPoint.pointType === 'filled'
+                        ? 'interactive-chart-source interactive-chart-source--filled'
+                        : 'interactive-chart-source'
+                    }
+                  >
                     <AnimatedTickerText value={pointTypeLabel(hoveredPoint.pointType)} direction={hoverDirection} />
                   </strong>
                   <span>Source</span>

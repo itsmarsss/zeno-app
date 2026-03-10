@@ -12,6 +12,14 @@ import { staggerItem } from '../../shared/motion'
 type IssueKey = 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
 
 type PeriodKey = 'today' | 'week' | 'month'
+type TimelinePoint = {
+  created_at: string
+  posture_score?: number | null
+  point_type?: 'passive' | 'focus' | 'filled' | 'unknown'
+}
+type MonitorTimelineResponse = {
+  points?: TimelinePoint[]
+}
 
 function daysForPeriod(period: PeriodKey): number {
   if (period === 'today') return 1
@@ -23,11 +31,6 @@ function dayStart(date: Date): Date {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
-}
-
-function mean(values: number[]): number | null {
-  if (!values.length) return null
-  return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
 function isTauriRuntime(): boolean {
@@ -67,84 +70,85 @@ export function PostureTab({
 }) {
   const [period, setPeriod] = useState<PeriodKey>('today')
   const [postureInsights, setPostureInsights] = useState<PostureInsights | null>(null)
+  const [postureTimeline, setPostureTimeline] = useState<TimelinePoint[]>([])
   const sortedHistory = useMemo(
     () => [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [history],
   )
+  const historyRevision = `${history.length}:${history[0]?.id ?? 0}:${history[history.length - 1]?.id ?? 0}`
 
-  const cutoff = useMemo(() => {
-    const date = new Date()
-    date.setDate(date.getDate() - (daysForPeriod(period) - 1))
-    if (period === 'today') {
-      date.setHours(0, 0, 0, 0)
-    }
-    return date
-  }, [period])
+  useEffect(() => {
+    let cancelled = false
 
-  const postureHistory = useMemo(
-    () => sortedHistory.filter((item) => new Date(item.created_at) >= cutoff),
-    [sortedHistory, cutoff],
-  )
-
-  const postureChartPoints = useMemo(
-    () => {
-      const now = new Date()
-      if (period === 'today') {
+    async function fetchPostureTimeline() {
+      if (!isTauriRuntime()) {
+        setPostureTimeline([])
+        return
+      }
+      try {
+        const now = new Date()
         const start = dayStart(now)
-        const intervalMinutes = 30
-        const points = []
-        for (let i = 0; i < 48; i += 1) {
-          const slotStart = new Date(start.getTime() + i * intervalMinutes * 60_000)
-          const slotEnd = new Date(slotStart.getTime() + intervalMinutes * 60_000)
-          const values = postureHistory
-            .filter((item) => {
-              const t = new Date(item.created_at)
-              return t >= slotStart && t < slotEnd
-            })
-            .map((item) => item.posture_score * 100)
-          const avg = mean(values)
-          points.push({
-            id: `today-${i}`,
-            label: slotStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-            value: avg == null ? null : Math.round(avg),
-          })
+        const end = new Date()
+        end.setHours(23, 59, 59, 999)
+        let bucketSeconds = 30 * 60
+        if (period === 'week') {
+          start.setDate(start.getDate() - 6)
+          bucketSeconds = 24 * 60 * 60
+        } else if (period === 'month') {
+          start.setDate(start.getDate() - 29)
+          bucketSeconds = 24 * 60 * 60
         }
-        return points
-      }
-
-      const dayCount = period === 'week' ? 7 : 30
-      const end = dayStart(now)
-      const start = new Date(end)
-      start.setDate(start.getDate() - (dayCount - 1))
-      const points = []
-      for (let i = 0; i < dayCount; i += 1) {
-        const slotStart = new Date(start)
-        slotStart.setDate(start.getDate() + i)
-        const slotEnd = new Date(slotStart)
-        slotEnd.setDate(slotStart.getDate() + 1)
-        const values = postureHistory
-          .filter((item) => {
-            const t = new Date(item.created_at)
-            return t >= slotStart && t < slotEnd
-          })
-          .map((item) => item.posture_score * 100)
-        const avg = mean(values)
-        points.push({
-          id: `${period}-${i}`,
-          label:
-            period === 'week'
-              ? slotStart.toLocaleDateString([], { weekday: 'short' })
-              : slotStart.toLocaleDateString([], { month: 'short', day: 'numeric' }),
-          value: avg == null ? null : Math.round(avg),
+        const payload = await invoke<MonitorTimelineResponse>('run_monitor_timeline', {
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          fillFromPrevious: true,
+          bucketSeconds,
+          aggregateMode: 'mean',
         })
+        if (cancelled) return
+        setPostureTimeline(Array.isArray(payload?.points) ? payload.points : [])
+      } catch (error) {
+        if (cancelled) return
+        console.error('Failed to fetch posture timeline:', error)
+        setPostureTimeline([])
       }
-      return points
-    },
-    [period, postureHistory],
-  )
+    }
 
-  const latestHistoryScore = postureHistory.length
-    ? Math.round(postureHistory[postureHistory.length - 1].posture_score * 100)
+    void fetchPostureTimeline()
+    return () => {
+      cancelled = true
+    }
+  }, [period, historyRevision])
+
+  const postureChartPoints = useMemo(() => {
+    return postureTimeline.map((point, index) => {
+      const at = new Date(point.created_at)
+      const label =
+        period === 'today'
+          ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+          : `${at.toLocaleDateString([], { weekday: 'short' })} · ${at.toLocaleDateString([], {
+              month: 'short',
+              day: 'numeric',
+            })}`
+      const pointType: 'passive' | 'focus' | 'filled' | 'unknown' =
+        point.point_type === 'focus'
+          ? 'focus'
+          : point.point_type === 'passive'
+            ? 'passive'
+            : point.point_type === 'filled'
+              ? 'filled'
+              : 'unknown'
+      return {
+        id: `${period}-${index}`,
+        label,
+        value: typeof point.posture_score === 'number' ? Math.round(point.posture_score * 100) : null,
+        pointType,
+      }
+    })
+  }, [period, postureTimeline])
+
+  const latestHistoryScore = sortedHistory.length
+    ? Math.round(sortedHistory[sortedHistory.length - 1].posture_score * 100)
     : 0
   const isStarting = postureStreamState === 'connecting'
   const liveScore = isStarting
@@ -177,8 +181,6 @@ export function PostureTab({
   const recommendedIds = postureInsights?.recommended_ids ?? []
   const recommended = EXERCISE_LIBRARY.filter((item) => recommendedIds.includes(item.id)).slice(0, 3)
   const coachingState = isStarting ? 'starting' : (liveScore ?? 0) < 75 ? 'action' : 'good'
-  const historyRevision = `${history.length}:${history[0]?.id ?? 0}:${history[history.length - 1]?.id ?? 0}`
-
   useEffect(() => {
     let cancelled = false
 
@@ -445,6 +447,10 @@ export function PostureTab({
             lineClassName="posture-line"
             areaClassName="posture-area"
             thresholdClassName="posture-threshold"
+            snapToPointTypes={['passive']}
+            snapRadiusPx={12}
+            markerPointTypes={['passive']}
+            markerClassName="posture-passive-marker"
           />
         )}
       </motion.section>

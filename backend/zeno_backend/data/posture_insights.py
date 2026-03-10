@@ -62,11 +62,39 @@ def compute_posture_insights(db_path: Path, days: int) -> dict:
             rows.append(entry)
         conn.commit()
 
-    total = sum(int(row.get("sessions_count") or 0) for row in rows)
+    # Carry-forward filler: if a day has no sessions, reuse the last known issue profile.
+    filled_days = 0
+    effective_rows: list[dict] = []
+    last_known: dict | None = None
+    for row in rows:
+        sessions_count = int(row.get("sessions_count") or 0)
+        if sessions_count > 0:
+            effective_rows.append(row)
+            last_known = row
+            continue
+        if last_known is not None:
+            filled_days += 1
+            effective_rows.append(
+                {
+                    **row,
+                    "sessions_count": int(last_known.get("sessions_count") or 0),
+                    "chin_forward_count": int(last_known.get("chin_forward_count") or 0),
+                    "rounded_shoulders_count": int(last_known.get("rounded_shoulders_count") or 0),
+                    "head_tilt_right_count": int(last_known.get("head_tilt_right_count") or 0),
+                    "top_issue": str(last_known.get("top_issue") or "chin-forward"),
+                    "recommended_ids": list(last_known.get("recommended_ids") or _recommended_ids("chin-forward")),
+                    "filled": True,
+                }
+            )
+        else:
+            effective_rows.append({**row, "filled": False})
+
+    total = sum(int(row.get("sessions_count") or 0) for row in effective_rows)
     if total == 0:
         return {
             "days": days,
             "total_sessions": 0,
+            "filled_days": 0,
             "issue_rows": [
                 {"key": "chin-forward", "label": "Chin forward", "pct": 0},
                 {"key": "rounded-shoulders", "label": "Rounded shoulders", "pct": 0},
@@ -76,9 +104,9 @@ def compute_posture_insights(db_path: Path, days: int) -> dict:
             "recommended_ids": ["chin-tuck", "scap-squeeze"],
         }
 
-    chin_forward_count = sum(int(row.get("chin_forward_count") or 0) for row in rows)
-    rounded_count = sum(int(row.get("rounded_shoulders_count") or 0) for row in rows)
-    tilt_right_count = sum(int(row.get("head_tilt_right_count") or 0) for row in rows)
+    chin_forward_count = sum(int(row.get("chin_forward_count") or 0) for row in effective_rows)
+    rounded_count = sum(int(row.get("rounded_shoulders_count") or 0) for row in effective_rows)
+    tilt_right_count = sum(int(row.get("head_tilt_right_count") or 0) for row in effective_rows)
 
     issue_rows = [
         {"key": "chin-forward", "label": "Chin forward", "pct": _percent(chin_forward_count, total)},
@@ -90,6 +118,7 @@ def compute_posture_insights(db_path: Path, days: int) -> dict:
     return {
         "days": days,
         "total_sessions": total,
+        "filled_days": filled_days,
         "issue_rows": issue_rows,
         "top_issue": top_issue,
         "recommended_ids": _recommended_ids(top_issue),

@@ -87,6 +87,7 @@ export type OverviewAggregates = {
 export type PostureInsights = {
   days: number
   total_sessions: number
+  filled_days?: number
   issue_rows: Array<{
     key: 'chin-forward' | 'rounded-shoulders' | 'head-tilt-right'
     label: string

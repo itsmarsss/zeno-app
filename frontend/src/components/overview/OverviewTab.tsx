@@ -30,6 +30,7 @@ type TimelinePoint = {
   rrConfidence: 'none' | 'partial' | 'full'
   postureScore: number | null
   focusActive: boolean
+  passiveMarkerActive: boolean
   breathing: boolean
   pointType: 'passive' | 'focus' | 'filled' | 'unknown'
 }
@@ -218,18 +219,28 @@ function SecondaryMetric({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
   const gradientId = `secondaryMetricGradient-${useId().replace(/:/g, '')}`
+  const dayDateLabels = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return data.map((_, i) => {
+      const d = new Date(today)
+      d.setDate(today.getDate() - (data.length - 1 - i))
+      return `${d.toLocaleDateString([], { weekday: 'short' })} · ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+    })
+  }, [data])
 
   const points = useMemo(
     () =>
       data.map((v, i) => ({
         id: `${i}`,
-        label: `Day ${i + 1}`,
+        label: dayDateLabels[i] ?? `Day ${i + 1}`,
         value: v,
       })),
-    [data],
+    [data, dayDateLabels],
   )
 
   const displayValue = hoveredIndex != null ? (points[hoveredIndex]?.value ?? value) : value
+  const displayDayDate = hoveredIndex != null ? (points[hoveredIndex]?.label ?? '') : (points[points.length - 1]?.label ?? '')
 
   return (
     <article className="secondary-cell">
@@ -246,15 +257,21 @@ function SecondaryMetric({
           areaClassName="secondary-sparkline-area"
           areaGradientId={gradientId}
           areaGradientColor="var(--accent)"
+          snapCursorToIndex
           onHoverChange={(index, direction) => {
             setHoveredIndex(index)
             setHoverDirection(direction)
           }}
         />
       </div>
-      <strong className="secondary-value">
-        <AnimatedTickerText value={`${displayValue}`} direction={hoverDirection} />
-      </strong>
+      <div className="secondary-value-row">
+        <strong className="secondary-value">
+          <AnimatedTickerText value={`${displayValue}`} direction={hoverDirection} />
+        </strong>
+        <span className="secondary-value-meta">
+          <AnimatedTickerText value={displayDayDate} direction={hoverDirection} />
+        </span>
+      </div>
       <span className="secondary-label">{label}</span>
     </article>
   )
@@ -332,6 +349,11 @@ export function OverviewTab({
   )
 
   const timelineHeartValues = useMemo(() => timelineData.map((point) => point.heartRate), [timelineData])
+  const timelineFocusBandMask = useMemo(() => timelineData.map((point) => point.focusActive), [timelineData])
+  const timelinePassiveMarkerMask = useMemo(
+    () => timelineData.map((point) => point.passiveMarkerActive),
+    [timelineData],
+  )
 
   return (
     <>
@@ -466,6 +488,10 @@ export function OverviewTab({
               tooltipWidth={196}
               markerPointTypes={['passive']}
               markerClassName="timeline-passive-marker"
+              markerMask={timelinePassiveMarkerMask}
+              bandMask={timelineFocusBandMask}
+              bandPointTypes={[]}
+              bandClassName="timeline-focus-band"
               snapToPointTypes={['passive']}
               snapRadiusPx={12}
               extraLines={[
@@ -513,8 +539,8 @@ export function OverviewTab({
                       <strong
                         className={
                           dataPoint.pointType === 'filled'
-                            ? 'overview-tooltip-source overview-tooltip-source--filled'
-                            : 'overview-tooltip-source'
+                            ? 'interactive-chart-source interactive-chart-source--filled'
+                            : 'interactive-chart-source'
                         }
                       >
                         <AnimatedTickerText
@@ -524,7 +550,7 @@ export function OverviewTab({
                               : dataPoint.pointType === 'passive'
                                 ? 'Passive'
                                 : dataPoint.pointType === 'filled'
-                                  ? 'Filled (inferred)'
+                                  ? 'Filled'
                                   : 'Unknown'
                           }
                           direction={direction}

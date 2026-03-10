@@ -268,20 +268,14 @@
   stroke-width: 1.2;
 }
 
+.timeline-focus-band {
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .timeline-passive-marker {
   fill: color-mix(in srgb, var(--bg-surface) 78%, #ffffff 22%);
   stroke: var(--state-mild);
   stroke-width: 0.7;
-}
-
-/* Timeline-specific tooltip styling */
-.overview-tooltip-source {
-  color: var(--text-primary);
-}
-
-.overview-tooltip-source--filled {
-  color: var(--text-tertiary);
-  font-style: italic;
 }
 
 .insight-cards {
@@ -419,7 +413,19 @@
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.secondary-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 4px;
+}
+
+.secondary-value-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
 }
 
 .secondary-label {

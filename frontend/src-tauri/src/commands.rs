@@ -262,6 +262,8 @@ pub async fn run_monitor_timeline(
     interval_seconds: Option<u32>,
     resolution: Option<String>,
     fill_from_previous: Option<bool>,
+    bucket_seconds: Option<u32>,
+    aggregate_mode: Option<String>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         run_monitor_timeline_blocking(
@@ -270,6 +272,8 @@ pub async fn run_monitor_timeline(
             interval_seconds,
             resolution,
             fill_from_previous,
+            bucket_seconds,
+            aggregate_mode,
         )
     })
     .await

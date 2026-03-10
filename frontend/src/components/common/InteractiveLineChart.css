@@ -66,6 +66,10 @@
   stroke-dasharray: 4 4;
 }
 
+.interactive-chart-band {
+  fill: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
 .interactive-chart-area {
   fill: rgba(45, 106, 79, 0.16);
 }
@@ -140,6 +144,15 @@
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.interactive-chart-source {
+  color: var(--text-primary);
+  font-style: italic;
+}
+
+.interactive-chart-source--filled {
+  color: var(--text-tertiary);
 }
 
 .interactive-chart-threshold-label {

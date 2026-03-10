@@ -1123,7 +1123,13 @@ export function MonitorTab({
                       <span>Posture</span>
                     </div>
                     <div className="interactive-chart-tooltip-row">
-                      <strong>
+                      <strong
+                        className={
+                          sourceType === 'filled'
+                            ? 'interactive-chart-source interactive-chart-source--filled'
+                            : 'interactive-chart-source'
+                        }
+                      >
                         <AnimatedTickerText
                           value={
                             sourceType === 'focus'
