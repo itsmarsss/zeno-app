@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import threading
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlretrieve
@@ -128,10 +129,25 @@ def _posture_score_from_landmarks(landmarks) -> float:
 
 
 def _posture_metrics_from_landmarks(landmarks) -> dict:
+    left_shoulder = landmarks[LEFT_SHOULDER]
+    right_shoulder = landmarks[RIGHT_SHOULDER]
+    shoulder_width = max(1e-6, abs(left_shoulder.x - right_shoulder.x))
+    shoulder_tilt_signed_norm = (left_shoulder.y - right_shoulder.y) / shoulder_width
+    shoulder_tilt_norm = abs(shoulder_tilt_signed_norm)
+    head_offset_norm = calculate_ear_shoulder_offset(landmarks) / shoulder_width
+    confidence_pool = [
+        float(getattr(landmarks[NOSE], "visibility", 0.0)),
+        float(getattr(left_shoulder, "visibility", 0.0)),
+        float(getattr(right_shoulder, "visibility", 0.0)),
+    ]
     return {
         "posture_score": _posture_score_from_landmarks(landmarks),
         "ear_shoulder_offset": round(float(calculate_ear_shoulder_offset(landmarks)), 5),
         "neck_spine_angle": round(float(calculate_neck_spine_angle(landmarks)), 3),
+        "tracking_confidence": round(float(sum(confidence_pool) / max(len(confidence_pool), 1)), 5),
+        "head_offset_norm": round(float(head_offset_norm), 5),
+        "shoulder_tilt_signed_norm": round(float(shoulder_tilt_signed_norm), 5),
+        "shoulder_tilt_norm": round(float(shoulder_tilt_norm), 5),
     }
 
 
@@ -143,7 +159,14 @@ class PostureAnalyzer:
             "posture_score": 0.0,
             "ear_shoulder_offset": 0.0,
             "neck_spine_angle": 0.0,
+            "tracking_confidence": 0.0,
+            "head_offset_norm": 0.0,
+            "shoulder_tilt_signed_norm": 0.0,
+            "shoulder_tilt_norm": 0.0,
+            "posture_stability_std": 0.0,
+            "posture_stability_label": "learning",
         }
+        self._score_window: deque[float] = deque(maxlen=60)
         self._lock = threading.Lock()
         self._subscriber_name = "posture-analyzer"
         self._landmarker = None
@@ -159,8 +182,15 @@ class PostureAnalyzer:
                 "posture_score": 0.0,
                 "ear_shoulder_offset": 0.0,
                 "neck_spine_angle": 0.0,
+                "tracking_confidence": 0.0,
+                "head_offset_norm": 0.0,
+                "shoulder_tilt_signed_norm": 0.0,
+                "shoulder_tilt_norm": 0.0,
+                "has_pose": False,
             }
-        return _posture_metrics_from_landmarks(result.pose_landmarks[0])
+        metrics = _posture_metrics_from_landmarks(result.pose_landmarks[0])
+        metrics["has_pose"] = True
+        return metrics
 
     def analyze_frame(self, frame: np.ndarray) -> float:
         return float(self.analyze_frame_details(frame)["posture_score"])
@@ -183,6 +213,19 @@ class PostureAnalyzer:
 
     def _process_frame(self, frame: np.ndarray) -> None:
         metrics = self.analyze_frame_details(frame)
+        has_pose = bool(metrics.pop("has_pose", False))
+        if has_pose:
+            self._score_window.append(float(metrics["posture_score"]))
+        if len(self._score_window) >= 3:
+            mean = float(sum(self._score_window) / len(self._score_window))
+            variance = float(sum((score - mean) ** 2 for score in self._score_window) / len(self._score_window))
+            std = float(np.sqrt(variance))
+            label = "stable" if std < 0.06 else "moderate" if std < 0.12 else "variable"
+        else:
+            std = 0.0
+            label = "learning"
+        metrics["posture_stability_std"] = round(std, 5)
+        metrics["posture_stability_label"] = label
         with self._lock:
             self._latest_score = float(metrics["posture_score"])
             self._latest_metrics = metrics

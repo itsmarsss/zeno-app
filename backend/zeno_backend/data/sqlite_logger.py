@@ -261,6 +261,12 @@ def log_session(result: dict, db_path: Path) -> int:
                 presence_detected,
                 analysis_skipped,
                 posture_score,
+                tracking_confidence,
+                head_offset_norm,
+                shoulder_tilt_signed_norm,
+                shoulder_tilt_norm,
+                posture_stability_std,
+                posture_stability_label,
                 baseline_posture_score,
                 posture_deviation,
                 posture_is_poor,
@@ -277,13 +283,19 @@ def log_session(result: dict, db_path: Path) -> int:
                 notification_dismissed_by,
                 session_duration_seconds,
                 raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result["timestamp"],
                 1 if result["presence_detected"] else 0,
                 1 if result.get("analysis_skipped") else 0,
                 posture_score,
+                float(result.get("tracking_confidence", 0.0)),
+                float(result.get("head_offset_norm", 0.0)),
+                float(result.get("shoulder_tilt_signed_norm", 0.0)),
+                float(result.get("shoulder_tilt_norm", 0.0)),
+                float(result.get("posture_stability_std", 0.0)),
+                str(result.get("posture_stability_label", "learning")),
                 baseline_score,
                 posture_deviation,
                 1 if posture_is_poor else 0,

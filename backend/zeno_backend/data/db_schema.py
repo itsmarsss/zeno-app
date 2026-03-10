@@ -12,6 +12,12 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             presence_detected INTEGER NOT NULL,
             analysis_skipped INTEGER NOT NULL DEFAULT 0,
             posture_score REAL NOT NULL,
+            tracking_confidence REAL,
+            head_offset_norm REAL,
+            shoulder_tilt_signed_norm REAL,
+            shoulder_tilt_norm REAL,
+            posture_stability_std REAL,
+            posture_stability_label TEXT,
             baseline_posture_score REAL,
             posture_deviation REAL,
             posture_is_poor INTEGER NOT NULL DEFAULT 0,
@@ -39,6 +45,18 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN analysis_skipped INTEGER NOT NULL DEFAULT 0")
     if "baseline_posture_score" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN baseline_posture_score REAL")
+    if "tracking_confidence" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN tracking_confidence REAL")
+    if "head_offset_norm" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN head_offset_norm REAL")
+    if "shoulder_tilt_signed_norm" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN shoulder_tilt_signed_norm REAL")
+    if "shoulder_tilt_norm" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN shoulder_tilt_norm REAL")
+    if "posture_stability_std" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_stability_std REAL")
+    if "posture_stability_label" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_stability_label TEXT")
     if "posture_deviation" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_deviation REAL")
     if "posture_is_poor" not in columns:
@@ -63,6 +81,12 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         SET
           analysis_skipped = COALESCE(analysis_skipped, 0),
           baseline_posture_score = COALESCE(baseline_posture_score, 0.0),
+          tracking_confidence = COALESCE(tracking_confidence, 0.0),
+          head_offset_norm = COALESCE(head_offset_norm, 0.0),
+          shoulder_tilt_signed_norm = COALESCE(shoulder_tilt_signed_norm, 0.0),
+          shoulder_tilt_norm = COALESCE(shoulder_tilt_norm, 0.0),
+          posture_stability_std = COALESCE(posture_stability_std, 0.0),
+          posture_stability_label = COALESCE(NULLIF(posture_stability_label, ''), 'learning'),
           posture_deviation = COALESCE(posture_deviation, 0.0),
           posture_is_poor = COALESCE(posture_is_poor, 0),
           respiratory_rate = COALESCE(respiratory_rate, 0.0),

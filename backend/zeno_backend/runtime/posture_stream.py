@@ -5,6 +5,7 @@ import base64
 import json
 import sys
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlretrieve
@@ -82,9 +83,14 @@ def _exercise_features(landmarks) -> dict[str, float | bool]:
     right_hip = landmarks[RIGHT_HIP]
 
     shoulder_width = abs(left_shoulder.x - right_shoulder.x)
+    shoulder_mid_x = (left_shoulder.x + right_shoulder.x) / 2.0
     shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
-    shoulder_tilt = abs(left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
-    head_offset_norm = (shoulder_mid_y - nose.y) / max(shoulder_width, 1e-6)
+    shoulder_tilt_signed = (left_shoulder.y - right_shoulder.y) / max(shoulder_width, 1e-6)
+    shoulder_tilt = abs(shoulder_tilt_signed)
+    # Lateral head offset normalized by shoulder width (negative=left, positive=right in mirrored UI mapping).
+    head_offset_norm = (shoulder_mid_x - nose.x) / max(shoulder_width, 1e-6)
+    # Forward/upright proxy kept for exercise gating logic.
+    head_forward_norm = (shoulder_mid_y - nose.y) / max(shoulder_width, 1e-6)
     left_upper_arm = abs(left_shoulder.y - left_elbow.y) / max(shoulder_width, 1e-6)
     right_upper_arm = abs(right_shoulder.y - right_elbow.y) / max(shoulder_width, 1e-6)
     wrists_above_shoulders = left_wrist.y < left_shoulder.y and right_wrist.y < right_shoulder.y
@@ -97,8 +103,10 @@ def _exercise_features(landmarks) -> dict[str, float | bool]:
 
     return {
         "shoulder_width": shoulder_width,
+        "shoulder_tilt_signed_norm": shoulder_tilt_signed,
         "shoulder_tilt_norm": shoulder_tilt,
         "head_offset_norm": head_offset_norm,
+        "head_forward_norm": head_forward_norm,
         "elbows_bent": left_upper_arm < 0.23 and right_upper_arm < 0.23,
         "wrists_above_shoulders": wrists_above_shoulders,
         "wrists_at_shoulder_band": wrists_at_shoulder_band,
@@ -106,6 +114,15 @@ def _exercise_features(landmarks) -> dict[str, float | bool]:
         "one_wrist_above_head": one_wrist_above_head,
         "torso_upright": torso_upright,
     }
+
+
+def _tracking_confidence(landmarks) -> float:
+    values = [
+        float(getattr(landmarks[NOSE], "visibility", 0.0)),
+        float(getattr(landmarks[LEFT_SHOULDER], "visibility", 0.0)),
+        float(getattr(landmarks[RIGHT_SHOULDER], "visibility", 0.0)),
+    ]
+    return sum(values) / max(len(values), 1)
 
 
 def _exercise_feedback(exercise_id: str | None, landmarks, posture_score: float) -> str | None:
@@ -118,17 +135,17 @@ def _exercise_feedback(exercise_id: str | None, landmarks, posture_score: float)
         return "Lift your chest and stack head over shoulders."
 
     if exercise_id == "chin-tuck":
-        if features["head_offset_norm"] < 0.26:
+        if features["head_forward_norm"] < 0.26:
             return "Gently draw the chin back."
         if features["shoulder_tilt_norm"] > 0.14:
             return "Level your shoulders before next rep."
     if exercise_id == "scap-squeeze":
         if features["shoulder_tilt_norm"] > 0.12:
             return "Keep both shoulders level."
-        if features["head_offset_norm"] < 0.24:
+        if features["head_forward_norm"] < 0.24:
             return "Stay tall and avoid neck drift."
     if exercise_id == "thoracic-extension":
-        if features["head_offset_norm"] < 0.3:
+        if features["head_forward_norm"] < 0.3:
             return "Lift through your sternum slightly more."
     if exercise_id == "wall-angels":
         if not features["wrists_above_shoulders"]:
@@ -150,7 +167,7 @@ def _exercise_feedback(exercise_id: str | None, landmarks, posture_score: float)
 
     if exercise_id in {"wall-angels", "doorway-pec-stretch"} and features["shoulder_tilt_norm"] > 0.18:
         return "Level your shoulders before next rep."
-    if exercise_id in {"chin-tuck", "scap-squeeze", "thoracic-extension"} and features["head_offset_norm"] < 0.22:
+    if exercise_id in {"chin-tuck", "scap-squeeze", "thoracic-extension"} and features["head_forward_norm"] < 0.22:
         return "Lengthen through the neck and upper spine."
 
     return "Good form. Keep breathing steadily."
@@ -160,11 +177,11 @@ def _exercise_target_active(exercise_id: str, landmarks) -> bool:
     features = _exercise_features(landmarks)
 
     if exercise_id == "chin-tuck":
-        return bool(features["head_offset_norm"] > 0.28 and features["shoulder_tilt_norm"] < 0.16)
+        return bool(features["head_forward_norm"] > 0.28 and features["shoulder_tilt_norm"] < 0.16)
     if exercise_id == "scap-squeeze":
-        return bool(features["shoulder_tilt_norm"] < 0.1 and features["head_offset_norm"] > 0.24)
+        return bool(features["shoulder_tilt_norm"] < 0.1 and features["head_forward_norm"] > 0.24)
     if exercise_id == "thoracic-extension":
-        return bool(features["head_offset_norm"] > 0.31 and features["torso_upright"])
+        return bool(features["head_forward_norm"] > 0.31 and features["torso_upright"])
     if exercise_id == "wall-angels":
         return bool(features["wrists_above_shoulders"] and features["elbows_bent"] and features["shoulder_tilt_norm"] < 0.14)
     if exercise_id == "doorway-pec-stretch":
@@ -212,6 +229,7 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
         "quality_ema": 0.0,
         "last_tick": time.perf_counter(),
     }
+    posture_window: deque[float] = deque(maxlen=60)
 
     try:
         with vision.PoseLandmarker.create_from_options(options) as landmarker:
@@ -228,6 +246,10 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
 
                 landmarks_payload = None
                 posture_score = 0.0
+                tracking_confidence = 0.0
+                head_offset_norm = 0.0
+                shoulder_tilt_signed_norm = 0.0
+                shoulder_tilt_norm = 0.0
                 feedback = None
                 exercise_metrics = None
                 if result.pose_landmarks:
@@ -238,6 +260,12 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                         "right_shoulder": _point_payload(landmarks[RIGHT_SHOULDER]),
                     }
                     posture_score = _posture_score_from_landmarks(landmarks)
+                    tracking_confidence = float(_tracking_confidence(landmarks))
+                    features = _exercise_features(landmarks)
+                    head_offset_norm = float(features["head_offset_norm"])
+                    shoulder_tilt_signed_norm = float(features["shoulder_tilt_signed_norm"])
+                    shoulder_tilt_norm = float(features["shoulder_tilt_norm"])
+                    posture_window.append(posture_score)
                     feedback = _exercise_feedback(exercise_id, landmarks, posture_score)
                     if exercise_id:
                         now_tick = time.perf_counter()
@@ -293,11 +321,26 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                 if not ok:
                     continue
 
+                if len(posture_window) >= 3:
+                    mean_score = sum(posture_window) / len(posture_window)
+                    variance = sum((score - mean_score) ** 2 for score in posture_window) / len(posture_window)
+                    stability_std = variance ** 0.5
+                    stability_label = "stable" if stability_std < 0.06 else "moderate" if stability_std < 0.12 else "variable"
+                else:
+                    stability_std = 0.0
+                    stability_label = "learning"
+
                 payload = {
                     "timestamp": datetime.now().isoformat(timespec="seconds"),
                     "frame_jpeg_b64": base64.b64encode(encoded).decode("ascii"),
                     "landmarks": landmarks_payload,
                     "posture_score": posture_score,
+                    "tracking_confidence": round(float(tracking_confidence), 5),
+                    "head_offset_norm": round(float(head_offset_norm), 5),
+                    "shoulder_tilt_signed_norm": round(float(shoulder_tilt_signed_norm), 5),
+                    "shoulder_tilt_norm": round(float(shoulder_tilt_norm), 5),
+                    "posture_stability_std": round(float(stability_std), 5),
+                    "posture_stability_label": stability_label,
                     "exercise_feedback": feedback,
                     "exercise_metrics": exercise_metrics,
                 }
