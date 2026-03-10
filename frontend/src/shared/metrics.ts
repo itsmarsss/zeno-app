@@ -8,48 +8,8 @@ export function prettyTime(timestamp: string): string {
 
 export function stressIndex(result: SessionResult | null): number {
   if (!result) return 0
-  if (result.session_skipped || !result.presence_detected) return 0
-  const emotion = result.dominant_emotion.toLowerCase()
-  const emotionLevel =
-    ({
-      happy: 20,
-      happiness: 20,
-      neutral: 35,
-      surprise: 45,
-      sad: 55,
-      sadness: 55,
-      disgust: 70,
-      contempt: 70,
-      angry: 85,
-      anger: 85,
-      fear: 85,
-    }[emotion as keyof Record<string, number>] ?? 50) * Math.max(result.emotion_score, 0.25)
-
-  const restingHr = result.resting_hr ?? 75
-  const restingRr = result.resting_rr ?? 14
-  const hr = result.heart_rate_bpm
-  const hrDeviation = hr == null ? 0 : Math.max(0, hr - restingHr)
-  const hrPoints = Math.max(0, Math.min(100, hrDeviation * 3.2))
-  const rr = result.respiratory_rate ?? 0
-  const rrDeviation = rr <= 0 ? 0 : Math.max(0, rr - restingRr)
-  const rrPoints = Math.max(0, Math.min(100, rrDeviation * 6.0))
-  const rrConfidence = result.mode === 'focus' ? result.rr_confidence : 'none'
-
-  let hrWeight = 0.5
-  let rrWeight = 0
-  let emotionWeight = 0.5
-  if (rrConfidence === 'full') {
-    hrWeight = 0.35
-    rrWeight = 0.3
-    emotionWeight = 0.35
-  } else if (rrConfidence === 'partial') {
-    hrWeight = 0.4
-    rrWeight = 0.15
-    emotionWeight = 0.45
-  }
-
-  const weighted = hrPoints * hrWeight + rrPoints * rrWeight + emotionLevel * emotionWeight
-  return Math.max(0, Math.min(100, Math.round(weighted)))
+  if (typeof result.stress_index !== 'number' || !Number.isFinite(result.stress_index)) return 0
+  return Math.max(0, Math.min(100, Math.round(result.stress_index)))
 }
 
 export function stressState(score: number): 'calm' | 'mild' | 'elevated' | 'high' {
@@ -76,6 +36,7 @@ export function stressIndexFromHistory(item: SessionHistoryItem): number {
     posture_is_poor: Boolean(item.posture_is_poor),
     dominant_emotion: item.dominant_emotion,
     emotion_score: item.emotion_score,
+    stress_index: item.stress_index,
     heart_rate_bpm: item.heart_rate_bpm,
     respiratory_rate: item.respiratory_rate,
     rr_confidence: item.rr_confidence,
@@ -99,6 +60,7 @@ export function sessionFromHistory(item: SessionHistoryItem): SessionResult {
     posture_is_poor: Boolean(item.posture_is_poor),
     dominant_emotion: item.dominant_emotion,
     emotion_score: item.emotion_score,
+    stress_index: item.stress_index,
     heart_rate_bpm: item.heart_rate_bpm,
     respiratory_rate: item.respiratory_rate,
     rr_confidence: item.rr_confidence,

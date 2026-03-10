@@ -31,6 +31,7 @@ type MonitorTimelineResponse = {
     respiratory_rate: number | null
     rr_confidence: 'none' | 'partial' | 'full'
     point_type?: 'passive' | 'focus' | 'filled' | 'unknown'
+    stress_index?: number | null
     [key: string]: unknown
   }>
 }
@@ -433,13 +434,10 @@ export function MonitorTab({
     return response.points.map((item: any) => {
       const postureRaw = typeof item.posture_score === 'number' ? item.posture_score : null
       const rrRaw = typeof item.respiratory_rate === 'number' ? item.respiratory_rate : null
-      const hasStressFields =
-        typeof item.dominant_emotion === 'string' &&
-        typeof item.emotion_score === 'number' &&
-        item.presence_detected != null
+      const stressValue = typeof item.stress_index === 'number' ? item.stress_index : null
       return {
         at: new Date(item.created_at).getTime(),
-        stress: hasStressFields ? stressIndex(item) : null,
+        stress: stressValue,
         heartRate: typeof item.heart_rate_bpm === 'number' ? item.heart_rate_bpm : null,
         respiratoryRate: rrRaw != null && rrRaw > 0 ? rrRaw : null,
         postureScore: postureRaw != null ? Math.round(postureRaw * 100) : null,

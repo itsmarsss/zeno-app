@@ -56,6 +56,7 @@ type MonitorTimelinePoint = {
   emotion_backend?: string | null
   dominant_emotion?: string | null
   emotion_score?: number | null
+  stress_index?: number | null
   presence_detected?: number | null
 }
 
@@ -200,6 +201,7 @@ export function MainWindowShell({
       emotion_backend: item.emotion_backend,
       dominant_emotion: item.dominant_emotion,
       emotion_score: item.emotion_score,
+      stress_index: item.stress_index ?? null,
       presence_detected: item.presence_detected,
     }))
   }, [overviewSessions])
@@ -233,15 +235,7 @@ export function MainWindowShell({
     })
     // Preserve backend step semantics: take the latest point in this bucket.
     const latestPoint = slice.length > 0 ? slice[slice.length - 1] : null
-    let stressValue: number | null = null
-    if (
-      latestPoint &&
-      latestPoint.dominant_emotion &&
-      typeof latestPoint.emotion_score === 'number' &&
-      latestPoint.presence_detected != null
-    ) {
-      stressValue = stressIndexFromHistory(latestPoint as SessionHistoryItem)
-    }
+    const stressValue = latestPoint && typeof latestPoint.stress_index === 'number' ? latestPoint.stress_index : null
     const heartRateValue =
       latestPoint && typeof latestPoint.heart_rate_bpm === 'number' && latestPoint.heart_rate_bpm > 0
         ? latestPoint.heart_rate_bpm

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.core.stress_index import compute_stress_index
 from zeno_backend.pipelines.session_runner import run_session
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
@@ -17,54 +18,6 @@ def init_db(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         ensure_sessions_schema(conn)
         conn.commit()
-
-
-def _stress_index(
-    dominant_emotion: str,
-    emotion_score: float,
-    heart_rate_bpm: float | None,
-    respiratory_rate: float,
-    rr_confidence: str,
-    mode: str,
-    resting_hr: float,
-    resting_rr: float,
-) -> int:
-    emotion = (dominant_emotion or "unknown").lower()
-    emotion_points = {
-        "happy": 20.0,
-        "happiness": 20.0,
-        "neutral": 35.0,
-        "surprise": 45.0,
-        "sad": 55.0,
-        "sadness": 55.0,
-        "disgust": 70.0,
-        "contempt": 70.0,
-        "angry": 85.0,
-        "anger": 85.0,
-        "fear": 85.0,
-    }.get(emotion, 50.0)
-    emotion_points *= max(float(emotion_score), 0.25)
-
-    if heart_rate_bpm is None:
-        hr_points = 0.0
-    else:
-        hr_points = max(0.0, min(100.0, (float(heart_rate_bpm) - resting_hr) * 3.2))
-
-    rr = float(respiratory_rate or 0.0)
-    if rr <= 0:
-        rr_points = 0.0
-    else:
-        rr_points = max(0.0, min(100.0, (rr - resting_rr) * 6.0))
-
-    if mode == "focus" and rr_confidence == "full":
-        hr_weight, rr_weight, emotion_weight = 0.35, 0.30, 0.35
-    elif mode == "focus" and rr_confidence == "partial":
-        hr_weight, rr_weight, emotion_weight = 0.40, 0.15, 0.45
-    else:
-        hr_weight, rr_weight, emotion_weight = 0.50, 0.00, 0.50
-
-    weighted = hr_points * hr_weight + rr_points * rr_weight + emotion_points * emotion_weight
-    return int(max(0, min(100, round(weighted))))
 
 
 def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float, float, bool, float | None, float | None]:
@@ -98,7 +51,7 @@ def _sync_baseline_state(conn: sqlite3.Connection, result: dict) -> tuple[float,
     sessions_completed = int(baseline_row[5]) if baseline_row else 0
     is_calibrated = bool(baseline_row[6]) if baseline_row else False
 
-    stress = _stress_index(
+    stress = compute_stress_index(
         dominant_emotion=str(result.get("dominant_emotion", "unknown")),
         emotion_score=float(result.get("emotion_score", 0.0)),
         heart_rate_bpm=None if heart_rate_bpm is None else float(heart_rate_bpm),
@@ -253,6 +206,23 @@ def log_session(result: dict, db_path: Path) -> int:
         result["posture_is_poor"] = bool(posture_is_poor)
         result["resting_hr"] = None if resting_hr is None else round(float(resting_hr), 1)
         result["resting_rr"] = None if resting_rr is None else round(float(resting_rr), 1)
+        result["stress_index"] = int(
+            result.get(
+                "stress_index",
+                compute_stress_index(
+                    dominant_emotion=str(result.get("dominant_emotion", "unknown")),
+                    emotion_score=float(result.get("emotion_score", 0.0)),
+                    heart_rate_bpm=None
+                    if result.get("heart_rate_bpm") is None
+                    else float(result.get("heart_rate_bpm")),
+                    respiratory_rate=float(result.get("respiratory_rate", 0.0)),
+                    rr_confidence=str(result.get("rr_confidence", "none")),
+                    mode=str(result.get("mode", "passive")),
+                    resting_hr=75.0 if resting_hr is None else float(resting_hr),
+                    resting_rr=14.0 if resting_rr is None else float(resting_rr),
+                ),
+            )
+        )
 
         cursor = conn.execute(
             """
@@ -272,6 +242,7 @@ def log_session(result: dict, db_path: Path) -> int:
                 posture_is_poor,
                 dominant_emotion,
                 emotion_score,
+                stress_index,
                 heart_rate_bpm,
                 respiratory_rate,
                 rr_confidence,
@@ -283,7 +254,7 @@ def log_session(result: dict, db_path: Path) -> int:
                 notification_dismissed_by,
                 session_duration_seconds,
                 raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result["timestamp"],
@@ -301,6 +272,7 @@ def log_session(result: dict, db_path: Path) -> int:
                 1 if posture_is_poor else 0,
                 str(result["dominant_emotion"]),
                 float(result["emotion_score"]),
+                int(result.get("stress_index", 0)),
                 None if result["heart_rate_bpm"] is None else float(result["heart_rate_bpm"]),
                 float(result.get("respiratory_rate", 0.0)),
                 str(result.get("rr_confidence", "none")),

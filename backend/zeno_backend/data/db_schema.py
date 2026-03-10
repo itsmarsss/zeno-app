@@ -23,6 +23,7 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             posture_is_poor INTEGER NOT NULL DEFAULT 0,
             dominant_emotion TEXT NOT NULL,
             emotion_score REAL NOT NULL,
+            stress_index INTEGER,
             heart_rate_bpm REAL,
             respiratory_rate REAL NOT NULL DEFAULT 0.0,
             rr_confidence TEXT NOT NULL DEFAULT 'none',
@@ -61,6 +62,8 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_deviation REAL")
     if "posture_is_poor" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_is_poor INTEGER NOT NULL DEFAULT 0")
+    if "stress_index" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN stress_index INTEGER")
     if "notification_sent" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN notification_sent TEXT")
     if "notification_dismissed_by" not in columns:
@@ -89,6 +92,7 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
           posture_stability_label = COALESCE(NULLIF(posture_stability_label, ''), 'learning'),
           posture_deviation = COALESCE(posture_deviation, 0.0),
           posture_is_poor = COALESCE(posture_is_poor, 0),
+          stress_index = COALESCE(stress_index, 0),
           respiratory_rate = COALESCE(respiratory_rate, 0.0),
           rr_confidence = COALESCE(NULLIF(rr_confidence, ''), 'none'),
           mode = COALESCE(NULLIF(mode, ''), 'passive'),

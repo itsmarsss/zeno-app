@@ -8,6 +8,7 @@ export type SessionResult = {
   posture_is_poor: boolean
   dominant_emotion: string
   emotion_score: number
+  stress_index?: number
   heart_rate_bpm: number | null
   respiratory_rate: number
   rr_confidence: 'none' | 'partial' | 'full'
@@ -38,6 +39,7 @@ export type SessionHistoryItem = {
   posture_is_poor: number
   dominant_emotion: string
   emotion_score: number
+  stress_index?: number
   heart_rate_bpm: number | null
   respiratory_rate: number
   rr_confidence: 'none' | 'partial' | 'full'

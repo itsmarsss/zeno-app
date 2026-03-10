@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.core.stress_index import compute_stress_index
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 EMOTIONS = ["neutral", "happy", "fear", "sad", "anger", "surprise", "disgust"]
@@ -59,17 +60,41 @@ def generate_session(ts: datetime, focus_mode: bool) -> dict:
     baseline_posture_score = round(random.uniform(0.60, 0.72), 3)
     posture_deviation = max(0.0, round((baseline_posture_score - posture) / max(baseline_posture_score, 0.001), 4))
     posture_is_poor = posture_deviation > 0.15
+    tracking_confidence = round(random.uniform(0.74, 0.99), 5)
+    head_offset_norm = round(random.uniform(-0.22, 0.22), 5)
+    shoulder_tilt_signed_norm = round(random.uniform(-0.16, 0.16), 5)
+    shoulder_tilt_norm = round(abs(shoulder_tilt_signed_norm), 5)
+    posture_stability_std = round(random.uniform(0.015, 0.135), 5)
+    posture_stability_label = (
+        "stable" if posture_stability_std < 0.06 else "moderate" if posture_stability_std < 0.12 else "variable"
+    )
 
     return {
         "timestamp": ts.isoformat(timespec="seconds"),
         "presence_detected": True,
         "analysis_skipped": False,
         "posture_score": posture,
+        "tracking_confidence": tracking_confidence,
+        "head_offset_norm": head_offset_norm,
+        "shoulder_tilt_signed_norm": shoulder_tilt_signed_norm,
+        "shoulder_tilt_norm": shoulder_tilt_norm,
+        "posture_stability_std": posture_stability_std,
+        "posture_stability_label": posture_stability_label,
         "baseline_posture_score": baseline_posture_score,
         "posture_deviation": posture_deviation,
         "posture_is_poor": posture_is_poor,
         "dominant_emotion": emotion,
         "emotion_score": emotion_score,
+        "stress_index": compute_stress_index(
+            dominant_emotion=emotion,
+            emotion_score=emotion_score,
+            heart_rate_bpm=heart_rate,
+            respiratory_rate=respiratory_rate,
+            rr_confidence=rr_confidence,
+            mode=mode,
+            resting_hr=75.0,
+            resting_rr=14.0,
+        ),
         "heart_rate_bpm": heart_rate,
         "respiratory_rate": respiratory_rate,
         "rr_confidence": rr_confidence,
@@ -108,11 +133,18 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         presence_detected,
                         analysis_skipped,
                         posture_score,
+                        tracking_confidence,
+                        head_offset_norm,
+                        shoulder_tilt_signed_norm,
+                        shoulder_tilt_norm,
+                        posture_stability_std,
+                        posture_stability_label,
                         baseline_posture_score,
                         posture_deviation,
                         posture_is_poor,
                         dominant_emotion,
                         emotion_score,
+                        stress_index,
                         heart_rate_bpm,
                         respiratory_rate,
                         rr_confidence,
@@ -124,18 +156,25 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         notification_sent,
                         notification_dismissed_by,
                         raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session["timestamp"],
                         1,
                         0,
                         session["posture_score"],
+                        session["tracking_confidence"],
+                        session["head_offset_norm"],
+                        session["shoulder_tilt_signed_norm"],
+                        session["shoulder_tilt_norm"],
+                        session["posture_stability_std"],
+                        session["posture_stability_label"],
                         session["baseline_posture_score"],
                         session["posture_deviation"],
                         1 if session["posture_is_poor"] else 0,
                         session["dominant_emotion"],
                         session["emotion_score"],
+                        session["stress_index"],
                         session["heart_rate_bpm"],
                         session["respiratory_rate"],
                         session["rr_confidence"],
@@ -165,11 +204,18 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         presence_detected,
                         analysis_skipped,
                         posture_score,
+                        tracking_confidence,
+                        head_offset_norm,
+                        shoulder_tilt_signed_norm,
+                        shoulder_tilt_norm,
+                        posture_stability_std,
+                        posture_stability_label,
                         baseline_posture_score,
                         posture_deviation,
                         posture_is_poor,
                         dominant_emotion,
                         emotion_score,
+                        stress_index,
                         heart_rate_bpm,
                         respiratory_rate,
                         rr_confidence,
@@ -181,18 +227,25 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
                         notification_sent,
                         notification_dismissed_by,
                         raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session["timestamp"],
                         1,
                         0,
                         session["posture_score"],
+                        session["tracking_confidence"],
+                        session["head_offset_norm"],
+                        session["shoulder_tilt_signed_norm"],
+                        session["shoulder_tilt_norm"],
+                        session["posture_stability_std"],
+                        session["posture_stability_label"],
                         session["baseline_posture_score"],
                         session["posture_deviation"],
                         1 if session["posture_is_poor"] else 0,
                         session["dominant_emotion"],
                         session["emotion_score"],
+                        session["stress_index"],
                         session["heart_rate_bpm"],
                         session["respiratory_rate"],
                         session["rr_confidence"],

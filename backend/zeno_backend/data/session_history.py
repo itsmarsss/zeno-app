@@ -36,6 +36,7 @@ def fetch_history(db_path: Path, limit: int = 20) -> list[dict]:
                 posture_is_poor,
                 dominant_emotion,
                 emotion_score,
+                stress_index,
                 heart_rate_bpm,
                 respiratory_rate,
                 rr_confidence,
