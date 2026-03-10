@@ -7,6 +7,7 @@ from pathlib import Path
 
 from zeno_backend.data.daily_aggregates import refresh_all_daily_aggregates
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.insight_cards import refresh_all_daily_insight_cards
 from zeno_backend.data.posture_daily_insights import refresh_all_posture_daily_insights
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
@@ -29,6 +30,7 @@ def main() -> None:
     with sqlite3.connect(db_path) as conn:
         ensure_sessions_schema(conn)
         updated_days = refresh_all_daily_aggregates(conn)
+        insight_days = refresh_all_daily_insight_cards(conn)
         posture_updated_days = refresh_all_posture_daily_insights(conn)
         conn.commit()
     print(
@@ -36,6 +38,7 @@ def main() -> None:
             {
                 "db_path": str(db_path),
                 "updated_days": updated_days,
+                "insight_days": insight_days,
                 "posture_updated_days": posture_updated_days,
             }
         )

@@ -9,7 +9,22 @@ export type InsightCard = {
   tag: string
   text: string
   stat: string
-  icon: 'trending' | 'activity' | 'user'
+  icon:
+    | 'activity'
+    | 'trending'
+    | 'trending-up'
+    | 'bar-chart-3'
+    | 'brain'
+    | 'heart-pulse'
+    | 'clock-3'
+    | 'timer'
+    | 'target'
+    | 'zap'
+    | 'shield-check'
+    | 'coffee'
+    | 'moon'
+    | 'sun'
+    | 'user'
 }
 
 export type SessionNarrative = {

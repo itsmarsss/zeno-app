@@ -90,6 +90,25 @@ function FadeSwapText({ value, className }: { value: string; className?: string 
   )
 }
 
+function useTickerDirection(value: string): 1 | -1 {
+  const [direction, setDirection] = useState<1 | -1>(1)
+  const previousRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const previous = previousRef.current
+    if (previous != null && previous !== value) {
+      const prevNum = Number(previous.replace(/[^\d.-]/g, ''))
+      const nextNum = Number(value.replace(/[^\d.-]/g, ''))
+      if (Number.isFinite(prevNum) && Number.isFinite(nextNum) && prevNum !== nextNum) {
+        setDirection(nextNum > prevNum ? 1 : -1)
+      }
+    }
+    previousRef.current = value
+  }, [value])
+
+  return direction
+}
+
 function readStoredBoolean(key: string): boolean | null {
   try {
     const raw = window.localStorage.getItem(key)
@@ -546,6 +565,21 @@ export function MonitorTab({
   const rrDelta = rrValue > 0 ? rrValue - restingRr : null
   const postureDelta = displayResult && baselinePosturePct > 0 ? postureValue - baselinePosturePct : null
   const postureStatus = postureLabel(displayResult)
+  const stressDisplay = displayResult ? `${stressValue}` : '--'
+  const hrDisplay = hrValue == null ? '--' : `${Math.round(hrValue)}`
+  const rrDisplay =
+    monitorMode === 'focus' && rrStage === 'measuring'
+      ? '--'
+      : rrValue > 0
+        ? monitorMode === 'passive' || rrStage === 'stabilizing'
+          ? `~${Math.round(rrValue)}`
+          : `${Math.round(rrValue)}`
+        : '--'
+  const postureDisplay = displayResult ? `${postureValue}` : '--'
+  const stressDirection = useTickerDirection(stressDisplay)
+  const hrDirection = useTickerDirection(hrDisplay)
+  const rrDirection = useTickerDirection(rrDisplay)
+  const postureDirection = useTickerDirection(postureDisplay)
 
   const stressChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.stress), [cardPoints])
   const hrChartPoints = useMemo(() => buildChartPoints(cardPoints, (p) => p.heartRate), [cardPoints])
@@ -706,14 +740,14 @@ export function MonitorTab({
             <article className="monitor-vital">
               <span className="monitor-vital-label">Stress</span>
               <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
-                {displayResult ? stressValue : '--'}
+                <AnimatedTickerText value={stressDisplay} direction={stressDirection} />
               </strong>
               <em>{displayResult ? stressLabel(stressValue) : 'No data'}</em>
             </article>
             <article className="monitor-vital">
               <span className="monitor-vital-label">Heart Rate</span>
               <strong className={`signal-value signal-value--${hrTone(hrValue, restingHr)}`}>
-                {hrValue == null ? '--' : Math.round(hrValue)}
+                <AnimatedTickerText value={hrDisplay} direction={hrDirection} />
               </strong>
               <em>
                 {hrValue == null
@@ -730,13 +764,7 @@ export function MonitorTab({
             <article className="monitor-vital">
               <span className="monitor-vital-label">Respiratory Rate</span>
               <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
-                {monitorMode === 'focus' && rrStage === 'measuring'
-                  ? '--'
-                  : rrValue > 0
-                    ? monitorMode === 'passive' || rrStage === 'stabilizing'
-                      ? `~${Math.round(rrValue)}`
-                      : `${Math.round(rrValue)}`
-                    : '--'}
+                <AnimatedTickerText value={rrDisplay} direction={rrDirection} />
               </strong>
               <em>
                 {monitorMode === 'passive'
@@ -755,7 +783,7 @@ export function MonitorTab({
             <article className="monitor-vital">
               <span className="monitor-vital-label">Posture</span>
               <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
-                {displayResult ? postureValue : '--'}
+                <AnimatedTickerText value={postureDisplay} direction={postureDirection} />
               </strong>
               <FadeSwapText value={postureStatus} className="monitor-fade-swap monitor-fade-swap--em" />
             </article>
@@ -784,7 +812,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${stressTone(stressValue)}`}>
-                {displayResult ? stressValue : '--'}
+                <AnimatedTickerText value={stressDisplay} direction={stressDirection} />
               </strong>
             </div>
             <div className="monitor-card-sub">
@@ -835,7 +863,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${hrTone(hrValue, restingHr)}`}>
-                {hrValue == null ? '--' : Math.round(hrValue)}
+                <AnimatedTickerText value={hrDisplay} direction={hrDirection} />
               </strong>
               <em>bpm</em>
             </div>
@@ -898,13 +926,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${rrTone(rrValue, monitorMode, rrStage)}`}>
-                {monitorMode === 'focus' && rrStage === 'measuring'
-                  ? '--'
-                  : rrValue > 0
-                    ? monitorMode === 'passive' || rrStage === 'stabilizing'
-                      ? `~${Math.round(rrValue)}`
-                      : `${Math.round(rrValue)}`
-                    : '--'}
+                <AnimatedTickerText value={rrDisplay} direction={rrDirection} />
               </strong>
               <em>bpm</em>
             </div>
@@ -997,7 +1019,7 @@ export function MonitorTab({
             </header>
             <div className="monitor-card-value">
               <strong className={`signal-value signal-value--${postureTone(postureValue)}`}>
-                {displayResult ? postureValue : '--'}
+                <AnimatedTickerText value={postureDisplay} direction={postureDirection} />
               </strong>
               <em>/ 100</em>
             </div>

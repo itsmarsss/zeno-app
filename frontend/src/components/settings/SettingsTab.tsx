@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, CheckCircle2, ChevronRight, Download, ExternalLink, Loader2, LogOut, Trash2, User } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
 import { useAuth } from '../../context/AuthContext'
 import './SettingsTab.css'
@@ -77,6 +78,19 @@ export function SettingsTab({
   onExportData: () => Promise<void>
   exportMessage: string | null
 }) {
+  const [aiStatus, setAiStatus] = useState<{
+    reachable: boolean
+    model: string
+    model_available: boolean
+    installed_models: string[]
+    setup_attempted: boolean
+    setup_succeeded: boolean
+    message: string
+  } | null>(null)
+  const [aiStatusState, setAiStatusState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [aiSetupState, setAiSetupState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [aiSetupStartedAt, setAiSetupStartedAt] = useState<number | null>(null)
+  const [aiSetupElapsedSec, setAiSetupElapsedSec] = useState(0)
   const [cameraIndicator, setCameraIndicator] = useState(true)
   const [postureNudges, setPostureNudges] = useState(true)
   const [stressNudges, setStressNudges] = useState(true)
@@ -107,6 +121,46 @@ export function SettingsTab({
     report_time: reportValue,
     start_mode: startMode,
   }
+
+  async function checkLocalAiStatus(setup = false) {
+    setAiStatusState('loading')
+    try {
+      const payload = await invoke<{
+        reachable: boolean
+        model: string
+        model_available: boolean
+        installed_models: string[]
+        setup_attempted: boolean
+        setup_succeeded: boolean
+        message: string
+      }>('run_local_ai_status', { setup, model: settings?.local_ai_model?.trim() ? settings.local_ai_model : undefined })
+      setAiStatus(payload)
+      setAiStatusState('idle')
+    } catch {
+      setAiStatusState('error')
+    }
+  }
+
+  useEffect(() => {
+    if (settings?.local_ai_insights_enabled) {
+      void checkLocalAiStatus(false)
+    } else {
+      setAiStatus(null)
+      setAiStatusState('idle')
+      setAiSetupState('idle')
+      setAiSetupStartedAt(null)
+      setAiSetupElapsedSec(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.local_ai_insights_enabled, settings?.local_ai_model])
+
+  useEffect(() => {
+    if (aiSetupState !== 'running' || aiSetupStartedAt == null) return
+    const timer = window.setInterval(() => {
+      setAiSetupElapsedSec(Math.max(0, Math.floor((Date.now() - aiSetupStartedAt) / 1000)))
+    }, 500)
+    return () => window.clearInterval(timer)
+  }, [aiSetupStartedAt, aiSetupState])
 
   function selectLabel(key: SelectKey): string {
     const options = SELECT_OPTIONS[key]
@@ -416,6 +470,143 @@ export function SettingsTab({
               {selectLabel('report_time')} <ChevronRight size={14} />
             </span>
           </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <p className="settings-section-title">Local AI (Optional)</p>
+        <div className="settings-card">
+          <div className="settings-row settings-row--toggle">
+            <div>
+              <strong>AI insight cards</strong>
+              <p>Generate richer daily insight cards locally on-device</p>
+            </div>
+            <button
+              className={`toggle ${settings?.local_ai_insights_enabled ? 'is-active' : 'is-paused'}`}
+              onClick={() =>
+                void (async () => {
+                  const next = !(settings?.local_ai_insights_enabled ?? false)
+                  await updateSettings({ local_ai_insights_enabled: next })
+                  if (next) {
+                    await checkLocalAiStatus(false)
+                  }
+                })()
+              }
+              aria-label="Toggle local AI insight cards"
+            >
+              <span className="knob" />
+            </button>
+          </div>
+          <div className="settings-row settings-row--info">
+            <div>
+              <strong>Status</strong>
+              <p>
+                {!settings?.local_ai_insights_enabled
+                  ? 'Disabled. Zeno uses template insights only.'
+                  : aiSetupState === 'running'
+                    ? `Downloading ${aiStatus?.model ?? 'model'}... ${aiSetupElapsedSec}s elapsed`
+                    : aiSetupState === 'done'
+                      ? `Model ready: ${aiStatus?.model ?? 'local model'}`
+                      : aiSetupState === 'error'
+                        ? 'Setup failed. Check Ollama and try again.'
+                  : aiStatusState === 'loading'
+                    ? 'Checking local AI runtime...'
+                    : aiStatusState === 'error'
+                      ? 'Could not check runtime. Try again.'
+                      : aiStatus == null
+                        ? 'AI enabled. Check runtime status.'
+                        : !aiStatus.model
+                          ? 'Connected. Select an installed model.'
+                        : aiStatus.model_available
+                          ? `Connected · ${aiStatus.model} ready`
+                          : aiStatus.reachable
+                            ? `Connected · ${aiStatus.model} not installed`
+                            : 'Ollama not detected'}
+              </p>
+            </div>
+          </div>
+          <div className="settings-row settings-row--action">
+            <div>
+              <strong>AI model</strong>
+              <p>Choose from installed Ollama models</p>
+            </div>
+            <span className="settings-action-cta">
+              <select
+                className="settings-model-select"
+                value={settings?.local_ai_model ?? ''}
+                onChange={(event) =>
+                  void (async () => {
+                    const nextModel = event.target.value
+                    await updateSettings({ local_ai_model: nextModel })
+                    await checkLocalAiStatus(false)
+                  })()
+                }
+                disabled={!settings?.local_ai_insights_enabled || aiStatusState === 'loading' || aiSetupState === 'running'}
+              >
+                <option value="">Select model...</option>
+                {(aiStatus?.installed_models?.length ?? 0) > 0 ? (
+                  (aiStatus?.installed_models ?? []).map((modelName) => (
+                    <option key={modelName} value={modelName}>
+                      {modelName}
+                    </option>
+                  ))
+                ) : null}
+              </select>
+            </span>
+          </div>
+          <div className="settings-row settings-row--action">
+            <div>
+              <strong>Runtime check</strong>
+              <p>Verify Ollama connectivity and model readiness</p>
+            </div>
+            <span className="settings-action-cta">
+              <button
+                className="settings-mini-btn"
+                onClick={() => void checkLocalAiStatus(false)}
+                disabled={!settings?.local_ai_insights_enabled || aiStatusState === 'loading' || aiSetupState === 'running'}
+              >
+                {aiStatusState === 'loading' ? 'Checking…' : 'Check now'}
+              </button>
+              <button
+                className="settings-mini-btn"
+                onClick={() =>
+                  void (async () => {
+                    setAiSetupState('running')
+                    setAiSetupStartedAt(Date.now())
+                    setAiSetupElapsedSec(0)
+                    try {
+                      await checkLocalAiStatus(true)
+                      setAiSetupState('done')
+                    } catch {
+                      setAiSetupState('error')
+                    }
+                  })()
+                }
+                disabled={
+                  !settings?.local_ai_insights_enabled ||
+                  aiStatusState === 'loading' ||
+                  aiSetupState === 'running' ||
+                  !(settings?.local_ai_model ?? '').trim()
+                }
+              >
+                {aiSetupState === 'running' ? `Downloading… ${aiSetupElapsedSec}s` : 'Set up'}
+              </button>
+            </span>
+          </div>
+          <a
+            className="settings-row settings-row--select"
+            href="https://ollama.com/download"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <div>
+              <strong>Install Ollama (optional)</strong>
+              <p>Required only for local LLM-generated insights</p>
+            </div>
+            <span>
+              <ExternalLink size={12} /> <ChevronRight size={14} />
+            </span>
+          </a>
         </div>
       </section>
 

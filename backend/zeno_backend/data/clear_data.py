@@ -14,7 +14,14 @@ def clear_data(db_path: Path) -> int:
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.execute("DELETE FROM sessions")
-        for table in ("daily_aggregates", "posture_daily_insights", "breathing_sessions", "break_sessions", "exercise_sessions"):
+        for table in (
+            "daily_aggregates",
+            "daily_insight_cards",
+            "posture_daily_insights",
+            "breathing_sessions",
+            "break_sessions",
+            "exercise_sessions",
+        ):
             try:
                 conn.execute(f"DELETE FROM {table}")
             except sqlite3.OperationalError:

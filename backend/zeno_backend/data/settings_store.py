@@ -11,6 +11,8 @@ DEFAULT_SETTINGS = {
     "session_frequency_minutes": 10,
     "daily_report_hour": 21,
     "daily_report_minute": 0,
+    "local_ai_insights_enabled": False,
+    "local_ai_model": "",
     "onboarding_completed": False,
     "plan_tier": "free",
     "license_key": "",
@@ -31,6 +33,8 @@ def _sanitize(settings: dict) -> dict:
 
     cleaned["daily_report_minute"] = int(cleaned.get("daily_report_minute", 0))
     cleaned["daily_report_minute"] = min(59, max(0, cleaned["daily_report_minute"]))
+    cleaned["local_ai_insights_enabled"] = bool(cleaned.get("local_ai_insights_enabled", False))
+    cleaned["local_ai_model"] = str(cleaned.get("local_ai_model", "")).strip()
     cleaned["onboarding_completed"] = bool(cleaned.get("onboarding_completed", False))
     cleaned["plan_tier"] = str(cleaned.get("plan_tier", "free")).lower()
     if cleaned["plan_tier"] not in {"free", "pro"}:

@@ -107,6 +107,17 @@
   font-size: 12px !important;
 }
 
+.settings-model-select {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  min-width: 210px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 .settings-license-ok {
   color: var(--state-calm) !important;
 }
@@ -359,4 +370,25 @@
 
 .settings-copy-btn:active {
   transform: scale(0.95);
+}
+
+.settings-mini-btn {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settings-mini-btn:hover:enabled {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+}
+
+.settings-mini-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

@@ -3,7 +3,9 @@ use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
     run_export_sessions_csv_blocking, run_log_break_session_blocking,
     run_log_breathing_session_blocking, run_log_exercise_session_blocking,
-    run_monitor_timeline_blocking, run_overview_aggregates_blocking, run_posture_insights_blocking,
+    run_insight_cards_blocking, run_local_ai_status_blocking, run_monitor_timeline_blocking,
+    run_overview_aggregates_blocking,
+    run_posture_insights_blocking,
     run_presence_check_blocking, run_python_session_blocking, run_session_days_blocking,
     run_session_history_blocking, run_settings_blocking,
     run_update_session_notification_blocking,
@@ -121,6 +123,25 @@ pub async fn run_overview_aggregates(date_iso: Option<String>) -> Result<Value, 
     tauri::async_runtime::spawn_blocking(move || run_overview_aggregates_blocking(date_iso))
         .await
         .map_err(|e| format!("Overview aggregates task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_insight_cards(
+    date_iso: Option<String>,
+    force: Option<bool>,
+    allow_ai: Option<bool>,
+    model: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_insight_cards_blocking(date_iso, force, allow_ai, model))
+        .await
+        .map_err(|e| format!("Insight cards task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_local_ai_status(setup: Option<bool>, model: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_local_ai_status_blocking(setup, model))
+        .await
+        .map_err(|e| format!("Local AI status task join error: {e}"))?
 }
 
 #[tauri::command]

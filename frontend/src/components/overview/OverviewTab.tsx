@@ -1,5 +1,23 @@
-import { useId, useMemo, useState } from 'react'
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, User } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  Activity,
+  BarChart3,
+  Brain,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Coffee,
+  HeartPulse,
+  Moon,
+  ShieldCheck,
+  Sun,
+  Target,
+  Timer,
+  TrendingUp,
+  User,
+  Zap,
+} from 'lucide-react'
 import { motion } from 'framer-motion'
 import { stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
@@ -313,6 +331,11 @@ export function OverviewTab({
   canShiftOverviewPrev,
   canShiftOverviewNext,
   insights,
+  insightsSource,
+  insightsModel,
+  insightsLoading,
+  insightsRefreshing,
+  onRequestAiInsights,
   secondaryMetricSeries,
   dailyReport,
   onViewFocusHistory,
@@ -341,10 +364,30 @@ export function OverviewTab({
   canShiftOverviewPrev: boolean
   canShiftOverviewNext: boolean
   insights: InsightCard[]
+  insightsSource: 'ai' | 'template'
+  insightsModel: string | null
+  insightsLoading: boolean
+  insightsRefreshing: boolean
+  onRequestAiInsights: () => void
   secondaryMetricSeries: SecondaryMetricSeries
   dailyReport: DailyReport | null
   onViewFocusHistory: () => void
 }) {
+  const [heroTextDirection, setHeroTextDirection] = useState<1 | -1>(1)
+  const previousSelectedDayRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const prev = previousSelectedDayRef.current
+    if (prev != null && prev !== selectedDayIso) {
+      const prevMs = new Date(`${prev}T00:00:00`).getTime()
+      const nextMs = new Date(`${selectedDayIso}T00:00:00`).getTime()
+      if (Number.isFinite(prevMs) && Number.isFinite(nextMs) && prevMs !== nextMs) {
+        setHeroTextDirection(nextMs > prevMs ? 1 : -1)
+      }
+    }
+    previousSelectedDayRef.current = selectedDayIso
+  }, [selectedDayIso])
+
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday ?? 0)}`
   const hasHrBaseline = typeof hrDeltaBaseline === 'number' && Number.isFinite(hrDeltaBaseline)
 
@@ -408,15 +451,24 @@ export function OverviewTab({
               </button>
             </div>
           </div>
-          <h1>{heroHeadline}</h1>
-          <p className="hero-subline">{heroSubline}</p>
+          <h1 className="hero-headline-ticker">
+            <AnimatedTickerText value={heroHeadline} direction={heroTextDirection} />
+          </h1>
+          <p className="hero-subline">
+            <AnimatedTickerText value={heroSubline} direction={heroTextDirection} />
+          </p>
         </div>
         <div className="hero-divider" />
         <div className="hero-right">
-          <p className={heroStressClass}>{avgStressToday == null ? '--' : avgStressToday}</p>
+          <p className={heroStressClass}>
+            <AnimatedTickerText value={`${avgStressToday == null ? '--' : avgStressToday}`} direction={heroTextDirection} />
+          </p>
           <p className="hero-stress-label">stress index</p>
           <p className={`hero-stress-trend is-${heroTrendTone}`}>
-            {stressDeltaVsYesterday == null ? '--' : formatDelta(stressDeltaVsYesterday)}
+            <AnimatedTickerText
+              value={stressDeltaVsYesterday == null ? '--' : formatDelta(stressDeltaVsYesterday)}
+              direction={heroTextDirection}
+            />
           </p>
         </div>
       </motion.section>
@@ -428,28 +480,47 @@ export function OverviewTab({
         animate="visible"
       >
         <article className="narrative-tile">
-          <p className="narrative-value">{formatMinutes(todayFocusedMinutes)}</p>
+          <p className="narrative-value">
+            <AnimatedTickerText value={formatMinutes(todayFocusedMinutes)} direction={heroTextDirection} />
+          </p>
           <p className="narrative-label">Focused Time</p>
           <p className="narrative-context is-positive">
-            {todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'}
+            <AnimatedTickerText
+              value={todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'}
+              direction={heroTextDirection}
+            />
           </p>
         </article>
         <article className="narrative-tile">
           <p className="narrative-value">
-            {avgHrToday == null ? '--' : avgHrToday} <span>bpm</span>
+            <AnimatedTickerText
+              value={avgHrToday == null ? '--' : `${avgHrToday}`}
+              staticSuffix={avgHrToday == null ? '' : ' bpm'}
+              direction={heroTextDirection}
+            />
           </p>
           <p className="narrative-label">Avg Heart / Respiratory</p>
           <p className={`narrative-context ${!hasHrBaseline || hrDeltaBaseline <= 0 ? 'is-positive' : 'is-negative'}`}>
-            {hasHrBaseline
-              ? `${Math.abs(hrDeltaBaseline)} ${hrDeltaBaseline <= 0 ? 'below' : 'above'} baseline · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`
-              : `Baseline pending · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`}
+            <AnimatedTickerText
+              value={
+                hasHrBaseline
+                  ? `${Math.abs(hrDeltaBaseline)} ${hrDeltaBaseline <= 0 ? 'below' : 'above'} baseline · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`
+                  : `Baseline pending · RR ${avgRrToday == null ? '--' : `${avgRrToday} bpm`}`
+              }
+              direction={heroTextDirection}
+            />
           </p>
         </article>
         <article className="narrative-tile">
-          <p className="narrative-value">{todayBreakCount}</p>
+          <p className="narrative-value">
+            <AnimatedTickerText value={`${todayBreakCount}`} direction={heroTextDirection} />
+          </p>
           <p className="narrative-label">Breaks Taken</p>
           <p className={`narrative-context ${todayBreakCount >= 2 ? 'is-positive' : 'is-neutral'}`}>
-            {todayBreakCount >= 2 ? 'All genuine' : 'Could use one more break'}
+            <AnimatedTickerText
+              value={todayBreakCount >= 2 ? 'All genuine' : 'Could use one more break'}
+              direction={heroTextDirection}
+            />
           </p>
         </article>
       </motion.section>
@@ -582,17 +653,62 @@ export function OverviewTab({
         initial="hidden"
         animate="visible"
       >
-        {insights.map((card) => {
-          const Icon = card.icon === 'trending' ? TrendingUp : card.icon === 'activity' ? Activity : User
-          return (
-            <article key={card.key} className="insight-card">
-              <Icon size={14} />
-              <p className="insight-tag">{card.tag}</p>
-              <p className="insight-text">{card.text}</p>
-              <p className="insight-stat">{card.stat}</p>
-            </article>
-          )
-        })}
+        <div className="insight-cards-meta">
+          <div className="insight-cards-meta-left">
+            {insightsLoading ? (
+              <span className="insight-source-badge">Loading...</span>
+            ) : insightsSource === 'ai' ? (
+              <span className="insight-source-badge insight-source-badge--ai">
+                AI generated{insightsModel ? ` · ${insightsModel}` : ''}
+              </span>
+            ) : (
+              <span className="insight-source-badge">Template</span>
+            )}
+          </div>
+          <button className="insight-ai-request-btn" onClick={onRequestAiInsights} disabled={insightsRefreshing}>
+            {insightsRefreshing ? 'Requesting...' : 'Request AI insight'}
+          </button>
+        </div>
+        <div className="insight-cards-row">
+          {insights.map((card) => {
+            const Icon =
+              card.icon === 'activity'
+                ? Activity
+                : card.icon === 'trending' || card.icon === 'trending-up'
+                  ? TrendingUp
+                  : card.icon === 'bar-chart-3'
+                    ? BarChart3
+                    : card.icon === 'brain'
+                      ? Brain
+                      : card.icon === 'heart-pulse'
+                        ? HeartPulse
+                        : card.icon === 'clock-3'
+                          ? Clock3
+                          : card.icon === 'timer'
+                            ? Timer
+                            : card.icon === 'target'
+                              ? Target
+                              : card.icon === 'zap'
+                                ? Zap
+                                : card.icon === 'shield-check'
+                                  ? ShieldCheck
+                                  : card.icon === 'coffee'
+                                    ? Coffee
+                                    : card.icon === 'moon'
+                                      ? Moon
+                                      : card.icon === 'sun'
+                                        ? Sun
+                                        : User
+            return (
+              <article key={card.key} className="insight-card">
+                <Icon size={14} />
+                <p className="insight-tag">{card.tag}</p>
+                <p className="insight-text">{card.text}</p>
+                <p className="insight-stat">{card.stat}</p>
+              </article>
+            )
+          })}
+        </div>
       </motion.section>
 
       <motion.section

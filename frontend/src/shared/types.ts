@@ -110,6 +110,8 @@ export type AppSettings = {
   session_frequency_minutes: number
   daily_report_hour: number
   daily_report_minute: number
+  local_ai_insights_enabled: boolean
+  local_ai_model: string
   onboarding_completed: boolean
   plan_tier: 'free' | 'pro'
   license_key: string

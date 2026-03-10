@@ -23,7 +23,6 @@ import type {
   SessionResult,
 } from '../shared/types'
 import {
-  buildInsights,
   buildPath,
   clamp,
   formatHourLabel,
@@ -33,6 +32,7 @@ import {
   mean,
   startDateForPeriod,
   trendTone,
+  type InsightCard,
   type FocusPeriod,
 } from '../shared/dashboard'
 import { useAppSettings } from '../context/AppSettingsContext'
@@ -125,6 +125,11 @@ export function MainWindowShell({
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
   const [overviewTimelinePoints, setOverviewTimelinePoints] = useState<MonitorTimelinePoint[]>([])
   const [overviewAggregates, setOverviewAggregates] = useState<OverviewAggregates | null>(null)
+  const [overviewInsights, setOverviewInsights] = useState<InsightCard[]>([])
+  const [overviewInsightsSource, setOverviewInsightsSource] = useState<'ai' | 'template'>('template')
+  const [overviewInsightsModel, setOverviewInsightsModel] = useState<string | null>(null)
+  const [overviewInsightsLoading, setOverviewInsightsLoading] = useState(false)
+  const [overviewInsightsRefreshing, setOverviewInsightsRefreshing] = useState(false)
   const [overviewDaySessions, setOverviewDaySessions] = useState<SessionHistoryItem[]>([])
   const [sessionDayIndex, setSessionDayIndex] = useState<SessionDayIndexResponse | null>(null)
   const [overviewDate, setOverviewDate] = useState<Date>(() => {
@@ -232,7 +237,7 @@ export function MainWindowShell({
 
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
-  const insights = buildInsights(history, overviewSessions)
+  const insights = overviewInsights
 
   const minOverviewDate = useMemo(() => {
     if (sessionDayIndex?.min_date) {
@@ -349,6 +354,65 @@ export function MainWindowShell({
       cancelled = true
     }
   }, [historyRevision, overviewKey])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOverviewInsights() {
+      setOverviewInsightsLoading(true)
+      if (!isTauriRuntime()) {
+        setOverviewInsights([])
+        setOverviewInsightsSource('template')
+        setOverviewInsightsModel(null)
+        setOverviewInsightsLoading(false)
+        return
+      }
+      try {
+        const response = await invoke<{ cards?: InsightCard[]; source?: string; model?: string | null }>('run_insight_cards', {
+          dateIso: overviewKey,
+          force: false,
+          allowAi: false,
+        })
+        if (cancelled) return
+        setOverviewInsights(Array.isArray(response?.cards) ? response.cards : [])
+        setOverviewInsightsSource(response?.source === 'ai' ? 'ai' : 'template')
+        setOverviewInsightsModel(typeof response?.model === 'string' ? response.model : null)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch overview insights:', err)
+        setOverviewInsights([])
+        setOverviewInsightsSource('template')
+        setOverviewInsightsModel(null)
+      } finally {
+        if (!cancelled) setOverviewInsightsLoading(false)
+      }
+    }
+
+    void fetchOverviewInsights()
+    return () => {
+      cancelled = true
+    }
+  }, [overviewKey, historyRevision])
+
+  async function requestOverviewAiInsights() {
+    if (!isTauriRuntime() || overviewInsightsRefreshing) return
+    setOverviewInsightsRefreshing(true)
+    try {
+      const response = await invoke<{ cards?: InsightCard[]; source?: string; model?: string | null }>('run_insight_cards', {
+        dateIso: overviewKey,
+        force: true,
+        allowAi: true,
+        model: settings?.local_ai_model?.trim() ? settings.local_ai_model : undefined,
+      })
+      setOverviewInsights(Array.isArray(response?.cards) ? response.cards : [])
+      setOverviewInsightsSource(response?.source === 'ai' ? 'ai' : 'template')
+      setOverviewInsightsModel(typeof response?.model === 'string' ? response.model : null)
+    } catch (err) {
+      console.error('Failed to request AI insights:', err)
+    } finally {
+      setOverviewInsightsRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -1079,6 +1143,11 @@ export function MainWindowShell({
                   canShiftOverviewPrev={canShiftOverviewPrev}
                   canShiftOverviewNext={canShiftOverviewNext}
                   insights={insights}
+                  insightsSource={overviewInsightsSource}
+                  insightsModel={overviewInsightsModel}
+                  insightsLoading={overviewInsightsLoading}
+                  insightsRefreshing={overviewInsightsRefreshing}
+                  onRequestAiInsights={requestOverviewAiInsights}
                   secondaryMetricSeries={secondaryMetricSeries}
                   dailyReport={dailyReport}
                   onViewFocusHistory={() => setTab('focus')}

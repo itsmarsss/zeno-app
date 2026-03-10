@@ -171,3 +171,15 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS daily_insight_cards (
+            date TEXT PRIMARY KEY,
+            cards_json TEXT NOT NULL DEFAULT '[]',
+            source TEXT NOT NULL DEFAULT 'template',
+            model TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
