@@ -38,8 +38,8 @@ import { useAppSettings } from '../context/AppSettingsContext'
 import { fadeSlide } from '../shared/motion'
 import './MainWindowShell.css'
 
-const HOUR_START = 6
-const HOUR_END = 21
+const HOUR_START = 0
+const HOUR_END = 23
 const DEFAULT_TIMELINE_BUCKET_MINUTES = 15
 const HEATMAP_START = 8
 const HEATMAP_END = 19
@@ -123,7 +123,9 @@ export function MainWindowShell({
   const previousOverviewDate = new Date(overviewDate)
   previousOverviewDate.setDate(previousOverviewDate.getDate() - 1)
   const previousOverviewKey = localDateKey(previousOverviewDate)
-  const yesterdaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === previousOverviewKey)
+  const yesterdaySessions = sessionsSortedAsc.filter(
+    (item) => localDateKey(new Date(item.created_at)) === previousOverviewKey,
+  )
 
   const focusSessions = history.filter((item) => Boolean(item.focus_mode))
   const todayStressValues = overviewSessions.map((item) => stressIndexFromHistory(item))
@@ -167,21 +169,21 @@ export function MainWindowShell({
     postureScore: number | null
     focusActive: boolean
     breathing: boolean
+    pointType: 'passive' | 'focus' | 'filled' | 'unknown'
   }> = []
   const timelineStart = new Date(overviewDate)
   timelineStart.setHours(HOUR_START, 0, 0, 0)
-  if (overviewKey === todayKey && now < timelineStart) {
-    timelineStart.setHours(0, 0, 0, 0)
-  }
   const timelineEnd = new Date(overviewDate)
   timelineEnd.setHours(HOUR_END, 59, 59, 999)
-  const clampedEnd = overviewKey === todayKey && now < timelineEnd ? now : timelineEnd
+  const nowMs = now.getTime()
   for (
     let slot = new Date(timelineStart);
-    slot <= clampedEnd;
+    slot <= timelineEnd;
     slot = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
   ) {
     const slotEnd = new Date(slot.getTime() + timelineBucketMinutes * 60_000)
+    const slotStartMs = slot.getTime()
+    const isFutureSlot = overviewKey === todayKey && slotStartMs > nowMs
     const slice = overviewSessions.filter((item) => {
       const at = new Date(item.created_at)
       return at >= slot && at < slotEnd
@@ -209,14 +211,59 @@ export function MainWindowShell({
       slotStartIso: slot.toISOString(),
       slotEndIso: slotEnd.toISOString(),
       label: slot.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      stress: stressAvg == null ? null : Math.round(stressAvg),
-      heartRate: Number.isFinite(hrAvg) && hrAvg > 0 ? Math.round(hrAvg) : null,
-      respiratoryRate: rrAvg != null && Number.isFinite(rrAvg) && rrAvg > 0 ? Math.round(rrAvg) : null,
+      stress: isFutureSlot ? null : stressAvg == null ? null : Math.round(stressAvg),
+      heartRate: isFutureSlot ? null : Number.isFinite(hrAvg) && hrAvg > 0 ? Math.round(hrAvg) : null,
+      respiratoryRate: isFutureSlot ? null : rrAvg != null && Number.isFinite(rrAvg) && rrAvg > 0 ? Math.round(rrAvg) : null,
       rrConfidence: rrConfidence as 'none' | 'partial' | 'full',
-      postureScore: postureAvg != null ? Math.round(postureAvg * 100) : null,
-      focusActive: overlapSlice.some((item) => Boolean(item.focus_mode)),
-      breathing: overlapSlice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
+      postureScore: isFutureSlot ? null : postureAvg != null ? Math.round(postureAvg * 100) : null,
+      focusActive: isFutureSlot ? false : overlapSlice.some((item) => Boolean(item.focus_mode)),
+      breathing: isFutureSlot ? false : overlapSlice.some((item) => item.emotion_backend.toLowerCase().includes('breath')),
+      pointType: isFutureSlot
+        ? 'unknown'
+        : overlapSlice.some((item) => Boolean(item.focus_mode))
+          ? 'focus'
+          : overlapSlice.length > 0
+            ? 'passive'
+            : 'unknown',
     })
+  }
+
+  const copyPointValues = (target: (typeof timelineData)[number], source: (typeof timelineData)[number]) => {
+    target.stress = source.stress
+    target.heartRate = source.heartRate
+    target.respiratoryRate = source.respiratoryRate
+    target.rrConfidence = source.rrConfidence
+    target.postureScore = source.postureScore
+    target.focusActive = source.focusActive
+    target.breathing = source.breathing
+    target.pointType = 'filled'
+  }
+
+  // Gap-fill timeline buckets so slots without direct samples still show continuity.
+  const firstMeasured = timelineData.find((point) => point.pointType === 'focus' || point.pointType === 'passive')
+  if (firstMeasured) {
+    let lastKnown: (typeof timelineData)[number] | null = null
+
+    for (const point of timelineData) {
+      const pointStartMs = new Date(point.slotStartIso).getTime()
+      const isFutureSlot = overviewKey === todayKey && pointStartMs > nowMs
+      if (isFutureSlot) continue
+      if (point.pointType === 'focus' || point.pointType === 'passive') {
+        lastKnown = point
+        continue
+      }
+      if (lastKnown) {
+        copyPointValues(point, lastKnown)
+      }
+    }
+
+    for (const point of timelineData) {
+      const pointStartMs = new Date(point.slotStartIso).getTime()
+      const isFutureSlot = overviewKey === todayKey && pointStartMs > nowMs
+      if (isFutureSlot) continue
+      if (point.pointType !== 'unknown') break
+      copyPointValues(point, firstMeasured)
+    }
   }
 
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
@@ -578,10 +625,10 @@ export function MainWindowShell({
       // Weighted quality score
       const quality = Math.round(
         postureScore * 0.35 + // 35% posture
-        stressScore * 0.25 + // 25% stress management
-        durationScore * 0.20 + // 20% duration/engagement
-        rrConfidenceScore * 0.10 + // 10% RR data quality
-        hrScore * 0.10 // 10% HR data availability
+          stressScore * 0.25 + // 25% stress management
+          durationScore * 0.2 + // 20% duration/engagement
+          rrConfidenceScore * 0.1 + // 10% RR data quality
+          hrScore * 0.1, // 10% HR data availability
       )
 
       return {
@@ -612,12 +659,12 @@ export function MainWindowShell({
     const topQuartile = sessionQualityAnalytics.slice(0, Math.max(3, Math.ceil(sessionQualityAnalytics.length * 0.25)))
 
     // Find stress range of top sessions
-    const topStress = topQuartile.map(s => s.stress)
+    const topStress = topQuartile.map((s) => s.stress)
     const optimalStressMin = Math.max(0, Math.min(...topStress) - 5)
     const optimalStressMax = Math.min(100, Math.max(...topStress) + 5)
 
     // Find duration range of top sessions
-    const topDurations = topQuartile.map(s => s.duration)
+    const topDurations = topQuartile.map((s) => s.duration)
     const optimalDurationMin = Math.max(15, Math.min(...topDurations) - 5)
     const optimalDurationMax = Math.min(120, Math.max(...topDurations) + 5)
 
@@ -632,27 +679,29 @@ export function MainWindowShell({
 
   // Analytics: Session Performance Distribution
   const performanceAnalytics = useMemo(() => {
-    const avgQuality = sessionQualityAnalytics.length > 0 ? mean(sessionQualityAnalytics.map(s => s.quality)) : 0
+    const avgQuality = sessionQualityAnalytics.length > 0 ? mean(sessionQualityAnalytics.map((s) => s.quality)) : 0
 
     // Categorize sessions based on their quality relative to personal average
-    const excellent = sessionQualityAnalytics.filter(s => s.quality >= avgQuality + 15).length
-    const good = sessionQualityAnalytics.filter(s => s.quality >= avgQuality - 10 && s.quality < avgQuality + 15).length
-    const needsWork = sessionQualityAnalytics.filter(s => s.quality < avgQuality - 10).length
+    const excellent = sessionQualityAnalytics.filter((s) => s.quality >= avgQuality + 15).length
+    const good = sessionQualityAnalytics.filter(
+      (s) => s.quality >= avgQuality - 10 && s.quality < avgQuality + 15,
+    ).length
+    const needsWork = sessionQualityAnalytics.filter((s) => s.quality < avgQuality - 10).length
     const total = sessionQualityAnalytics.length || 1
 
     // Analyze what makes top sessions work
     const topSessions = sessionQualityAnalytics.slice(0, Math.max(3, Math.ceil(sessionQualityAnalytics.length * 0.25)))
-    const avgTopStress = topSessions.length > 0 ? mean(topSessions.map(s => s.stress)) : 50
-    const avgTopDuration = topSessions.length > 0 ? mean(topSessions.map(s => s.duration)) : 45
-    const avgTopPosture = topSessions.length > 0 ? mean(topSessions.map(s => s.posture)) : 70
+    const avgTopStress = topSessions.length > 0 ? mean(topSessions.map((s) => s.stress)) : 50
+    const avgTopDuration = topSessions.length > 0 ? mean(topSessions.map((s) => s.duration)) : 45
+    const avgTopPosture = topSessions.length > 0 ? mean(topSessions.map((s) => s.posture)) : 70
 
     // Generate personalized recommendation
     let recommendation = ''
     if (sessionQualityAnalytics.length < 5) {
       recommendation = 'Complete more sessions to unlock personalized insights'
     } else {
-      const avgCurrentPosture = mean(sessionQualityAnalytics.map(s => s.posture))
-      const avgCurrentStress = mean(sessionQualityAnalytics.map(s => s.stress))
+      const avgCurrentPosture = mean(sessionQualityAnalytics.map((s) => s.posture))
+      const avgCurrentStress = mean(sessionQualityAnalytics.map((s) => s.stress))
 
       if (avgCurrentPosture < avgTopPosture - 10) {
         recommendation = `Your best sessions have ${Math.round(avgTopPosture)}% posture. Focus on sitting upright.`
@@ -700,8 +749,8 @@ export function MainWindowShell({
         dataPoints.length < 5
           ? 'Complete more sessions for personalized duration recommendations'
           : personalizedZones.isPersonalized
-          ? `Your best sessions are ${personalizedZones.optimalDurationMin}-${personalizedZones.optimalDurationMax} minutes`
-          : `Build more data to find your optimal session length`,
+            ? `Your best sessions are ${personalizedZones.optimalDurationMin}-${personalizedZones.optimalDurationMax} minutes`
+            : `Build more data to find your optimal session length`,
     }
   }, [sessionQualityAnalytics, personalizedZones])
 
@@ -713,13 +762,13 @@ export function MainWindowShell({
       ? 'Overview'
       : tab === 'monitor'
         ? 'Monitor'
-      : tab === 'focus'
-        ? 'Focus History'
-        : tab === 'posture'
-          ? 'Posture'
-          : tab === 'exercises'
-            ? 'Exercises'
-            : 'Settings'
+        : tab === 'focus'
+          ? 'Focus History'
+          : tab === 'posture'
+            ? 'Posture'
+            : tab === 'exercises'
+              ? 'Exercises'
+              : 'Settings'
   const tabSubline =
     tab === 'monitor'
       ? 'Live signal stack and camera state'

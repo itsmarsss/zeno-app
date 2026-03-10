@@ -3,8 +3,8 @@ use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
     run_export_sessions_csv_blocking, run_log_break_session_blocking,
     run_log_breathing_session_blocking, run_log_exercise_session_blocking,
-    run_presence_check_blocking, run_python_session_blocking, run_session_history_blocking,
-    run_settings_blocking, run_update_session_notification_blocking,
+    run_monitor_timeline_blocking, run_presence_check_blocking, run_python_session_blocking,
+    run_session_history_blocking, run_settings_blocking, run_update_session_notification_blocking,
 };
 use crate::state::{
     FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
@@ -224,6 +224,19 @@ pub async fn run_export_sessions_csv() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(run_export_sessions_csv_blocking)
         .await
         .map_err(|e| format!("CSV export task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_monitor_timeline(
+    start_time: String,
+    end_time: String,
+    interval_seconds: Option<u32>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_monitor_timeline_blocking(start_time, end_time, interval_seconds)
+    })
+    .await
+    .map_err(|e| format!("Monitor timeline task join error: {e}"))?
 }
 
 #[tauri::command]

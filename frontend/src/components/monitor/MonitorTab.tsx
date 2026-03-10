@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, CameraOff, CheckCircle2, User, Waves, Wind } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import { InteractiveLineChart, type InteractiveLineChartPoint } from '../common/InteractiveLineChart'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import { PostureFrame } from '../common/PostureFrame'
-import { clamp, localDateKey } from '../../shared/dashboard'
+import { clamp } from '../../shared/dashboard'
 import { sessionFromHistory, stressIndex } from '../../shared/metrics'
 import type { PostureLandmarks, SessionHistoryItem, SessionResult } from '../../shared/types'
 import './MonitorTab.css'
@@ -13,27 +14,98 @@ type TransitionPhase = 'banner' | 'camera' | 'cards' | 'settled'
 
 type FocusPoint = {
   at: number
-  stress: number
+  stress: number | null
+  heartRate: number | null
+  respiratoryRate: number | null
+  postureScore: number | null
+  rrConfidence: 'none' | 'partial' | 'full'
+  pointType: 'passive' | 'focus' | 'filled' | 'unknown'
+}
+
+type PassiveAnchorSnapshot = {
+  stress: number | null
   heartRate: number | null
   respiratoryRate: number | null
   postureScore: number | null
   rrConfidence: 'none' | 'partial' | 'full'
 }
 
+type MonitorTimelineResponse = {
+  points?: Array<{
+    created_at: string
+    posture_score: number | null
+    heart_rate_bpm: number | null
+    respiratory_rate: number | null
+    rr_confidence: 'none' | 'partial' | 'full'
+    point_type?: 'passive' | 'focus' | 'filled' | 'unknown'
+    [key: string]: unknown
+  }>
+}
+
 type MonitorRuntimeCache = {
   passiveStartedAt: number | null
   focusStartedAt: number | null
   focusLatched: boolean
-  focusPoints: FocusPoint[]
+  windowTimelinePoints: FocusPoint[]
   recentFocusSummary: { endedAt: number; durationSeconds: number } | null
+}
+
+const WINDOW_FETCH_INTERVAL_MS = 5_000
+
+const FOCUS_LATCH_KEY = 'zeno.monitor.focusLatched'
+const FOCUS_STARTED_AT_KEY = 'zeno.monitor.focusStartedAt'
+
+function readStoredBoolean(key: string): boolean | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw == null) return null
+    return raw === '1'
+  } catch {
+    return null
+  }
+}
+
+function readStoredNumber(key: string): number | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw == null) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredBoolean(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function writeStoredNumber(key: string, value: number | null) {
+  try {
+    if (value == null || !Number.isFinite(value)) {
+      window.localStorage.removeItem(key)
+      return
+    }
+    window.localStorage.setItem(key, String(value))
+  } catch {
+    // ignore storage failures
+  }
 }
 
 let monitorRuntimeCache: MonitorRuntimeCache = {
   passiveStartedAt: null,
   focusStartedAt: null,
   focusLatched: false,
-  focusPoints: [],
+  windowTimelinePoints: [],
   recentFocusSummary: null,
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 }
 
 function formatTime(timestamp: string): string {
@@ -140,7 +212,56 @@ function buildChartPoints(
       id: `${point.at}-${index}`,
       label: formatTime(new Date(point.at).toString()),
       value: getValue(point),
+      pointType: point.pointType,
     }))
+}
+
+function sameTimelineShape(a: FocusPoint[], b: FocusPoint[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i]
+    const right = b[i]
+    if (left.at !== right.at) return false
+    if (left.pointType !== right.pointType) return false
+    if (left.stress !== right.stress) return false
+    if (left.heartRate !== right.heartRate) return false
+    if (left.respiratoryRate !== right.respiratoryRate) return false
+    if (left.postureScore !== right.postureScore) return false
+    if (left.rrConfidence !== right.rrConfidence) return false
+  }
+  return true
+}
+
+function smoothAnchoredValues(
+  values: Array<number | null>,
+  anchors: Map<number, number | null>,
+  neighborWeight = 0.35,
+): Array<number | null> {
+  const next = [...values]
+  const anchoredIndexes = new Set(Array.from(anchors.keys()))
+
+  for (const [index, anchorValue] of anchors.entries()) {
+    if (anchorValue == null || Number.isNaN(anchorValue)) continue
+    next[index] = anchorValue
+
+    const prevIndex = index - 1
+    if (prevIndex >= 0 && !anchoredIndexes.has(prevIndex)) {
+      const prev = values[prevIndex]
+      if (prev != null && !Number.isNaN(prev)) {
+        next[prevIndex] = prev + (anchorValue - prev) * neighborWeight
+      }
+    }
+
+    const nextIndex = index + 1
+    if (nextIndex < values.length && !anchoredIndexes.has(nextIndex)) {
+      const value = values[nextIndex]
+      if (value != null && !Number.isNaN(value)) {
+        next[nextIndex] = value + (anchorValue - value) * neighborWeight
+      }
+    }
+  }
+
+  return next
 }
 
 export function MonitorTab({
@@ -173,22 +294,20 @@ export function MonitorTab({
   const [focusStartedAt, setFocusStartedAt] = useState<number | null>(() =>
     monitorRuntimeCache.focusStartedAt != null && Number.isFinite(monitorRuntimeCache.focusStartedAt)
       ? monitorRuntimeCache.focusStartedAt
-      : null,
+      : readStoredNumber(FOCUS_STARTED_AT_KEY),
   )
-  const [focusLatched, setFocusLatched] = useState<boolean>(() => monitorRuntimeCache.focusLatched)
-  const [focusPoints, setFocusPoints] = useState<FocusPoint[]>(() =>
-    monitorRuntimeCache.focusPoints.filter((point) => Number.isFinite(point.at)),
+  const [focusLatched, setFocusLatched] = useState<boolean>(() => {
+    if (monitorRuntimeCache.focusLatched) return true
+    return readStoredBoolean(FOCUS_LATCH_KEY) ?? false
+  })
+  const [windowTimelinePoints, setWindowTimelinePoints] = useState<FocusPoint[]>(() =>
+    monitorRuntimeCache.windowTimelinePoints.filter((point) => Number.isFinite(point.at)),
   )
   const [recentFocusSummary, setRecentFocusSummary] = useState<{ endedAt: number; durationSeconds: number } | null>(
     () => monitorRuntimeCache.recentFocusSummary,
   )
   const [transitionPhase, setTransitionPhase] = useState<TransitionPhase>('settled')
   const [passiveCameraClosing, setPassiveCameraClosing] = useState(false)
-  const [hoveredPassiveMark, setHoveredPassiveMark] = useState<{
-    xPct: number
-    label: string
-    align: 'left' | 'center' | 'right'
-  } | null>(null)
   const [timeWindowMinutes, setTimeWindowMinutes] = useState<number>(60)
 
   const wasFocusActiveRef = useRef(focusModeActive)
@@ -197,7 +316,7 @@ export function MonitorTab({
   const cameraModeRef = useRef<MonitorMode>('idle')
 
   const hasLiveFocusResult = Boolean(currentResult && currentResult.mode === 'focus' && !currentResult.session_skipped)
-  const focusSessionVisible = focusLatched || focusModeActive || hasLiveFocusResult || focusStartedAt != null
+  const focusSessionVisible = focusLatched || hasLiveFocusResult || focusStartedAt != null
   const monitorMode: MonitorMode =
     recentFocusSummary && !focusSessionVisible
       ? 'ended'
@@ -247,10 +366,12 @@ export function MonitorTab({
       passiveStartedAt,
       focusStartedAt,
       focusLatched,
-      focusPoints,
+      windowTimelinePoints,
       recentFocusSummary,
     }
-  }, [passiveStartedAt, focusStartedAt, focusLatched, focusPoints, recentFocusSummary])
+    writeStoredBoolean(FOCUS_LATCH_KEY, focusLatched)
+    writeStoredNumber(FOCUS_STARTED_AT_KEY, focusStartedAt)
+  }, [passiveStartedAt, focusStartedAt, focusLatched, windowTimelinePoints, recentFocusSummary])
 
   useEffect(() => {
     if (monitorMode === 'passive') {
@@ -296,22 +417,60 @@ export function MonitorTab({
     return () => window.clearTimeout(timeout)
   }, [recentFocusSummary])
 
-  useEffect(() => {
-    if (!focusSessionVisible || !currentResult) return
-    const point: FocusPoint = {
-      at: Date.now(),
-      stress: stressIndex(currentResult),
-      heartRate: currentResult.heart_rate_bpm,
-      respiratoryRate: currentResult.respiratory_rate > 0 ? currentResult.respiratory_rate : null,
-      postureScore: Math.round(currentResult.posture_score * 100),
-      rrConfidence: currentResult.rr_confidence,
-    }
-    setFocusPoints((prev) => {
-      const next = [...prev, point]
-      const maxAge = Date.now() - 5 * 60_000
-      return next.filter((item) => item.at >= maxAge).slice(-80)
+  function mapTimelineResponseToPoints(response: MonitorTimelineResponse): FocusPoint[] {
+    if (!response?.points || !Array.isArray(response.points)) return []
+    return response.points.map((item: any) => {
+      const postureRaw = typeof item.posture_score === 'number' ? item.posture_score : null
+      const rrRaw = typeof item.respiratory_rate === 'number' ? item.respiratory_rate : null
+      const hasStressFields =
+        typeof item.dominant_emotion === 'string' &&
+        typeof item.emotion_score === 'number' &&
+        item.presence_detected != null
+      return {
+        at: new Date(item.created_at).getTime(),
+        stress: hasStressFields ? stressIndex(item) : null,
+        heartRate: typeof item.heart_rate_bpm === 'number' ? item.heart_rate_bpm : null,
+        respiratoryRate: rrRaw != null && rrRaw > 0 ? rrRaw : null,
+        postureScore: postureRaw != null ? Math.round(postureRaw * 100) : null,
+        rrConfidence: item.rr_confidence,
+        pointType:
+          item.point_type === 'passive' || item.point_type === 'focus' || item.point_type === 'filled'
+            ? item.point_type
+            : 'unknown',
+      }
     })
-  }, [currentResult, focusSessionVisible])
+  }
+
+  const fetchWindowTimeline = async () => {
+    if (!isTauriRuntime()) return
+    try {
+      const endTime = new Date().toISOString()
+      const startTime = new Date(Date.now() - timeWindowMinutes * 60_000).toISOString()
+      const response = await invoke<MonitorTimelineResponse>('run_monitor_timeline', {
+        startTime,
+        endTime,
+        intervalSeconds: 5,
+      })
+      const next = mapTimelineResponseToPoints(response)
+      setWindowTimelinePoints((prev) => (sameTimelineShape(prev, next) ? prev : next))
+    } catch (error) {
+      console.error('Failed to fetch window timeline:', error)
+    }
+  }
+
+  useEffect(() => {
+    void fetchWindowTimeline()
+    const interval = window.setInterval(() => {
+      void fetchWindowTimeline()
+    }, WINDOW_FETCH_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [timeWindowMinutes])
+
+  useEffect(() => {
+    if (currentResult) {
+      void fetchWindowTimeline()
+    }
+  }, [currentResult])
 
   const latestHistory = history[0] ? sessionFromHistory(history[0]) : null
   const lastPassiveHistory = useMemo(
@@ -321,10 +480,14 @@ export function MonitorTab({
   const lastPassive = lastPassiveHistory ? sessionFromHistory(lastPassiveHistory) : latestHistory
   const displayResult = currentResult ?? lastPassive ?? latestHistory
 
-  const focusHistoryPoints = useMemo<FocusPoint[]>(() => {
-    const todayKey = localDateKey(new Date())
+  const windowHistoryPoints = useMemo<FocusPoint[]>(() => {
+    const nowMs = Date.now()
+    const windowStartMs = nowMs - timeWindowMinutes * 60_000
     return history
-      .filter((item) => item.mode === 'focus' && localDateKey(new Date(item.created_at)) === todayKey)
+      .filter((item) => {
+        const at = new Date(item.created_at).getTime()
+        return Number.isFinite(at) && at >= windowStartMs && at <= nowMs
+      })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       .map((item) => {
         const parsedAt = new Date(item.created_at).getTime()
@@ -336,19 +499,14 @@ export function MonitorTab({
           respiratoryRate: item.respiratory_rate > 0 ? item.respiratory_rate : null,
           postureScore: Math.round(item.posture_score * 100),
           rrConfidence: item.rr_confidence,
+          pointType: item.mode === 'focus' ? 'focus' : item.mode === 'passive' ? 'passive' : 'unknown',
         }
       })
       .filter((point) => Number.isFinite(point.at))
-  }, [history])
+  }, [history, timeWindowMinutes])
 
-  const allTimelinePoints = focusPoints.length > 0 ? focusPoints : focusHistoryPoints
-  const timeWindowMs = timeWindowMinutes * 60_000
-  const cutoffTime = now - timeWindowMs
-  const timelinePoints = allTimelinePoints.filter((point) => point.at >= cutoffTime)
-  // For mini charts: always show historical data, appending live points if in focus mode
-  const cardPoints = focusPoints.length > 0
-    ? [...focusHistoryPoints, ...focusPoints].filter((point) => point.at >= cutoffTime)
-    : focusHistoryPoints.slice(-20)
+  const timelinePoints = windowTimelinePoints.length > 0 ? windowTimelinePoints : windowHistoryPoints
+  const cardPoints = windowTimelinePoints.length > 0 ? windowTimelinePoints : windowHistoryPoints.slice(-20)
 
   const passiveElapsedSec = passiveStartedAt ? Math.floor((now - passiveStartedAt) / 1000) : 0
   const passiveRemaining = Math.max(0, 30 - passiveElapsedSec)
@@ -388,24 +546,141 @@ export function MonitorTab({
   const timelineRrValues = useMemo(() => timelinePoints.map((p) => p.respiratoryRate), [timelinePoints])
   const timelinePostureValues = useMemo(() => timelinePoints.map((p) => p.postureScore), [timelinePoints])
 
-  const timelineStart = Number.isFinite(timelinePoints[0]?.at)
-    ? (timelinePoints[0]?.at as number)
-    : Date.now() - 60 * 60_000
-  const timelineEnd = Number.isFinite(timelinePoints[timelinePoints.length - 1]?.at)
-    ? (timelinePoints[timelinePoints.length - 1]?.at as number)
-    : Date.now()
-  const timelineRange = Math.max(1, timelineEnd - timelineStart)
+  const passiveSnapshotPointsInWindow = useMemo(() => {
+    if (timelinePoints.length === 0) return [] as Array<{ ts: number; snapshot: PassiveAnchorSnapshot }>
+    const startAt = timelinePoints[0]?.at ?? 0
+    const endAt = timelinePoints[timelinePoints.length - 1]?.at ?? 0
+    return history
+      .filter((item) => item.mode === 'passive')
+      .map((item) => {
+        const ts = new Date(item.created_at).getTime()
+        const session = sessionFromHistory(item)
+        return {
+          ts,
+          snapshot: {
+            stress: stressIndex(session),
+            heartRate: item.heart_rate_bpm,
+            respiratoryRate: item.respiratory_rate > 0 ? item.respiratory_rate : null,
+            postureScore: Math.round(item.posture_score * 100),
+            rrConfidence: item.rr_confidence,
+          } as PassiveAnchorSnapshot,
+        }
+      })
+      .filter((entry) => Number.isFinite(entry.ts) && entry.ts >= startAt && entry.ts <= endAt)
+      .sort((a, b) => a.ts - b.ts)
+  }, [history, timelinePoints])
 
-  const todayKey = localDateKey(new Date())
-  const passiveMarks = history
-    .filter((item) => item.mode === 'passive' && localDateKey(new Date(item.created_at)) === todayKey)
-    .map((item) => new Date(item.created_at).getTime())
-    .sort((a, b) => a - b)
+  const passiveAnchorByIndex = useMemo(() => {
+    if (timelinePoints.length === 0 || passiveSnapshotPointsInWindow.length === 0) {
+      return new Map<number, PassiveAnchorSnapshot>()
+    }
+    const anchors = new Map<number, PassiveAnchorSnapshot>()
+    const slotMs =
+      timelinePoints.length > 1
+        ? Math.max(1, Math.round((timelinePoints[1].at ?? timelinePoints[0].at) - timelinePoints[0].at))
+        : 5_000
+    const maxAttachDistanceMs = Math.max(2_000, Math.round(slotMs * 1.5))
+    for (const entry of passiveSnapshotPointsInWindow) {
+      const ts = entry.ts
+      let bestIndex = -1
+      let bestDistance = Number.POSITIVE_INFINITY
+      for (let i = 0; i < timelinePoints.length; i += 1) {
+        const at = timelinePoints[i]?.at
+        if (!Number.isFinite(at)) continue
+        const distance = Math.abs((at as number) - ts)
+        if (distance < bestDistance) {
+          bestDistance = distance
+          bestIndex = i
+        }
+      }
+      if (bestIndex >= 0 && bestDistance <= maxAttachDistanceMs) {
+        anchors.set(bestIndex, entry.snapshot)
+      }
+    }
+    return anchors
+  }, [timelinePoints, passiveSnapshotPointsInWindow])
 
-  const passiveMarkOffsets = passiveMarks.map((ts) => ({
-    ts,
-    xPct: clamp(((ts - timelineStart) / timelineRange) * 100, 0, 100),
-  }))
+  const timelineStressPointsWithPassiveAnchors = useMemo(
+    () =>
+      timelineStressPoints.map((point, index) => {
+        const anchor = passiveAnchorByIndex.get(index)
+        if (!anchor) return point
+        return {
+          ...point,
+          value: anchor.stress,
+          pointType: point.pointType === 'focus' ? 'focus' : 'passive',
+        }
+      }),
+    [timelineStressPoints, passiveAnchorByIndex],
+  )
+
+  const passiveStressAnchors = useMemo(() => {
+    const map = new Map<number, number | null>()
+    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.stress))
+    return map
+  }, [passiveAnchorByIndex])
+  const passiveHrAnchors = useMemo(() => {
+    const map = new Map<number, number | null>()
+    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.heartRate))
+    return map
+  }, [passiveAnchorByIndex])
+  const passiveRrAnchors = useMemo(() => {
+    const map = new Map<number, number | null>()
+    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.respiratoryRate))
+    return map
+  }, [passiveAnchorByIndex])
+  const passivePostureAnchors = useMemo(() => {
+    const map = new Map<number, number | null>()
+    passiveAnchorByIndex.forEach((anchor, index) => map.set(index, anchor.postureScore))
+    return map
+  }, [passiveAnchorByIndex])
+
+  const timelineStressValuesWithAnchors = useMemo(
+    () => smoothAnchoredValues(timelineStressPointsWithPassiveAnchors.map((p) => p.value), passiveStressAnchors),
+    [timelineStressPointsWithPassiveAnchors, passiveStressAnchors],
+  )
+
+  const timelineStressPointsSmoothed = useMemo(
+    () =>
+      timelineStressPointsWithPassiveAnchors.map((point, index) => ({
+        ...point,
+        value: timelineStressValuesWithAnchors[index] ?? point.value,
+      })),
+    [timelineStressPointsWithPassiveAnchors, timelineStressValuesWithAnchors],
+  )
+
+  const timelineHrValuesWithAnchors = useMemo(
+    () => smoothAnchoredValues(timelineHrValues, passiveHrAnchors),
+    [timelineHrValues, passiveHrAnchors],
+  )
+
+  const timelineRrValuesWithAnchors = useMemo(
+    () => smoothAnchoredValues(timelineRrValues, passiveRrAnchors),
+    [timelineRrValues, passiveRrAnchors],
+  )
+
+  const timelinePostureValuesWithAnchors = useMemo(
+    () => smoothAnchoredValues(timelinePostureValues, passivePostureAnchors),
+    [timelinePostureValues, passivePostureAnchors],
+  )
+
+  const timelinePointsWithAnchors = useMemo(
+    () =>
+      timelinePoints.map((row, index) => {
+        const anchor = passiveAnchorByIndex.get(index)
+        if (!anchor) return row
+        return {
+          ...row,
+          stress: anchor.stress,
+          heartRate: anchor.heartRate,
+          respiratoryRate: anchor.respiratoryRate,
+          postureScore: anchor.postureScore,
+          rrConfidence: anchor.rrConfidence,
+          pointType: row.pointType === 'focus' ? 'focus' : 'passive',
+        }
+      }),
+    [timelinePoints, passiveAnchorByIndex],
+  )
 
   const postureAlerts = history
     .filter((item) => item.mode === 'focus' && Boolean(item.posture_is_poor))
@@ -418,15 +693,6 @@ export function MonitorTab({
           Boolean(item.posture_is_poor),
         )}`,
     )
-
-  function showPassiveTooltip(mark: { ts: number; xPct: number }) {
-    const align: 'left' | 'center' | 'right' = mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center'
-    setHoveredPassiveMark({
-      xPct: mark.xPct,
-      label: `Passive check-in · ${formatTime(new Date(mark.ts).toString())}`,
-      align,
-    })
-  }
 
   function handleStartFocusMode() {
     endRequestedRef.current = false
@@ -904,7 +1170,7 @@ export function MonitorTab({
           <div className="monitor-timeline-chart">
             <InteractiveLineChart
               className="monitor-timeline-interactive"
-              points={timelineStressPoints}
+              points={timelineStressPointsSmoothed}
               yMin={0}
               yMax={100}
               valueLabel="Stress"
@@ -915,14 +1181,20 @@ export function MonitorTab({
               showAxis={false}
               chartHeight={180}
               tooltipWidth={166}
+              markerPointTypes={['passive']}
+              markerClassName="signal-passive-marker"
+              snapToPointTypes={['passive']}
+              snapRadiusPx={12}
               extraLines={[
-                { values: timelineHrValues, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
-                { values: timelineRrValues, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
-                { values: timelinePostureValues, yMin: 0, yMax: 100, className: 'signal-posture', smooth: false },
+                { values: timelineHrValuesWithAnchors, yMin: 50, yMax: 120, className: 'signal-hr', smooth: false },
+                { values: timelineRrValuesWithAnchors, yMin: 6, yMax: 30, className: 'signal-rr', smooth: false },
+                { values: timelinePostureValuesWithAnchors, yMin: 0, yMax: 100, className: 'signal-posture', smooth: false },
               ]}
               renderTooltip={({ point, index, direction }) => {
-                const row = timelinePoints[index]
+                const row = timelinePointsWithAnchors[index]
+                const anchoredPoint = timelineStressPointsSmoothed[index]
                 if (!row) return null
+                const sourceType = anchoredPoint?.pointType ?? row.pointType
                 return (
                   <>
                     <p>
@@ -930,7 +1202,7 @@ export function MonitorTab({
                     </p>
                     <div className="interactive-chart-tooltip-row">
                       <strong>
-                        <AnimatedTickerText value={`${row.stress}`} direction={direction} />
+                        <AnimatedTickerText value={row.stress == null ? '--' : `${row.stress}`} direction={direction} />
                       </strong>
                       <span>Stress</span>
                     </div>
@@ -967,46 +1239,27 @@ export function MonitorTab({
                       </strong>
                       <span>Posture</span>
                     </div>
+                    <div className="interactive-chart-tooltip-row">
+                      <strong>
+                        <AnimatedTickerText
+                          value={
+                            sourceType === 'focus'
+                              ? 'Focus'
+                              : sourceType === 'passive'
+                                ? 'Passive'
+                                : sourceType === 'filled'
+                                  ? 'Filled'
+                                  : 'Unknown'
+                          }
+                          direction={direction}
+                        />
+                      </strong>
+                      <span>Source</span>
+                    </div>
                   </>
                 )
               }}
             />
-
-            <div className="monitor-passive-overlay" aria-hidden>
-              {passiveMarkOffsets.map((mark, index) => (
-                <button
-                  type="button"
-                  key={`${mark.ts}-${index}`}
-                  className="monitor-passive-mark-hit"
-                  style={{ left: `${mark.xPct}%` }}
-                  onMouseEnter={() => showPassiveTooltip(mark)}
-                  onMouseLeave={() => setHoveredPassiveMark(null)}
-                  onClick={() =>
-                    setHoveredPassiveMark((prev) =>
-                      prev?.xPct === mark.xPct && prev?.label.includes('Passive check-in')
-                        ? null
-                        : {
-                            xPct: mark.xPct,
-                            label: `Passive check-in · ${formatTime(new Date(mark.ts).toISOString())}`,
-                            align: mark.xPct < 12 ? 'left' : mark.xPct > 88 ? 'right' : 'center',
-                          },
-                    )
-                  }
-                  onTouchStart={() => showPassiveTooltip(mark)}
-                >
-                  <span className="monitor-passive-mark" />
-                </button>
-              ))}
-            </div>
-
-            {hoveredPassiveMark && (
-              <div
-                className={`monitor-passive-tooltip monitor-passive-tooltip--${hoveredPassiveMark.align}`}
-                style={{ left: `${hoveredPassiveMark.xPct}%` }}
-              >
-                {hoveredPassiveMark.label}
-              </div>
-            )}
           </div>
         )}
       </div>

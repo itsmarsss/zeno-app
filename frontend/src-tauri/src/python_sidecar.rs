@@ -580,3 +580,42 @@ pub fn run_export_sessions_csv_blocking() -> Result<Value, String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     parse_json_line(&stdout)
 }
+
+pub fn run_monitor_timeline_blocking(
+    start_time: String,
+    end_time: String,
+    interval_seconds: Option<u32>,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.monitor_timeline")
+        .arg("--start-time")
+        .arg(start_time)
+        .arg("--end-time")
+        .arg(end_time)
+        .arg("--interval-seconds")
+        .arg(interval_seconds.unwrap_or(5).clamp(1, 60).to_string());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to fetch monitor timeline: {e}"))?;
+    debug_log_python_output("monitor_timeline", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Monitor timeline failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}

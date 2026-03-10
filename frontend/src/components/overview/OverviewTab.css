@@ -190,7 +190,6 @@
   gap: 10px;
 }
 
-
 .timeline-interval-label {
   display: inline-flex;
   align-items: center;
@@ -242,13 +241,20 @@
   stroke-width: 1.2;
 }
 
+.timeline-passive-marker {
+  fill: color-mix(in srgb, var(--bg-surface) 78%, #ffffff 22%);
+  stroke: var(--state-mild);
+  stroke-width: 0.7;
+}
+
 /* Timeline-specific tooltip styling */
-.overview-tooltip-focus {
-  display: block;
-  margin-top: 4px;
-  color: var(--accent);
-  font-size: 11px;
-  font-style: normal;
+.overview-tooltip-source {
+  color: var(--text-primary);
+}
+
+.overview-tooltip-source--filled {
+  color: var(--text-tertiary);
+  font-style: italic;
 }
 
 .insight-cards {
@@ -590,7 +596,6 @@
   font-weight: 600;
   color: var(--text-primary);
 }
-
 
 .overview-view-more-wrap {
   margin-top: 14px;

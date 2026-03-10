@@ -31,6 +31,7 @@ type TimelinePoint = {
   postureScore: number | null
   focusActive: boolean
   breathing: boolean
+  pointType: 'passive' | 'focus' | 'filled' | 'unknown'
 }
 
 type SecondaryMetricSeries = {
@@ -91,13 +92,7 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
   const rrPoints = useMemo(
     () =>
       isFocus && baseRr
-        ? [
-            Math.max(8, baseRr - 3),
-            Math.max(8, baseRr - 2),
-            Math.max(8, baseRr + 1),
-            Math.max(8, baseRr - 1),
-            baseRr,
-          ]
+        ? [Math.max(8, baseRr - 3), Math.max(8, baseRr - 2), Math.max(8, baseRr + 1), Math.max(8, baseRr - 1), baseRr]
         : [],
     [isFocus, baseRr],
   )
@@ -117,10 +112,10 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
   )
 
   // Current display values (hover or base)
-  const displayStress = hoveredIndex != null && isFocus ? stressPoints[hoveredIndex]?.value ?? baseStress : baseStress
+  const displayStress = hoveredIndex != null && isFocus ? (stressPoints[hoveredIndex]?.value ?? baseStress) : baseStress
   const displayHr = hoveredIndex != null && isFocus && hrPoints[hoveredIndex] ? hrPoints[hoveredIndex] : baseHr
   const displayRr = hoveredIndex != null && isFocus && rrPoints[hoveredIndex] ? rrPoints[hoveredIndex] : baseRr
-  const displayPosture = hoveredIndex != null && isFocus ? posturePoints[hoveredIndex] ?? basePosture : basePosture
+  const displayPosture = hoveredIndex != null && isFocus ? (posturePoints[hoveredIndex] ?? basePosture) : basePosture
 
   const rrPrefix = baseRrConfidence === 'partial' ? '~' : ''
   const rrValue = displayRr ? `${rrPrefix}${Math.round(displayRr)}` : '--'
@@ -132,7 +127,9 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
         <div className="session-card-info">
           <div className={`session-dot ${isFocus ? 'is-focus' : 'is-passive'}`} />
           <p className="session-time">
-            {isFocus ? formatClockRange(started, ended) : started.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            {isFocus
+              ? formatClockRange(started, ended)
+              : started.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </p>
           {isFocus ? (
             <>
@@ -207,7 +204,17 @@ function SessionCard({ item }: { item: SessionHistoryItem }) {
   )
 }
 
-function SecondaryMetric({ data, yMax, value, label }: { data: number[]; yMax: number; value: string | number; label: string }) {
+function SecondaryMetric({
+  data,
+  yMax,
+  value,
+  label,
+}: {
+  data: number[]
+  yMax: number
+  value: string | number
+  label: string
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [hoverDirection, setHoverDirection] = useState<1 | -1>(1)
 
@@ -221,7 +228,7 @@ function SecondaryMetric({ data, yMax, value, label }: { data: number[]; yMax: n
     [data],
   )
 
-  const displayValue = hoveredIndex != null ? points[hoveredIndex]?.value ?? value : value
+  const displayValue = hoveredIndex != null ? (points[hoveredIndex]?.value ?? value) : value
 
   return (
     <article className="secondary-cell">
@@ -306,6 +313,7 @@ export function OverviewTab({
         id: point.slotStartIso,
         label: point.label,
         value: point.stress,
+        pointType: point.pointType,
       })),
     [timelineData],
   )
@@ -395,7 +403,7 @@ export function OverviewTab({
         animate="visible"
       >
         <div className="main-panel-head">
-          <h3>Timeline · {`${timelineStartLabel} - now`}</h3>
+          <h3>Timeline · 12am - 12am</h3>
           <div className="overview-chart-controls">
             <button className="overview-view-more overview-view-more--secondary" onClick={onViewFocusHistory}>
               View More
@@ -431,7 +439,13 @@ export function OverviewTab({
               showAxis={true}
               chartHeight={160}
               tooltipWidth={196}
-              extraLines={[{ values: timelineHeartValues, yMin: 50, yMax: 110, className: 'timeline-heart', smooth: true }]}
+              markerPointTypes={['passive']}
+              markerClassName="timeline-passive-marker"
+              snapToPointTypes={['passive']}
+              snapRadiusPx={12}
+              extraLines={[
+                { values: timelineHeartValues, yMin: 50, yMax: 110, className: 'timeline-heart', smooth: true },
+              ]}
               renderTooltip={({ point, index, direction }) => {
                 const dataPoint = timelineData[index]
                 if (!dataPoint) return null
@@ -470,7 +484,29 @@ export function OverviewTab({
                       </strong>
                       <span>Posture score</span>
                     </div>
-                    {dataPoint.focusActive && <em className="overview-tooltip-focus">Focus Mode active</em>}
+                    <div className="interactive-chart-tooltip-row">
+                      <strong
+                        className={
+                          dataPoint.pointType === 'filled'
+                            ? 'overview-tooltip-source overview-tooltip-source--filled'
+                            : 'overview-tooltip-source'
+                        }
+                      >
+                        <AnimatedTickerText
+                          value={
+                            dataPoint.pointType === 'focus'
+                              ? 'Focus'
+                              : dataPoint.pointType === 'passive'
+                                ? 'Passive'
+                                : dataPoint.pointType === 'filled'
+                                  ? 'Filled (inferred)'
+                                  : 'Unknown'
+                          }
+                          direction={direction}
+                        />
+                      </strong>
+                      <span>Source</span>
+                    </div>
                   </>
                 )
               }}
