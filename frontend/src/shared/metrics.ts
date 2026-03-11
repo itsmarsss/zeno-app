@@ -28,6 +28,7 @@ export function friendlyPosture(score: number): string {
 export function stressIndexFromHistory(item: SessionHistoryItem): number {
   return stressIndex({
     timestamp: item.created_at,
+    focus_session_id: item.focus_session_id ?? null,
     presence_detected: Boolean(item.presence_detected),
     analysis_skipped: Boolean(item.analysis_skipped),
     posture_score: item.posture_score,
@@ -52,6 +53,7 @@ export function stressIndexFromHistory(item: SessionHistoryItem): number {
 export function sessionFromHistory(item: SessionHistoryItem): SessionResult {
   return {
     timestamp: item.created_at,
+    focus_session_id: item.focus_session_id ?? null,
     presence_detected: Boolean(item.presence_detected),
     analysis_skipped: Boolean(item.analysis_skipped),
     posture_score: item.posture_score,

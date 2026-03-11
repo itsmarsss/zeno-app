@@ -6,6 +6,7 @@ import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
 from zeno_backend.data.sqlite_logger import log_session
@@ -81,6 +82,7 @@ def stream_focus_updates(
         resting_rr = 14.0
 
     started = time.perf_counter()
+    focus_session_id = str(uuid4())
     next_cycle_start = started
     cycle_started_at: float | None = None
     streams_active = False
@@ -131,6 +133,7 @@ def stream_focus_updates(
                         "resting_hr": resting_hr,
                         "resting_rr": resting_rr,
                         "mode": "focus",
+                        "focus_session_id": focus_session_id,
                         "analysis_skipped": True,
                     }
                     print(json.dumps(payload), flush=True)
@@ -169,6 +172,7 @@ def stream_focus_updates(
                 "resting_hr": resting_hr,
                 "resting_rr": resting_rr,
                 "mode": "focus",
+                "focus_session_id": focus_session_id,
             }
             posture_score = float(payload["posture_score"])
             ear_offset = float(payload["ear_shoulder_offset"])

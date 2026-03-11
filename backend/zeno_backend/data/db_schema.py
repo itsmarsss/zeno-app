@@ -33,6 +33,7 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             rr_confidence TEXT NOT NULL DEFAULT 'none',
             emotion_backend TEXT NOT NULL,
             mode TEXT NOT NULL DEFAULT 'passive',
+            focus_session_id TEXT,
             focus_duration_seconds INTEGER NOT NULL DEFAULT 0,
             focus_mode INTEGER NOT NULL DEFAULT 0,
             notification_sent TEXT,
@@ -87,8 +88,12 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN rr_confidence TEXT NOT NULL DEFAULT 'none'")
     if "mode" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'passive'")
+    if "focus_session_id" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN focus_session_id TEXT")
     if "focus_duration_seconds" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN focus_duration_seconds INTEGER NOT NULL DEFAULT 0")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_focus_session_id ON sessions(focus_session_id)")
 
     # Backfill legacy rows so downstream code can treat these fields as present.
     conn.execute(
@@ -113,6 +118,7 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
           respiratory_rate = COALESCE(respiratory_rate, 0.0),
           rr_confidence = COALESCE(NULLIF(rr_confidence, ''), 'none'),
           mode = COALESCE(NULLIF(mode, ''), 'passive'),
+          focus_session_id = NULLIF(TRIM(COALESCE(focus_session_id, '')), ''),
           focus_duration_seconds = COALESCE(focus_duration_seconds, 0),
           notification_sent = COALESCE(NULLIF(notification_sent, ''), 'none'),
           notification_dismissed_by = COALESCE(NULLIF(notification_dismissed_by, ''), 'none')

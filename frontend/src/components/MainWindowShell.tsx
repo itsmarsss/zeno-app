@@ -48,6 +48,7 @@ const PATTERN_MIN_SESSIONS = 10
 
 type MonitorTimelinePoint = {
   created_at: string
+  focus_session_id?: string | null
   posture_score: number | null
   heart_rate_bpm: number | null
   respiratory_rate: number | null

@@ -405,8 +405,16 @@ function App() {
     const baselinePostureScore = Number(payload.baseline_posture_score ?? 0) || 0
     const postureDeviation = Number(payload.posture_deviation ?? 0) || 0
     const elapsedSeconds = Number(payload.elapsed_seconds ?? 0)
+    const stressIndexValue =
+      typeof payload.stress_index_smoothed === 'number'
+        ? payload.stress_index_smoothed
+        : typeof payload.stress_index === 'number'
+          ? payload.stress_index
+          : undefined
     return {
       timestamp: String(payload.timestamp ?? new Date().toISOString()),
+      focus_session_id:
+        payload.focus_session_id == null ? null : String(payload.focus_session_id),
       presence_detected: presenceDetected,
       analysis_skipped: analysisSkipped,
       posture_score: Number.isFinite(postureScore) ? postureScore : 0,
@@ -420,6 +428,7 @@ function App() {
             : false,
       dominant_emotion: String(payload.dominant_emotion ?? 'unknown'),
       emotion_score: Number(payload.emotion_score ?? 0) || 0,
+      stress_index: stressIndexValue,
       heart_rate_bpm: payload.heart_rate_bpm == null ? null : Number(payload.heart_rate_bpm),
       respiratory_rate: Number(payload.respiratory_rate ?? 0) || 0,
       rr_confidence:

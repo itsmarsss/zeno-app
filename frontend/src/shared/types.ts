@@ -1,5 +1,6 @@
 export type SessionResult = {
   timestamp: string
+  focus_session_id?: string | null
   presence_detected: boolean
   analysis_skipped: boolean
   posture_score: number
@@ -25,6 +26,7 @@ export type SessionResult = {
 export type SessionHistoryItem = {
   id: number
   created_at: string
+  focus_session_id?: string | null
   presence_detected: number
   analysis_skipped: number
   posture_score: number

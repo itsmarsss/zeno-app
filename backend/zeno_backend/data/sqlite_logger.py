@@ -5,6 +5,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
 from zeno_backend.data.daily_aggregates import recompute_daily_aggregate
@@ -331,6 +332,16 @@ def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        mode = str(result.get("mode", "passive"))
+        is_focus_mode = mode == "focus" or bool(result.get("focus_mode"))
+        focus_session_id: str | None = None
+        if is_focus_mode:
+            raw_focus_session_id = result.get("focus_session_id")
+            normalized_focus_session_id = (
+                str(raw_focus_session_id).strip() if raw_focus_session_id is not None else ""
+            )
+            focus_session_id = normalized_focus_session_id or str(uuid4())
+        result["focus_session_id"] = focus_session_id
         posture_score = float(result["posture_score"])
         baseline_score, posture_deviation, is_calibrated, resting_hr, resting_rr, baseline_confidence = _sync_baseline_state(conn, result)
         baseline_geom = conn.execute(
@@ -425,13 +436,14 @@ def log_session(result: dict, db_path: Path) -> int:
                 rr_confidence,
                 emotion_backend,
                 mode,
+                focus_session_id,
                 focus_duration_seconds,
                 focus_mode,
                 notification_sent,
                 notification_dismissed_by,
                 session_duration_seconds,
                 raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 result["timestamp"],
@@ -458,7 +470,8 @@ def log_session(result: dict, db_path: Path) -> int:
                 float(result.get("respiratory_rate", 0.0)),
                 str(result.get("rr_confidence", "none")),
                 str(result["emotion_backend"]),
-                str(result.get("mode", "passive")),
+                mode,
+                focus_session_id,
                 int(result.get("focus_duration_seconds", 0)),
                 1 if result.get("focus_mode") else 0,
                 "none",

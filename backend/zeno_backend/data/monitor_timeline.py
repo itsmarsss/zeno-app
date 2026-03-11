@@ -90,6 +90,7 @@ def _unknown_point(created_at: datetime) -> dict:
         "rr_confidence": "none",
         "emotion_backend": None,
         "mode": None,
+        "focus_session_id": None,
         "focus_duration_seconds": None,
         "focus_mode": None,
         "session_duration_seconds": 0,
@@ -118,6 +119,7 @@ def _filled_point(created_at: datetime, last_known: dict) -> dict:
         "rr_confidence": last_known.get("rr_confidence") or "none",
         "emotion_backend": last_known.get("emotion_backend"),
         "mode": last_known.get("mode"),
+        "focus_session_id": last_known.get("focus_session_id"),
         "focus_duration_seconds": last_known.get("focus_duration_seconds"),
         "focus_mode": last_known.get("focus_mode"),
         "session_duration_seconds": 0,
@@ -180,9 +182,16 @@ def _bucket_timeline(
 
         if bucket_rows:
             latest = bucket_rows[-1]
+            latest_focus = next(
+                (row for row in reversed(bucket_rows) if (row.get("mode") or "") == "focus"),
+                None,
+            )
             has_focus = any((row.get("mode") or "") == "focus" or row.get("point_type") == "focus" for row in bucket_rows)
             has_passive = any(row.get("point_type") == "passive" and (row.get("mode") or "passive") != "focus" for row in bucket_rows)
             bucket_type = "focus" if has_focus else ("passive" if has_passive else "unknown")
+            bucket_focus_session_id = (
+                (latest_focus or latest).get("focus_session_id") if has_focus else None
+            )
 
             if aggregate_mode == "mean":
                 point = {
@@ -206,6 +215,7 @@ def _bucket_timeline(
                     "rr_confidence": _best_confidence([row.get("rr_confidence") for row in bucket_rows]),
                     "emotion_backend": latest.get("emotion_backend"),
                     "mode": "focus" if has_focus else "passive",
+                    "focus_session_id": bucket_focus_session_id,
                     "focus_duration_seconds": latest.get("focus_duration_seconds"),
                     "focus_mode": 1 if has_focus else 0,
                     "session_duration_seconds": latest.get("session_duration_seconds", 0),
@@ -232,6 +242,7 @@ def _bucket_timeline(
                     "rr_confidence": latest.get("rr_confidence") or "none",
                     "emotion_backend": latest.get("emotion_backend"),
                     "mode": latest.get("mode"),
+                    "focus_session_id": bucket_focus_session_id,
                     "focus_duration_seconds": latest.get("focus_duration_seconds"),
                     "focus_mode": latest.get("focus_mode"),
                     "session_duration_seconds": latest.get("session_duration_seconds", 0),
@@ -338,6 +349,7 @@ def fetch_monitor_timeline(
                 rr_confidence,
                 emotion_backend,
                 mode,
+                focus_session_id,
                 focus_duration_seconds,
                 focus_mode,
                 session_duration_seconds
@@ -370,6 +382,7 @@ def fetch_monitor_timeline(
                     rr_confidence,
                     emotion_backend,
                     mode,
+                    focus_session_id,
                     focus_duration_seconds,
                     focus_mode,
                     session_duration_seconds

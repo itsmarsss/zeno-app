@@ -62,6 +62,7 @@ def fetch_history(
                 rr_confidence,
                 emotion_backend,
                 mode,
+                focus_session_id,
                 focus_duration_seconds,
                 focus_mode,
                 notification_sent,
