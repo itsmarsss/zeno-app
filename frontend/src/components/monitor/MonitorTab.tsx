@@ -334,11 +334,12 @@ export function MonitorTab({
   const [timeWindowMinutes, setTimeWindowMinutes] = useState<number>(60)
 
   const wasFocusActiveRef = useRef(focusModeActive)
-  const endRequestedRef = useRef(false)
   const previousModeRef = useRef<MonitorMode>('idle')
   const cameraModeRef = useRef<MonitorMode>('idle')
 
-  const hasLiveFocusResult = Boolean(currentResult && currentResult.mode === 'focus' && !currentResult.session_skipped)
+  const hasLiveFocusResult = Boolean(
+    focusModeActive && currentResult && currentResult.mode === 'focus' && !currentResult.session_skipped,
+  )
   const focusSessionVisible = focusLatched || hasLiveFocusResult || focusStartedAt != null
   const monitorMode: MonitorMode =
     recentFocusSummary && !focusSessionVisible
@@ -372,7 +373,7 @@ export function MonitorTab({
       void sectionControls.start('visible')
     })
     return () => window.cancelAnimationFrame(raf)
-  }, [monitorMode, sectionControls])
+  }, [sectionControls])
 
   useEffect(() => {
     const previous = cameraModeRef.current
@@ -388,9 +389,11 @@ export function MonitorTab({
   }, [monitorMode])
 
   useEffect(() => {
+    const shouldTick = monitorMode === 'focus' || monitorMode === 'passive'
+    if (!shouldTick) return
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [monitorMode])
 
   useEffect(() => {
     monitorRuntimeCache = {
@@ -414,18 +417,16 @@ export function MonitorTab({
 
   useEffect(() => {
     if (focusModeActive) {
-      endRequestedRef.current = false
       setFocusLatched(true)
       setFocusStartedAt((prev) => prev ?? Date.now())
       setRecentFocusSummary(null)
     } else {
       const wasFocusActive = wasFocusActiveRef.current
-      if (wasFocusActive && focusStartedAt && endRequestedRef.current) {
+      if (wasFocusActive && focusStartedAt) {
         const durationSeconds = Math.max(0, Math.floor((Date.now() - focusStartedAt) / 1000))
         setRecentFocusSummary({ endedAt: Date.now(), durationSeconds })
         setFocusStartedAt(null)
         setFocusLatched(false)
-        endRequestedRef.current = false
       }
     }
     wasFocusActiveRef.current = focusModeActive
@@ -540,11 +541,12 @@ export function MonitorTab({
   const passiveElapsedSec = passiveStartedAt ? Math.floor((now - passiveStartedAt) / 1000) : 0
   const passiveRemaining = Math.max(0, 30 - passiveElapsedSec)
   const passiveProgress = clamp((passiveElapsedSec / 30) * 100, 0, 100)
-  const focusElapsed = hasLiveFocusResult
-    ? Math.max(0, Math.floor(currentResult?.focus_duration_seconds ?? 0))
-    : focusStartedAt
-      ? Math.floor((now - focusStartedAt) / 1000)
-      : 0
+  const focusElapsedFromClock = focusStartedAt ? Math.floor((now - focusStartedAt) / 1000) : 0
+  const focusElapsedFromStream = Math.max(0, Math.floor(currentResult?.focus_duration_seconds ?? 0))
+  const focusElapsed =
+    monitorMode === 'focus'
+      ? Math.max(focusElapsedFromClock, focusElapsedFromStream)
+      : focusElapsedFromStream
   const cameraStageActive = transitionPhase !== 'banner'
   const cardsStageActive = transitionPhase === 'cards' || transitionPhase === 'settled'
   const showLiveCamera = monitorMode === 'focus' || monitorMode === 'passive' || passiveCameraClosing
@@ -620,7 +622,6 @@ export function MonitorTab({
     )
 
   function handleStartFocusMode() {
-    endRequestedRef.current = false
     setFocusLatched(true)
     setRecentFocusSummary(null)
     setFocusStartedAt((prev) => prev ?? Date.now())
@@ -628,7 +629,6 @@ export function MonitorTab({
   }
 
   function handleEndFocusMode() {
-    endRequestedRef.current = true
     if (focusStartedAt) {
       const durationSeconds = Math.max(0, Math.floor((Date.now() - focusStartedAt) / 1000))
       setRecentFocusSummary({ endedAt: Date.now(), durationSeconds })
@@ -835,11 +835,9 @@ export function MonitorTab({
             </div>
             <div className="monitor-card-sub">
               <span>{displayResult ? stressLabel(stressValue) : 'No data'}</span>
-              {monitorMode === 'focus' && (
-                <span className={`monitor-delta monitor-delta--${deltaTone(stressDelta)}`}>
-                  {formatDelta(stressDelta) ? `${formatDelta(stressDelta)} from baseline` : 'at baseline'}
-                </span>
-              )}
+              <span className={`monitor-delta monitor-delta--${deltaTone(stressDelta)}`}>
+                {formatDelta(stressDelta) ? `${formatDelta(stressDelta)} from baseline` : 'at baseline'}
+              </span>
             </div>
             {stressChartPoints.length > 1 && (
               <InteractiveLineChart
@@ -897,11 +895,9 @@ export function MonitorTab({
                         ? 'Elevated'
                         : 'High'}
               </span>
-              {monitorMode === 'focus' && (
-                <span className={`monitor-delta monitor-delta--${deltaTone(hrDelta)}`}>
-                  {formatDelta(hrDelta, 1) ? `${formatDelta(hrDelta, 1)} from baseline` : 'at baseline'}
-                </span>
-              )}
+              <span className={`monitor-delta monitor-delta--${deltaTone(hrDelta)}`}>
+                {formatDelta(hrDelta, 1) ? `${formatDelta(hrDelta, 1)} from baseline` : 'at baseline'}
+              </span>
             </div>
             {hrChartPoints.length > 1 && (
               <InteractiveLineChart
@@ -964,11 +960,9 @@ export function MonitorTab({
                           ? 'Slightly elevated'
                           : 'Elevated'}
               </span>
-              {monitorMode === 'focus' && (
-                <span className={`monitor-delta monitor-delta--${deltaTone(rrDelta)}`}>
-                  {formatDelta(rrDelta, 1) ? `${formatDelta(rrDelta, 1)} from baseline` : 'at baseline'}
-                </span>
-              )}
+              <span className={`monitor-delta monitor-delta--${deltaTone(rrDelta)}`}>
+                {formatDelta(rrDelta, 1) ? `${formatDelta(rrDelta, 1)} from baseline` : 'at baseline'}
+              </span>
             </div>
             {monitorMode === 'focus' && rrStage !== 'live' ? (
               <div className="monitor-rr-progress-wrap">
@@ -1049,11 +1043,9 @@ export function MonitorTab({
             </div>
             <div className="monitor-card-sub">
               <FadeSwapText value={postureStatus} className="monitor-fade-swap" />
-              {monitorMode === 'focus' && (
-                <span className={`monitor-delta monitor-delta--${deltaTone(postureDelta)}`}>
-                  {formatDelta(postureDelta) ? `${formatDelta(postureDelta)} from baseline` : 'at baseline'}
-                </span>
-              )}
+              <span className={`monitor-delta monitor-delta--${deltaTone(postureDelta)}`}>
+                {formatDelta(postureDelta) ? `${formatDelta(postureDelta)} from baseline` : 'at baseline'}
+              </span>
             </div>
             {postureChartPoints.length > 1 && (
               <InteractiveLineChart

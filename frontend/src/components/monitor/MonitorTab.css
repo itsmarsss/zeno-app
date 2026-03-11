@@ -148,6 +148,7 @@
   border-radius: 14px;
   overflow: hidden;
   background: #0d0d0d;
+  height: 100%;
   animation: cameraReveal 300ms ease;
 }
 
@@ -159,7 +160,7 @@
   margin-top: 0;
   border: none;
   border-radius: 14px;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   max-width: none;
 }
 
