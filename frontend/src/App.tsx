@@ -550,7 +550,7 @@ function App() {
     let cancelled = false
 
     const setup = async () => {
-      await invoke('start_focus_stream', { updateEvery: 5, maxSeconds: 0 })
+      await invoke('start_focus_stream', { updateEvery: 60, maxSeconds: 0 })
       if (cancelled) return
       unlistenUpdate = await listen<Record<string, unknown>>('focus-stream-update', (event) => {
         const session = mergeStreamResult(normalizeFocusStreamResult(event.payload))
@@ -680,10 +680,6 @@ function App() {
 
   async function runSession() {
     try {
-      if (settings?.monitoring_paused) {
-        setError('Monitoring is paused. Resume it in preferences.')
-        return
-      }
       setStatus('Running')
       setError(null)
       const payload = await invoke<SessionResult>('run_python_session')
@@ -1242,7 +1238,7 @@ function App() {
             <button
               className="checkin-fab"
               onClick={runSession}
-              disabled={!canRun || settings?.monitoring_paused || breakActive}
+              disabled={!canRun || breakActive}
             >
               {status === 'Running' ? 'Checking' : 'Check in'}
             </button>

@@ -38,6 +38,10 @@
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   color: var(--text-tertiary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-day-nav {
@@ -46,8 +50,13 @@
   gap: 4px;
 }
 
+.hero-date-picker-wrap {
+  position: relative;
+}
+
 .hero-date-picker {
   height: 24px;
+  min-width: 120px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -56,21 +65,110 @@
   padding: 0 7px;
   color: var(--text-secondary);
   background: var(--bg-surface);
-}
-
-.hero-date-picker input {
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text-secondary);
+  cursor: pointer;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  width: 118px;
+  line-height: 1;
 }
 
-.hero-date-picker input::-webkit-calendar-picker-indicator {
-  opacity: 0.75;
+.hero-date-picker:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
+}
+
+.hero-calendar-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 248px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  padding: 9px;
+}
+
+.hero-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.hero-calendar-head strong {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hero-calendar-nav {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+
+.hero-calendar-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hero-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.hero-calendar-weekdays span {
+  text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.hero-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.hero-calendar-day {
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hero-calendar-day:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+}
+
+.hero-calendar-day.is-outside {
+  color: var(--text-tertiary);
+}
+
+.hero-calendar-day.is-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+}
+
+.hero-calendar-day:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .hero-nav-btn {
@@ -101,6 +199,7 @@
 
 .hero-subline {
   margin: 5px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
   color: var(--text-secondary);
   font-size: 13px;
 }
@@ -183,13 +282,38 @@
 .narrative-value {
   margin: 0;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
   color: var(--text-primary);
 }
 
 .narrative-value span {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-tertiary);
+}
+
+.narrative-value .narrative-value-ticker,
+.narrative-value .narrative-value-ticker .animated-ticker-track,
+.narrative-value .narrative-value-ticker .animated-ticker-item {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.narrative-value .narrative-value-ticker .animated-ticker-suffix {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-tertiary) 28%);
+}
+
+.narrative-value .narrative-value-ticker .animated-ticker-slot {
+  height: 2.35em;
+  padding-top: 0.08em;
 }
 
 .narrative-label {
@@ -202,6 +326,7 @@
 
 .narrative-context {
   margin: 4px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
 }
 
@@ -420,7 +545,6 @@
 .secondary-cell {
   background: var(--bg-surface);
   padding: 14px;
-  cursor: crosshair;
   transition: background 0.15s ease;
   display: flex;
   flex-direction: column;

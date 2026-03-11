@@ -119,6 +119,7 @@ export function MainWindowShell({
     'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   >('stopped')
   const [postureStreamError, setPostureStreamError] = useState<string | null>(null)
+  const [postureStreamSuspended, setPostureStreamSuspended] = useState(false)
   const [focusPeriod, setFocusPeriod] = useState<FocusPeriod>('week')
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
   const [sortNewestFirst, setSortNewestFirst] = useState(true)
@@ -178,14 +179,14 @@ export function MainWindowShell({
   const hrDeltaBaseline = overviewAggregates?.hr_delta_baseline ?? null
 
   const heroHeadline = generateHeadline(avgStressToday ?? 0, todayFocusedMinutes, stressDeltaVsYesterday ?? 0)
-  const heroSubline = `Average stress ${avgStressToday == null ? '--' : avgStressToday} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
+  const heroStress = avgStressToday == null ? '--' : String(Math.round(avgStressToday))
+  const heroSubline = `Average stress ${heroStress} · ${formatMinutes(todayFocusedMinutes)} focused · ${todayBreakCount} breaks taken`
   const heroTrendTone = trendTone(stressDeltaVsYesterday ?? 0)
 
   const timelineStart = new Date(overviewDate)
   timelineStart.setHours(HOUR_START, 0, 0, 0)
   const timelineEnd = new Date(overviewDate)
   timelineEnd.setHours(HOUR_END, 59, 59, 999)
-  const nowMs = now.getTime()
   const timelineSourcePoints = overviewTimelinePoints
 
   const timelineData: Array<{
@@ -326,7 +327,7 @@ export function MainWindowShell({
     return () => {
       cancelled = true
     }
-  }, [overviewDate, timelineBucketMinutes])
+  }, [overviewDate, timelineBucketMinutes, historyRevision])
 
   useEffect(() => {
     let cancelled = false
@@ -1003,11 +1004,31 @@ export function MainWindowShell({
     }
   }
 
+  async function runPostureBaselineRecalibration(seconds: number) {
+    setPostureStreamSuspended(true)
+    setPostureStreamError(null)
+    try {
+      await invoke('stop_posture_stream').catch(() => null)
+      const payload = await invoke<{
+        ok?: boolean
+        error?: string
+        samples?: number
+        accepted_samples?: number
+        baseline_posture_score?: number
+        baseline_confidence?: number
+      }>('run_recalibrate_baseline', { seconds })
+      return payload
+    } finally {
+      setPostureStreamSuspended(false)
+    }
+  }
+
   useEffect(() => {
     const shouldStream =
-      tab === 'posture' ||
-      (tab === 'exercises' && exerciseGuidedActive) ||
-      (tab === 'monitor' && (Boolean(settings?.focus_mode_active) || isCheckInRunning))
+      !postureStreamSuspended &&
+      (tab === 'posture' ||
+        (tab === 'exercises' && exerciseGuidedActive) ||
+        (tab === 'monitor' && (Boolean(settings?.focus_mode_active) || isCheckInRunning)))
     if (!shouldStream) return
 
     let unlistenFrame: (() => void) | undefined
@@ -1057,7 +1078,7 @@ export function MainWindowShell({
       if (unlistenEnded) unlistenEnded()
       void invoke('stop_posture_stream').catch(() => null)
     }
-  }, [tab, exerciseGuidedActive, selectedExercise?.id, selectedExercise, settings?.focus_mode_active, isCheckInRunning])
+  }, [tab, exerciseGuidedActive, selectedExercise?.id, selectedExercise, settings?.focus_mode_active, isCheckInRunning, postureStreamSuspended])
 
   return (
     <div className="main-window-shell">
@@ -1088,7 +1109,7 @@ export function MainWindowShell({
           <button
             className="desktop-action-btn desktop-action-btn--primary"
             onClick={() => void onRunCheckIn()}
-            disabled={isCheckInRunning || settings?.monitoring_paused}
+            disabled={isCheckInRunning}
           >
             <Zap size={14} />
             {isCheckInRunning ? 'Checking…' : 'Check in'}
@@ -1207,6 +1228,7 @@ export function MainWindowShell({
                   history={history}
                   onSeeAllExercises={openExercisesTab}
                   onStartExercise={startExerciseFromPosture}
+                  onRecalibrateBaseline={runPostureBaselineRecalibration}
                 />
               </motion.div>
             )}

@@ -3,8 +3,10 @@
   align-items: baseline;
   position: relative;
   vertical-align: middle;
-  line-height: 1;
-  font-family: 'IBM Plex Mono', monospace;
+  line-height: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
   font-variant-numeric: tabular-nums;
   font-feature-settings:
     'tnum' 1,
@@ -22,7 +24,7 @@
   grid-template-rows: 1fr;
   overflow: hidden;
   min-width: 0.62ch;
-  height: 1.15em;
+  padding-bottom: 0.08em;
 }
 
 .animated-ticker-item {

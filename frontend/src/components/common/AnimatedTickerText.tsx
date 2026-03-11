@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import './AnimatedTickerText.css'
 
@@ -12,12 +13,21 @@ export function AnimatedTickerText({
   staticSuffix?: string
   className?: string
 }) {
-  const chars = value.split('')
+  const prevValueRef = useRef(value)
+  const previousValue = prevValueRef.current
+  prevValueRef.current = value
+
+  const previousChars = previousValue.split('')
+  const nextChars = value.split('')
+  const slotCount = Math.max(previousChars.length, nextChars.length)
 
   return (
     <span className={`animated-ticker ${className}`.trim()}>
       <span className="animated-ticker-track">
-        {chars.map((char, index) => (
+        {Array.from({ length: slotCount }, (_, index) => {
+          const char = nextChars[index] ?? ' '
+          const displayChar = char === ' ' ? '\u00A0' : char
+          return (
           <span key={`${index}-slot`} className="animated-ticker-slot">
             <AnimatePresence initial={false}>
               <motion.span
@@ -28,11 +38,12 @@ export function AnimatedTickerText({
                 exit={{ y: direction > 0 ? -10 : 10, opacity: 0 }}
                 transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1], delay: index * 0.01 }}
               >
-                {char}
+                {displayChar}
               </motion.span>
             </AnimatePresence>
           </span>
-        ))}
+          )
+        })}
       </span>
       {staticSuffix ? <span className="animated-ticker-suffix">{staticSuffix}</span> : null}
     </span>

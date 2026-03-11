@@ -24,6 +24,18 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
+.posture-scope-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.posture-recal-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
 .posture-head-actions {
   display: inline-flex;
   align-items: center;
@@ -33,12 +45,16 @@
 .posture-live-grid {
   margin-top: 12px;
   margin-bottom: 14px;
+  box-sizing: content-box;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   overflow: hidden;
   background: var(--bg-surface);
   display: grid;
   grid-template-columns: 52% 48%;
+  height: 382px;
+  min-height: 382px;
+  max-height: 382px;
 }
 
 .posture-feed-wrap {
@@ -144,6 +160,8 @@
   margin: 0;
   font-family: 'DM Serif Display', serif;
   font-size: 26px;
+  line-height: 1.08;
+  min-height: 30px;
   transition: color 600ms ease;
 }
 
@@ -160,6 +178,8 @@
 .posture-status-sub {
   margin: 6px 0 0;
   font-size: 13px;
+  line-height: 1.35;
+  min-height: 18px;
   color: var(--text-secondary);
 }
 
@@ -177,13 +197,13 @@
 
 .posture-status-loader--title {
   width: 170px;
-  height: 32px;
+  height: 30px;
 }
 
 .posture-status-loader--sub {
   margin-top: 8px;
   width: 240px;
-  height: 16px;
+  height: 18px;
 }
 
 .posture-coaching hr {
@@ -517,6 +537,131 @@
   transform: translateY(-1px);
 }
 
+.posture-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  background: rgba(15, 18, 22, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.posture-modal {
+  width: min(460px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.18);
+  padding: 14px;
+}
+
+.posture-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.posture-modal-head h3 {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+}
+
+.posture-modal-close {
+  border: 1px solid var(--border-default);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.posture-modal-copy {
+  margin: 10px 0 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.posture-preview--modal {
+  margin-top: 8px;
+  max-width: none;
+  aspect-ratio: 16 / 8.7;
+}
+
+.posture-modal-preview {
+  position: relative;
+}
+
+.posture-modal-preview-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.posture-modal-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.posture-modal-progress,
+.posture-modal-error,
+.posture-modal-success {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.posture-modal-progress {
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.posture-modal-progressbar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.posture-modal-progressbar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #66b78e, var(--accent));
+  transition: width 120ms linear;
+}
+
+.posture-modal-error {
+  color: var(--state-elevated);
+}
+
+.posture-modal-success {
+  color: var(--state-calm);
+}
+
+.posture-modal-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @keyframes postureLoader {
   from {
     background-position: 0 0;
@@ -529,6 +674,7 @@
 @media (max-width: 980px) {
   .posture-live-grid {
     grid-template-columns: 1fr;
+    height: auto;
   }
 }
 

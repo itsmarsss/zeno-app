@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CameraOff, Check, CheckCircle, ChevronRight } from 'lucide-react'
+import { CameraOff, Check, CheckCircle, ChevronRight, Loader2, X } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { EXERCISE_LIBRARY } from '../../shared/constants'
 import type { PostureInsights, PostureLandmarks, SessionHistoryItem } from '../../shared/types'
@@ -19,6 +19,15 @@ type TimelinePoint = {
 }
 type MonitorTimelineResponse = {
   points?: TimelinePoint[]
+}
+
+type RecalibrateResponse = {
+  ok?: boolean
+  error?: string
+  samples?: number
+  accepted_samples?: number
+  baseline_posture_score?: number
+  baseline_confidence?: number
 }
 
 function daysForPeriod(period: PeriodKey): number {
@@ -52,6 +61,7 @@ export function PostureTab({
   history,
   onSeeAllExercises,
   onStartExercise,
+  onRecalibrateBaseline,
 }: {
   postureStreamState: 'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   postureScoreLive: number | null
@@ -67,10 +77,17 @@ export function PostureTab({
   history: SessionHistoryItem[]
   onSeeAllExercises: () => void
   onStartExercise: (exerciseId: string) => void
+  onRecalibrateBaseline: (seconds: number) => Promise<RecalibrateResponse>
 }) {
+  const RECAL_SECONDS = 10
   const [period, setPeriod] = useState<PeriodKey>('today')
   const [postureInsights, setPostureInsights] = useState<PostureInsights | null>(null)
   const [postureTimeline, setPostureTimeline] = useState<TimelinePoint[]>([])
+  const [showRecalModal, setShowRecalModal] = useState(false)
+  const [recalibrating, setRecalibrating] = useState(false)
+  const [recalError, setRecalError] = useState<string | null>(null)
+  const [recalResult, setRecalResult] = useState<RecalibrateResponse | null>(null)
+  const [captureRemaining, setCaptureRemaining] = useState(RECAL_SECONDS)
   const sortedHistory = useMemo(
     () => [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [history],
@@ -181,6 +198,37 @@ export function PostureTab({
   const recommendedIds = postureInsights?.recommended_ids ?? []
   const recommended = EXERCISE_LIBRARY.filter((item) => recommendedIds.includes(item.id)).slice(0, 3)
   const coachingState = isStarting ? 'starting' : (liveScore ?? 0) < 75 ? 'action' : 'good'
+
+  async function startRecalibration() {
+    setRecalibrating(true)
+    setRecalError(null)
+    setRecalResult(null)
+    setCaptureRemaining(RECAL_SECONDS)
+    try {
+      const payload = await onRecalibrateBaseline(RECAL_SECONDS)
+      if (!payload?.ok) {
+        setRecalError(payload?.error ?? 'Recalibration failed. Please retry.')
+        return
+      }
+      setRecalResult(payload)
+    } catch (error) {
+      setRecalError(error instanceof Error ? error.message : 'Recalibration failed. Please retry.')
+    } finally {
+      setRecalibrating(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!recalibrating) return
+    const started = Date.now()
+    const timer = window.setInterval(() => {
+      const elapsed = (Date.now() - started) / 1000
+      const remaining = Math.max(0, RECAL_SECONDS - elapsed)
+      setCaptureRemaining(remaining)
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [recalibrating])
+
   useEffect(() => {
     let cancelled = false
 
@@ -221,12 +269,17 @@ export function PostureTab({
       <h1>Posture</h1>
       <motion.section className="posture-scope-bar" variants={staggerItem(0)} initial="hidden" animate="visible">
         <span>Scope</span>
-        <div className="period-toggle posture-period-toggle">
-          {(['today', 'week', 'month'] as PeriodKey[]).map((p) => (
-            <button key={p} className={period === p ? 'is-active' : ''} onClick={() => setPeriod(p)}>
-              {p === 'today' ? 'Today' : p === 'week' ? 'Week' : 'Month'}
-            </button>
-          ))}
+        <div className="posture-scope-actions">
+          <div className="period-toggle posture-period-toggle">
+            {(['today', 'week', 'month'] as PeriodKey[]).map((p) => (
+              <button key={p} className={period === p ? 'is-active' : ''} onClick={() => setPeriod(p)}>
+                {p === 'today' ? 'Today' : p === 'week' ? 'Week' : 'Month'}
+              </button>
+            ))}
+          </div>
+          <button className="btn-ghost posture-recal-btn" onClick={() => setShowRecalModal(true)}>
+            Recalibrate
+          </button>
         </div>
       </motion.section>
 
@@ -527,6 +580,110 @@ export function PostureTab({
       </motion.section>
 
       {postureStreamError ? <p className="main-empty">{postureStreamError}</p> : null}
+
+      <AnimatePresence>
+        {showRecalModal && (
+          <motion.div
+            className="posture-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              if (!recalibrating) {
+                setShowRecalModal(false)
+                setRecalError(null)
+                setRecalResult(null)
+              }
+            }}
+          >
+            <motion.section
+              className="posture-modal"
+              initial={{ y: 16, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 16, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="posture-modal-head">
+                <h3>Recalibrate posture baseline</h3>
+                <button
+                  className="posture-modal-close"
+                  onClick={() => {
+                    if (!recalibrating) {
+                      setShowRecalModal(false)
+                      setRecalError(null)
+                      setRecalResult(null)
+                    }
+                  }}
+                  disabled={recalibrating}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <p className="posture-modal-copy">
+                Sit in your natural upright posture. Keep your shoulders visible and hold still while Zeno captures a new baseline.
+              </p>
+              <div className="posture-modal-preview">
+                <PostureFrame
+                  frame={postureFrame}
+                  landmarks={postureLandmarks}
+                  alt="Baseline calibration preview"
+                  className="posture-preview posture-preview--modal"
+                />
+                <div className="posture-modal-preview-badge">
+                  {postureStreamState === 'running' ? 'Live camera' : 'Camera preparing'}
+                </div>
+              </div>
+              <ol className="posture-modal-list">
+                <li>Face camera head-on with shoulders in frame.</li>
+                <li>Plant feet and relax your shoulders down.</li>
+                <li>Look at screen naturally for 10 seconds.</li>
+              </ol>
+
+              {recalibrating && (
+                <>
+                  <p className="posture-modal-progress">
+                    <Loader2 size={14} className="spin" /> Capturing baseline... {Math.ceil(captureRemaining)}s
+                  </p>
+                  <div className="posture-modal-progressbar">
+                    <i style={{ width: `${Math.min(100, Math.max(0, ((RECAL_SECONDS - captureRemaining) / RECAL_SECONDS) * 100))}%` }} />
+                  </div>
+                </>
+              )}
+              {recalError && <p className="posture-modal-error">{recalError}</p>}
+              {recalResult?.ok && (
+                <p className="posture-modal-success">
+                  Baseline updated. Score {Math.round((recalResult.baseline_posture_score ?? 0) * 100)} · Confidence{' '}
+                  {Math.round((recalResult.baseline_confidence ?? 0) * 100)}% · Samples {recalResult.accepted_samples ?? 0}.
+                </p>
+              )}
+
+              <div className="posture-modal-actions">
+                <button
+                  className="btn-ghost"
+                  onClick={() => {
+                    if (!recalibrating) {
+                      setShowRecalModal(false)
+                      setRecalError(null)
+                      setRecalResult(null)
+                    }
+                  }}
+                  disabled={recalibrating}
+                >
+                  {recalResult?.ok ? 'Done' : 'Cancel'}
+                </button>
+                <button
+                  className="btn-solid"
+                  onClick={() => void startRecalibration()}
+                  disabled={recalibrating || postureStreamState === 'connecting'}
+                >
+                  {recalibrating ? 'Recalibrating…' : 'Start 10s capture'}
+                </button>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

@@ -37,6 +37,10 @@
   overflow: hidden;
 }
 
+.interactive-chart-canvas:hover {
+  cursor: crosshair;
+}
+
 .interactive-chart-canvas::before {
   content: '';
   position: absolute;

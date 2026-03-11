@@ -60,6 +60,63 @@ type SecondaryMetricSeries = {
   breakMinutes: number[]
 }
 
+type CalendarCell = {
+  iso: string
+  day: number
+  inMonth: boolean
+  disabled: boolean
+}
+
+const WEEKDAY_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map((part) => Number(part))
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
+function isoFromDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1)
+}
+
+function buildCalendarCells(monthDate: Date, minDate: Date, maxDate: Date, selectedIso: string): CalendarCell[] {
+  const monthStart = startOfMonth(monthDate)
+  const gridStart = new Date(monthStart)
+  gridStart.setDate(1 - monthStart.getDay())
+
+  const minIso = isoFromDate(minDate)
+  const maxIso = isoFromDate(maxDate)
+  const cells: CalendarCell[] = []
+  for (let i = 0; i < 42; i += 1) {
+    const dayDate = new Date(gridStart)
+    dayDate.setDate(gridStart.getDate() + i)
+    const iso = isoFromDate(dayDate)
+    const inMonth = dayDate.getMonth() === monthDate.getMonth()
+    const disabled = iso < minIso || iso > maxIso
+    cells.push({
+      iso,
+      day: dayDate.getDate(),
+      inMonth,
+      disabled,
+    })
+  }
+  const selectedIdx = cells.findIndex((cell) => cell.iso === selectedIso)
+  if (selectedIdx >= 0 && cells[selectedIdx].disabled) {
+    cells[selectedIdx] = { ...cells[selectedIdx], disabled: false }
+  }
+  return cells
+}
+
 function SessionCard({ item }: { item: SessionHistoryItem }) {
   const started = new Date(item.created_at)
   const ended = new Date(started.getTime() + item.session_duration_seconds * 1000)
@@ -375,6 +432,9 @@ export function OverviewTab({
 }) {
   const [heroTextDirection, setHeroTextDirection] = useState<1 | -1>(1)
   const previousSelectedDayRef = useRef<string | null>(null)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(parseIsoDate(selectedDayIso)))
+  const calendarRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const prev = previousSelectedDayRef.current
@@ -388,8 +448,46 @@ export function OverviewTab({
     previousSelectedDayRef.current = selectedDayIso
   }, [selectedDayIso])
 
+  useEffect(() => {
+    setCalendarMonth(startOfMonth(parseIsoDate(selectedDayIso)))
+  }, [selectedDayIso])
+
+  useEffect(() => {
+    if (!calendarOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      const root = calendarRef.current
+      if (!root) return
+      if (!root.contains(event.target as Node)) {
+        setCalendarOpen(false)
+      }
+    }
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCalendarOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onEscape)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onEscape)
+    }
+  }, [calendarOpen])
+
   const heroStressClass = `overview-stress-value is-${stressTone(avgStressToday ?? 0)}`
   const hasHrBaseline = typeof hrDeltaBaseline === 'number' && Number.isFinite(hrDeltaBaseline)
+  const minDate = useMemo(() => parseIsoDate(minDayIso), [minDayIso])
+  const maxDate = useMemo(() => parseIsoDate(maxDayIso), [maxDayIso])
+  const calendarMonthLabel = useMemo(
+    () => calendarMonth.toLocaleDateString([], { month: 'short', year: 'numeric' }),
+    [calendarMonth],
+  )
+  const calendarCells = useMemo(
+    () => buildCalendarCells(calendarMonth, minDate, maxDate, selectedDayIso),
+    [calendarMonth, minDate, maxDate, selectedDayIso],
+  )
+  const prevMonth = useMemo(() => addMonths(calendarMonth, -1), [calendarMonth])
+  const nextMonth = useMemo(() => addMonths(calendarMonth, 1), [calendarMonth])
+  const canPrevMonth = isoFromDate(new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0)) >= minDayIso
+  const canNextMonth = isoFromDate(nextMonth) <= maxDayIso
 
   const timelinePoints = useMemo(
     () =>
@@ -420,19 +518,73 @@ export function OverviewTab({
         <div className="hero-left">
           <div className="hero-date-row">
             <p className="hero-date">
-              {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }).replace(',', ' ·')}
+              <AnimatedTickerText
+                value={now.toLocaleDateString([], { weekday: 'short', month: 'short', day: '2-digit' }).replace(',', ' ·')}
+                direction={heroTextDirection}
+              />
             </p>
             <div className="hero-day-nav">
-              <label className="hero-date-picker" aria-label="Pick day">
-                <CalendarDays size={13} />
-                <input
-                  type="date"
-                  value={selectedDayIso}
-                  min={minDayIso}
-                  max={maxDayIso}
-                  onChange={(event) => onSetOverviewDay(event.target.value)}
-                />
-              </label>
+              <div className="hero-date-picker-wrap" ref={calendarRef}>
+                <button
+                  className="hero-date-picker"
+                  aria-label="Pick day"
+                  aria-haspopup="dialog"
+                  aria-expanded={calendarOpen}
+                  onClick={() => setCalendarOpen((prev) => !prev)}
+                >
+                  <CalendarDays size={13} />
+                  <span>{selectedDayIso}</span>
+                </button>
+                {calendarOpen ? (
+                  <div className="hero-calendar-popover" role="dialog" aria-label="Select date">
+                    <div className="hero-calendar-head">
+                      <button
+                        className="hero-calendar-nav"
+                        type="button"
+                        disabled={!canPrevMonth}
+                        onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}
+                        aria-label="Previous month"
+                      >
+                        <ChevronLeft size={13} />
+                      </button>
+                      <strong>{calendarMonthLabel}</strong>
+                      <button
+                        className="hero-calendar-nav"
+                        type="button"
+                        disabled={!canNextMonth}
+                        onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}
+                        aria-label="Next month"
+                      >
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+                    <div className="hero-calendar-weekdays">
+                      {WEEKDAY_SHORT.map((day) => (
+                        <span key={day}>{day}</span>
+                      ))}
+                    </div>
+                    <div className="hero-calendar-grid">
+                      {calendarCells.map((cell) => {
+                        const isSelected = cell.iso === selectedDayIso
+                        return (
+                          <button
+                            key={cell.iso}
+                            type="button"
+                            className={`hero-calendar-day${cell.inMonth ? '' : ' is-outside'}${isSelected ? ' is-selected' : ''}`}
+                            disabled={cell.disabled}
+                            onClick={() => {
+                              onSetOverviewDay(cell.iso)
+                              setCalendarOpen(false)
+                            }}
+                          >
+                            {String(cell.day).padStart(2, '0')}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <button
                 className="hero-nav-btn"
                 onClick={() => onShiftOverviewDay(-1)}
@@ -481,12 +633,16 @@ export function OverviewTab({
       >
         <article className="narrative-tile">
           <p className="narrative-value">
-            <AnimatedTickerText value={formatMinutes(todayFocusedMinutes)} direction={heroTextDirection} />
+            <AnimatedTickerText
+              value={formatMinutes(todayFocusedMinutes)}
+              direction={heroTextDirection}
+              className="narrative-value-ticker"
+            />
           </p>
           <p className="narrative-label">Focused Time</p>
           <p className="narrative-context is-positive">
             <AnimatedTickerText
-              value={todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'}
+              value={`${todayFocusedMinutes >= 90 ? 'Personal best this week' : 'Building consistency'} · ${formatMinutes(todayFocusedMinutes)} focused`}
               direction={heroTextDirection}
             />
           </p>
@@ -497,6 +653,7 @@ export function OverviewTab({
               value={avgHrToday == null ? '--' : `${avgHrToday}`}
               staticSuffix={avgHrToday == null ? '' : ' bpm'}
               direction={heroTextDirection}
+              className="narrative-value-ticker"
             />
           </p>
           <p className="narrative-label">Avg Heart / Respiratory</p>
@@ -513,12 +670,16 @@ export function OverviewTab({
         </article>
         <article className="narrative-tile">
           <p className="narrative-value">
-            <AnimatedTickerText value={`${todayBreakCount}`} direction={heroTextDirection} />
+            <AnimatedTickerText
+              value={`${todayBreakCount}`}
+              direction={heroTextDirection}
+              className="narrative-value-ticker"
+            />
           </p>
           <p className="narrative-label">Breaks Taken</p>
           <p className={`narrative-context ${todayBreakCount >= 2 ? 'is-positive' : 'is-neutral'}`}>
             <AnimatedTickerText
-              value={todayBreakCount >= 2 ? 'All genuine' : 'Could use one more break'}
+              value={`${todayBreakCount >= 2 ? 'All genuine' : 'Could use one more break'} · ${todayBreakCount} breaks`}
               direction={heroTextDirection}
             />
           </p>

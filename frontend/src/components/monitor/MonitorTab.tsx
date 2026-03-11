@@ -230,7 +230,7 @@ function rrTone(
   stage: 'measuring' | 'stabilizing' | 'live' | null,
 ): 'calm' | 'neutral' | 'mild' | 'muted' {
   if (mode === 'passive') return 'muted'
-  if (mode === 'focus' && stage !== 'live') return 'muted'
+  if (mode === 'focus' && stage === 'measuring') return 'muted'
   if (value <= 0) return 'muted'
   if (value <= 16) return 'calm'
   if (value <= 20) return 'neutral'
@@ -548,14 +548,32 @@ export function MonitorTab({
   const cameraStageActive = transitionPhase !== 'banner'
   const cardsStageActive = transitionPhase === 'cards' || transitionPhase === 'settled'
   const showLiveCamera = monitorMode === 'focus' || monitorMode === 'passive' || passiveCameraClosing
+  const rrConfidence = displayResult?.rr_confidence ?? 'none'
   const rrStage: 'measuring' | 'stabilizing' | 'live' | null =
-    monitorMode === 'focus' ? (focusElapsed < 60 ? 'measuring' : focusElapsed < 90 ? 'stabilizing' : 'live') : null
+    monitorMode === 'focus'
+      ? rrConfidence === 'full'
+        ? 'live'
+        : rrConfidence === 'partial'
+          ? 'stabilizing'
+          : 'measuring'
+      : null
 
   const stressValue = displayResult ? stressIndex(displayResult) : 0
   const hrValue = displayResult?.heart_rate_bpm ?? null
   const rrValue = displayResult?.respiratory_rate ?? 0
   const postureValue = Math.round((postureScoreLive ?? displayResult?.posture_score ?? 0) * 100)
-  const rrConfidenceProgress = focusStartedAt ? clamp(((now - focusStartedAt) / 90_000) * 100, 0, 100) : 0
+  const rrConfidenceProgress =
+    monitorMode !== 'focus'
+      ? 0
+      : rrStage === 'live'
+        ? 100
+        : rrStage === 'stabilizing'
+          ? clamp(
+              Math.max(55, focusStartedAt ? ((now - focusStartedAt) / 90_000) * 100 : 55),
+              0,
+              99,
+            )
+          : clamp(focusStartedAt ? ((now - focusStartedAt) / 90_000) * 100 : 0, 0, 60)
   const rrConfidenceSeconds = Math.max(0, 90 - Math.floor((now - (focusStartedAt ?? now)) / 1000))
   const restingHr = displayResult?.resting_hr ?? 75
   const restingRr = displayResult?.resting_rr ?? 14
@@ -568,13 +586,11 @@ export function MonitorTab({
   const stressDisplay = displayResult ? `${stressValue}` : '--'
   const hrDisplay = hrValue == null ? '--' : `${Math.round(hrValue)}`
   const rrDisplay =
-    monitorMode === 'focus' && rrStage === 'measuring'
-      ? '--'
-      : rrValue > 0
-        ? monitorMode === 'passive' || rrStage === 'stabilizing'
-          ? `~${Math.round(rrValue)}`
-          : `${Math.round(rrValue)}`
-        : '--'
+    rrValue > 0
+      ? monitorMode === 'passive' || rrConfidence === 'partial'
+        ? `~${Math.round(rrValue)}`
+        : `${Math.round(rrValue)}`
+      : '--'
   const postureDisplay = displayResult ? `${postureValue}` : '--'
   const stressDirection = useTickerDirection(stressDisplay)
   const hrDirection = useTickerDirection(hrDisplay)
@@ -769,8 +785,10 @@ export function MonitorTab({
               <em>
                 {monitorMode === 'passive'
                   ? 'Approximate'
-                  : monitorMode === 'focus' && rrStage !== 'live'
+                  : monitorMode === 'focus' && rrStage === 'measuring'
                     ? 'Building signal...'
+                    : monitorMode === 'focus' && rrStage === 'stabilizing'
+                      ? 'Provisional estimate'
                     : rrValue <= 0
                       ? 'No data'
                       : rrValue <= 16
@@ -934,8 +952,10 @@ export function MonitorTab({
               <span className={monitorMode === 'focus' && rrStage !== 'live' ? 'monitor-subtle-status' : undefined}>
                 {monitorMode === 'passive'
                   ? 'Approximate'
-                  : monitorMode === 'focus' && rrStage !== 'live'
+                  : monitorMode === 'focus' && rrStage === 'measuring'
                     ? 'Building signal...'
+                    : monitorMode === 'focus' && rrStage === 'stabilizing'
+                      ? 'Provisional estimate'
                     : rrValue <= 0
                       ? 'No data'
                       : rrValue <= 16
@@ -955,7 +975,11 @@ export function MonitorTab({
                 <div className="monitor-rr-progress">
                   <div className="monitor-rr-progress-fill" style={{ width: `${rrConfidenceProgress}%` }} />
                 </div>
-                <span>Signal ready in {rrConfidenceSeconds}s</span>
+                <span>
+                  {rrStage === 'measuring'
+                    ? `Signal ready in ${rrConfidenceSeconds}s`
+                    : 'Improving confidence...'}
+                </span>
               </div>
             ) : null}
             {rrChartPoints.length > 1 && (

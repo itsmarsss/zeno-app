@@ -87,6 +87,9 @@ export function InteractiveLineChart({
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [hoverXPx, setHoverXPx] = useState<number | null>(null)
+  const hoverCurrentXPxRef = useRef<number | null>(null)
+  const hoverTargetXPxRef = useRef<number | null>(null)
+  const hoverAnimRafRef = useRef<number | null>(null)
   const [chartWidthPx, setChartWidthPx] = useState<number>(0)
   const [chartLeftPx, setChartLeftPx] = useState<number>(0)
   const [svgWidthPx, setSvgWidthPx] = useState<number>(0)
@@ -163,6 +166,14 @@ export function InteractiveLineChart({
 
   const hoveredPoint = hoverIndex != null ? points[hoverIndex] : null
 
+  useEffect(() => {
+    return () => {
+      if (hoverAnimRafRef.current != null) {
+        cancelAnimationFrame(hoverAnimRafRef.current)
+      }
+    }
+  }, [])
+
   // Calculate cursor position in SVG viewBox coordinates (0-100)
   const cursorXPx = hoverXPx ?? 0
   const cursorXInViewBox = chartWidthPx > 0 ? (cursorXPx / chartWidthPx) * 100 : 0
@@ -180,6 +191,31 @@ export function InteractiveLineChart({
 
   const axisStep = Math.max(1, Math.ceil(points.length / 8))
 
+  const animateCursorToTarget = () => {
+    if (hoverAnimRafRef.current != null) {
+      cancelAnimationFrame(hoverAnimRafRef.current)
+      hoverAnimRafRef.current = null
+    }
+    const step = () => {
+      const target = hoverTargetXPxRef.current
+      if (target == null) {
+        hoverAnimRafRef.current = null
+        return
+      }
+      const current = hoverCurrentXPxRef.current ?? target
+      const next = current + (target - current) * 0.3
+      const resolved = Math.abs(target - next) < 0.2 ? target : next
+      hoverCurrentXPxRef.current = resolved
+      setHoverXPx(resolved)
+      if (resolved !== target) {
+        hoverAnimRafRef.current = requestAnimationFrame(step)
+      } else {
+        hoverAnimRafRef.current = null
+      }
+    }
+    hoverAnimRafRef.current = requestAnimationFrame(step)
+  }
+
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
@@ -194,12 +230,19 @@ export function InteractiveLineChart({
     <div
       className={`interactive-chart-canvas ${className}`.trim()}
       onMouseLeave={() => {
+        hoverTargetXPxRef.current = null
+        hoverCurrentXPxRef.current = null
+        if (hoverAnimRafRef.current != null) {
+          cancelAnimationFrame(hoverAnimRafRef.current)
+          hoverAnimRafRef.current = null
+        }
         setHoverIndex(null)
         setHoverXPx(null)
         previousHoverIndexRef.current = null
         if (onHoverChange) onHoverChange(null, hoverDirection)
       }}
       onPointerMove={(event) => {
+        if (points.length === 0) return
         const canvasRect = event.currentTarget.getBoundingClientRect()
         const svgRect = svgRef.current?.getBoundingClientRect()
         if (!svgRect) return
@@ -239,7 +282,13 @@ export function InteractiveLineChart({
         previousHoverIndexRef.current = nextIndex
         setChartLeftPx(svgLeftOffset)
         setChartWidthPx(svgWidth)
-        setHoverXPx(hoverXForCursor)
+        hoverTargetXPxRef.current = hoverXForCursor
+        if (hoverCurrentXPxRef.current == null) {
+          hoverCurrentXPxRef.current = hoverXForCursor
+          setHoverXPx(hoverXForCursor)
+        } else {
+          animateCursorToTarget()
+        }
         setHoverIndex(nextIndex)
         if (onHoverChange) onHoverChange(nextIndex, nextDirection)
       }}
