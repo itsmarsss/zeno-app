@@ -566,6 +566,37 @@ pub fn run_calibration_status_blocking() -> Result<Value, String> {
     parse_json_line(&stdout)
 }
 
+pub fn run_recalibrate_baseline_blocking(seconds: Option<f64>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.recalibrate_baseline")
+        .arg("--seconds")
+        .arg(format!("{:.2}", seconds.unwrap_or(10.0).clamp(10.0, 60.0)));
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run baseline recalibration: {e}"))?;
+    debug_log_python_output("recalibrate_baseline", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Baseline recalibration failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 pub fn run_log_breathing_session_blocking(
     exercise_type: String,
     cycles_completed: u32,

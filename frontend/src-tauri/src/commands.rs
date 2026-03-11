@@ -6,6 +6,7 @@ use crate::python_sidecar::{
     run_insight_cards_blocking, run_local_ai_status_blocking, run_monitor_timeline_blocking,
     run_overview_aggregates_blocking,
     run_posture_insights_blocking,
+    run_recalibrate_baseline_blocking,
     run_study_coach_blocking,
     run_presence_check_blocking, run_python_session_blocking, run_session_days_blocking,
     run_session_history_blocking, run_settings_blocking,
@@ -205,6 +206,13 @@ pub async fn run_calibration_status() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(run_calibration_status_blocking)
         .await
         .map_err(|e| format!("Calibration task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_recalibrate_baseline(seconds: Option<f64>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_recalibrate_baseline_blocking(seconds))
+        .await
+        .map_err(|e| format!("Recalibrate task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -650,7 +658,9 @@ pub async fn start_focus_stream(
         .arg("-m")
         .arg("zeno_backend.pipelines.focus_stream")
         .arg("--update-every")
-        .arg(update_every.unwrap_or(5.0).clamp(1.0, 10.0).to_string())
+        .arg(update_every.unwrap_or(60.0).clamp(10.0, 300.0).to_string())
+        .arg("--capture-seconds")
+        .arg("12")
         .arg("--max-seconds")
         .arg(max_seconds.unwrap_or(0.0).max(0.0).to_string())
         .stdout(Stdio::piped())
