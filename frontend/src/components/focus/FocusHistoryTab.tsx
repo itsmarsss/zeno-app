@@ -1,14 +1,14 @@
 import { ChevronRight, Zap, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
 import { staggerItem } from '../../shared/motion'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
 import { InteractiveLineChart } from '../common/InteractiveLineChart'
-import { useAIInsights } from '../../hooks/useAIInsights'
-import { useAuth } from '../../context/AuthContext'
+import { useAppSettings } from '../../context/AppSettingsContext'
 import {
   type FocusPeriod,
   classifySession,
@@ -21,6 +21,10 @@ import {
 } from '../../shared/dashboard'
 
 type HeatmapCell = { avgStress: number | null; count: number }
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+}
 
 export function FocusHistoryTab({
   focusPeriod,
@@ -109,11 +113,14 @@ export function FocusHistoryTab({
     isPersonalized: boolean
   }
 }) {
-  const { isAuthenticated } = useAuth()
-  const { insights, loading: insightsLoading, error: insightsError, cached } = useAIInsights(
-    focusSessionsSorted,
-    personalizedZones
-  )
+  const { settings } = useAppSettings()
+  const [coachInsights, setCoachInsights] = useState<string | null>(null)
+  const [coachSource, setCoachSource] = useState<'ai' | 'template'>('template')
+  const [coachModel, setCoachModel] = useState<string | null>(null)
+  const [coachLoading, setCoachLoading] = useState(false)
+  const [coachRefreshing, setCoachRefreshing] = useState(false)
+  const [coachError, setCoachError] = useState<string | null>(null)
+  const [coachCached, setCoachCached] = useState(false)
   const [rhythmHoverIndex, setRhythmHoverIndex] = useState<number | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<number | null>(null)
   const [rhythmHoverDirection, setRhythmHoverDirection] = useState<1 | -1>(1)
@@ -162,6 +169,70 @@ export function FocusHistoryTab({
     const bestHour = bestHourIndex >= 0 ? formatHourLabel(8 + bestHourIndex) : '--'
     return `${dayName}: ${totalSessions} sessions · avg stress ${avgStress} · best hour ${bestHour}`
   }, [heatmapData, hoveredHeatmapDay])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchStudyCoach() {
+      if (!isTauriRuntime()) {
+        setCoachInsights(null)
+        setCoachError(null)
+        setCoachLoading(false)
+        setCoachCached(false)
+        return
+      }
+      setCoachLoading(true)
+      setCoachError(null)
+      try {
+        const todayIso = new Date().toISOString().slice(0, 10)
+        const payload = await invoke<{ insights?: string; source?: string; model?: string | null }>('run_study_coach', {
+          period: focusPeriod,
+          dateIso: todayIso,
+          force: false,
+          allowAi: false,
+        })
+        if (cancelled) return
+        setCoachInsights(typeof payload?.insights === 'string' ? payload.insights : null)
+        setCoachSource(payload?.source === 'ai' ? 'ai' : 'template')
+        setCoachModel(typeof payload?.model === 'string' ? payload.model : null)
+        setCoachCached(true)
+      } catch (error) {
+        if (cancelled) return
+        setCoachError(error instanceof Error ? error.message : 'Failed to fetch study coach')
+        setCoachInsights(null)
+        setCoachCached(false)
+      } finally {
+        if (!cancelled) setCoachLoading(false)
+      }
+    }
+    void fetchStudyCoach()
+    return () => {
+      cancelled = true
+    }
+  }, [focusPeriod])
+
+  async function requestAiCoach() {
+    if (!isTauriRuntime() || coachRefreshing) return
+    setCoachRefreshing(true)
+    setCoachError(null)
+    try {
+      const todayIso = new Date().toISOString().slice(0, 10)
+      const payload = await invoke<{ insights?: string; source?: string; model?: string | null }>('run_study_coach', {
+        period: focusPeriod,
+        dateIso: todayIso,
+        force: true,
+        allowAi: Boolean(settings?.local_ai_insights_enabled),
+        model: settings?.local_ai_model?.trim() ? settings.local_ai_model : undefined,
+      })
+      setCoachInsights(typeof payload?.insights === 'string' ? payload.insights : null)
+      setCoachSource(payload?.source === 'ai' ? 'ai' : 'template')
+      setCoachModel(typeof payload?.model === 'string' ? payload.model : null)
+      setCoachCached(true)
+    } catch (error) {
+      setCoachError(error instanceof Error ? error.message : 'Failed to request AI coach')
+    } finally {
+      setCoachRefreshing(false)
+    }
+  }
 
   function rhythmStressY(value: number): number {
     const range = Math.max(1, rhythmStressMax - rhythmStressMin)
@@ -412,28 +483,44 @@ export function FocusHistoryTab({
         )}
 
         {/* AI Insights Section */}
-        {isAuthenticated && focusSessionsSorted.length > 0 && (
+        {focusSessionsSorted.length > 0 && (
           <div className="ai-insights-section">
             <div className="ai-insights-header">
               <div className="ai-insights-title">
                 <Sparkles size={16} className="ai-icon" />
                 <h4>AI Study Coach</h4>
               </div>
-              {cached && <span className="ai-cached-badge">Cached</span>}
+              <div className="ai-insights-header-right">
+                <span className={`ai-cached-badge ${coachSource === 'ai' ? 'is-ai' : ''}`}>
+                  {coachSource === 'ai' ? `AI${coachModel ? ` · ${coachModel}` : ''}` : 'Template'}
+                </span>
+                {coachCached && <span className="ai-cached-badge">Cached</span>}
+                <button
+                  className="ai-request-btn"
+                  onClick={() => void requestAiCoach()}
+                  disabled={
+                    coachRefreshing ||
+                    !settings?.local_ai_insights_enabled ||
+                    !(settings?.local_ai_model ?? '').trim()
+                  }
+                >
+                  {coachRefreshing ? 'Requesting...' : 'Request AI coach'}
+                </button>
+              </div>
             </div>
-            {insightsLoading ? (
+            {coachLoading ? (
               <div className="ai-insights-loading">
                 <div className="ai-spinner" />
                 <p>Analyzing your study patterns...</p>
               </div>
-            ) : insightsError ? (
+            ) : coachError ? (
               <div className="ai-insights-error">
                 <p>Unable to load insights. Please try again later.</p>
-                <span className="ai-error-detail">{insightsError}</span>
+                <span className="ai-error-detail">{coachError}</span>
               </div>
-            ) : insights ? (
+            ) : coachInsights ? (
               <div className="ai-insights-content">
-                {insights.split('\n').map((paragraph, idx) => {
+                {coachInsights.split('\n').map((paragraph, idx) => {
                   // Format markdown-style bold
                   const formattedText = paragraph.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                   return paragraph.trim() ? (

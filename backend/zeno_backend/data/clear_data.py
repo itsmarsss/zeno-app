@@ -17,6 +17,7 @@ def clear_data(db_path: Path) -> int:
         for table in (
             "daily_aggregates",
             "daily_insight_cards",
+            "study_coach_cache",
             "posture_daily_insights",
             "breathing_sessions",
             "break_sessions",

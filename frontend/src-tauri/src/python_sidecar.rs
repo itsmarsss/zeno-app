@@ -429,6 +429,58 @@ pub fn run_posture_insights_blocking(days: Option<u32>) -> Result<Value, String>
     parse_json_line(&stdout)
 }
 
+pub fn run_study_coach_blocking(
+    period: Option<String>,
+    date_iso: Option<String>,
+    force: Option<bool>,
+    allow_ai: Option<bool>,
+    model: Option<String>,
+) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.study_coach");
+    if let Some(period_value) = period {
+        cmd.arg("--period").arg(period_value);
+    }
+    if let Some(date_value) = date_iso {
+        cmd.arg("--date").arg(date_value);
+    }
+    if force.unwrap_or(false) {
+        cmd.arg("--force");
+    }
+    if !allow_ai.unwrap_or(true) {
+        cmd.arg("--no-ai");
+    }
+    if let Some(selected_model) = model {
+        if !selected_model.trim().is_empty() {
+            cmd.arg("--model").arg(selected_model);
+        }
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run study coach: {e}"))?;
+    debug_log_python_output("study_coach", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Study coach failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
 pub fn run_settings_blocking(patch: Option<Value>) -> Result<AppSettings, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);

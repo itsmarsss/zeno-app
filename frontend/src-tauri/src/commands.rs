@@ -6,6 +6,7 @@ use crate::python_sidecar::{
     run_insight_cards_blocking, run_local_ai_status_blocking, run_monitor_timeline_blocking,
     run_overview_aggregates_blocking,
     run_posture_insights_blocking,
+    run_study_coach_blocking,
     run_presence_check_blocking, run_python_session_blocking, run_session_days_blocking,
     run_session_history_blocking, run_settings_blocking,
     run_update_session_notification_blocking,
@@ -149,6 +150,21 @@ pub async fn run_posture_insights(days: Option<u32>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || run_posture_insights_blocking(days))
         .await
         .map_err(|e| format!("Posture insights task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_study_coach(
+    period: Option<String>,
+    date_iso: Option<String>,
+    force: Option<bool>,
+    allow_ai: Option<bool>,
+    model: Option<String>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_study_coach_blocking(period, date_iso, force, allow_ai, model)
+    })
+    .await
+    .map_err(|e| format!("Study coach task join error: {e}"))?
 }
 
 #[tauri::command]

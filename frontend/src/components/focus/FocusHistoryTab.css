@@ -867,6 +867,13 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
+  gap: 10px;
+}
+
+.ai-insights-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ai-insights-title {
@@ -907,6 +914,28 @@
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   font-weight: 600;
+}
+
+.ai-cached-badge.is-ai {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent-light) 70%, transparent);
+}
+
+.ai-request-btn {
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-light) 58%, #ffffff 42%);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-request-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .ai-insights-loading {
