@@ -30,6 +30,26 @@ def clear_data(db_path: Path) -> int:
                 continue
         try:
             conn.execute(
+                """
+                UPDATE baseline
+                SET
+                  updated_at = CURRENT_TIMESTAMP,
+                  resting_hr = NULL,
+                  resting_rr = NULL,
+                  ear_shoulder_offset = NULL,
+                  neck_spine_angle = NULL,
+                  posture_baseline_score = NULL,
+                  calibration_sessions_completed = 0,
+                  is_calibrated = 0,
+                  posture_baseline_samples = 0,
+                  baseline_confidence = 0.0
+                WHERE id = 1
+                """
+            )
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute(
                 "UPDATE sqlite_sequence SET seq = 0 WHERE name IN ('sessions','breathing_sessions','break_sessions','exercise_sessions')"
             )
         except sqlite3.OperationalError:

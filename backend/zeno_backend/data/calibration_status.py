@@ -34,7 +34,8 @@ def get_calibration_status(db_path: Path) -> dict:
               resting_hr,
               resting_rr,
               calibration_sessions_completed,
-              is_calibrated
+              is_calibrated,
+              baseline_confidence
             FROM baseline
             WHERE id = 1
             """
@@ -68,6 +69,11 @@ def get_calibration_status(db_path: Path) -> dict:
         if baseline_row and baseline_row["resting_rr"] is not None
         else None
     )
+    baseline_confidence = (
+        round(float(baseline_row["baseline_confidence"]), 4)
+        if baseline_row and baseline_row["baseline_confidence"] is not None
+        else 0.0
+    )
 
     return {
         "calibrated": calibrated,
@@ -79,6 +85,7 @@ def get_calibration_status(db_path: Path) -> dict:
         "baseline_neck_spine_angle": baseline_neck,
         "resting_hr": resting_hr,
         "resting_rr": resting_rr,
+        "baseline_confidence": baseline_confidence,
         "deviation_threshold": 0.15,
     }
 

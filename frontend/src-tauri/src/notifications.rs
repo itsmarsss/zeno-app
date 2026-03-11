@@ -90,11 +90,25 @@ fn notification_for_result(result: &Value) -> Option<(String, String, String)> {
         .get("posture_is_poor")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let posture_nudge_eligible = result
+        .get("posture_nudge_eligible")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let posture_issue = result
+        .get("posture_dominant_issue")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
 
-    if posture_score < 0.45 || posture_is_poor {
+    if posture_nudge_eligible && (posture_score < 0.45 || posture_is_poor) {
+        let body = match posture_issue {
+            "head_forward" => "Chin is drifting forward. Tuck gently and stack over shoulders.",
+            "shoulder_tilt" => "Shoulders are uneven. Level them and reset your seat.",
+            "trunk_lean" => "Lower back is collapsing. Sit tall and plant both feet.",
+            _ => "Straighten up and roll your shoulders back.",
+        };
         return Some((
             "Posture Check".to_string(),
-            "Straighten up and roll your shoulders back.".to_string(),
+            body.to_string(),
             "posture".to_string(),
         ));
     }

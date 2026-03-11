@@ -18,6 +18,10 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             shoulder_tilt_norm REAL,
             posture_stability_std REAL,
             posture_stability_label TEXT,
+            posture_state TEXT NOT NULL DEFAULT 'unknown',
+            posture_dominant_issue TEXT NOT NULL DEFAULT 'unknown',
+            posture_signal_quality TEXT NOT NULL DEFAULT 'low',
+            posture_nudge_eligible INTEGER NOT NULL DEFAULT 0,
             baseline_posture_score REAL,
             posture_deviation REAL,
             posture_is_poor INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +63,14 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_stability_std REAL")
     if "posture_stability_label" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_stability_label TEXT")
+    if "posture_state" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_state TEXT NOT NULL DEFAULT 'unknown'")
+    if "posture_dominant_issue" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_dominant_issue TEXT NOT NULL DEFAULT 'unknown'")
+    if "posture_signal_quality" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_signal_quality TEXT NOT NULL DEFAULT 'low'")
+    if "posture_nudge_eligible" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN posture_nudge_eligible INTEGER NOT NULL DEFAULT 0")
     if "posture_deviation" not in columns:
         conn.execute("ALTER TABLE sessions ADD COLUMN posture_deviation REAL")
     if "posture_is_poor" not in columns:
@@ -91,6 +103,10 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
           shoulder_tilt_norm = COALESCE(shoulder_tilt_norm, 0.0),
           posture_stability_std = COALESCE(posture_stability_std, 0.0),
           posture_stability_label = COALESCE(NULLIF(posture_stability_label, ''), 'learning'),
+          posture_state = COALESCE(NULLIF(posture_state, ''), 'unknown'),
+          posture_dominant_issue = COALESCE(NULLIF(posture_dominant_issue, ''), 'unknown'),
+          posture_signal_quality = COALESCE(NULLIF(posture_signal_quality, ''), 'low'),
+          posture_nudge_eligible = COALESCE(posture_nudge_eligible, 0),
           posture_deviation = COALESCE(posture_deviation, 0.0),
           posture_is_poor = COALESCE(posture_is_poor, 0),
           stress_index = COALESCE(stress_index, 0),
@@ -114,7 +130,9 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
             neck_spine_angle REAL,
             posture_baseline_score REAL,
             calibration_sessions_completed INTEGER NOT NULL DEFAULT 0,
-            is_calibrated INTEGER NOT NULL DEFAULT 0
+            is_calibrated INTEGER NOT NULL DEFAULT 0,
+            posture_baseline_samples INTEGER NOT NULL DEFAULT 0,
+            baseline_confidence REAL NOT NULL DEFAULT 0.0
         )
         """
     )
@@ -127,12 +145,36 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         )
     if "is_calibrated" not in baseline_columns:
         conn.execute("ALTER TABLE baseline ADD COLUMN is_calibrated INTEGER NOT NULL DEFAULT 0")
+    if "posture_baseline_samples" not in baseline_columns:
+        conn.execute(
+            "ALTER TABLE baseline ADD COLUMN posture_baseline_samples INTEGER NOT NULL DEFAULT 0"
+        )
+    if "baseline_confidence" not in baseline_columns:
+        conn.execute(
+            "ALTER TABLE baseline ADD COLUMN baseline_confidence REAL NOT NULL DEFAULT 0.0"
+        )
 
     conn.execute(
         """
-        INSERT INTO baseline (id, updated_at, calibration_sessions_completed, is_calibrated)
-        VALUES (1, CURRENT_TIMESTAMP, 0, 0)
+        INSERT INTO baseline (
+          id,
+          updated_at,
+          calibration_sessions_completed,
+          is_calibrated,
+          posture_baseline_samples,
+          baseline_confidence
+        )
+        VALUES (1, CURRENT_TIMESTAMP, 0, 0, 0, 0.0)
         ON CONFLICT(id) DO NOTHING
+        """
+    )
+    conn.execute(
+        """
+        UPDATE baseline
+        SET
+          posture_baseline_samples = COALESCE(posture_baseline_samples, 0),
+          baseline_confidence = COALESCE(baseline_confidence, 0.0)
+        WHERE id = 1
         """
     )
 
