@@ -330,6 +330,7 @@ def _posture_quality_flags(
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
         posture_score = float(result["posture_score"])
         baseline_score, posture_deviation, is_calibrated, resting_hr, resting_rr, baseline_confidence = _sync_baseline_state(conn, result)
         baseline_geom = conn.execute(

@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.sqlite_logger import log_session
 from zeno_backend.analyzers.posture_analyzer import PostureAnalyzer
 from zeno_backend.analyzers.presence_detector import PresenceDetector
 from zeno_backend.analyzers.respiratory_analyzer import RespiratoryAnalyzer
@@ -21,10 +22,13 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.
 def stream_focus_updates(
     update_every_seconds: float = 5.0,
     max_seconds: float = 0.0,
+    capture_seconds: float = 12.0,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     update_every_seconds = max(1.0, float(update_every_seconds))
     max_seconds = max(0.0, float(max_seconds))
+    capture_seconds = max(6.0, float(capture_seconds))
+    capture_seconds = min(capture_seconds, max(6.0, update_every_seconds))
 
     manager = CameraManager()
     presence = PresenceDetector()
@@ -77,50 +81,71 @@ def stream_focus_updates(
         resting_rr = 14.0
 
     started = time.perf_counter()
-    next_emit = started + update_every_seconds
-    try:
+    next_cycle_start = started
+    cycle_started_at: float | None = None
+    streams_active = False
+
+    def start_streams() -> bool:
         try:
             presence.start_live(manager)
             posture.start_live(manager)
             stress.start_live(manager)
             respiratory.start_live(manager)
+            return True
         except RuntimeError:
-            payload = {
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
-                "elapsed_seconds": 0.0,
-                "presence_detected": False,
-                "posture_score": 0.0,
-                "ear_shoulder_offset": 0.0,
-                "neck_spine_angle": 0.0,
-                "tracking_confidence": 0.0,
-                "head_offset_norm": 0.0,
-                "shoulder_tilt_signed_norm": 0.0,
-                "shoulder_tilt_norm": 0.0,
-                "posture_stability_std": 0.0,
-                "posture_stability_label": "learning",
-                "heart_rate_bpm": None,
-                "dominant_emotion": "unknown",
-                "emotion_score": 0.0,
-                "respiratory_rate": 0.0,
-                "rr_confidence": "none",
-                "resting_hr": resting_hr,
-                "resting_rr": resting_rr,
-                "mode": "focus",
-                "analysis_skipped": True,
-            }
-            print(json.dumps(payload), flush=True)
-            return
+            return False
 
+    def stop_streams() -> None:
+        respiratory.stop_live(manager)
+        stress.stop_live(manager)
+        posture.stop_live(manager)
+        presence.stop_live(manager)
+
+    try:
         while True:
             now = time.perf_counter()
             elapsed = now - started
             if max_seconds > 0 and elapsed >= max_seconds:
                 break
 
-            if now < next_emit:
+            if not streams_active and now >= next_cycle_start:
+                if not start_streams():
+                    payload = {
+                        "timestamp": datetime.now().isoformat(timespec="seconds"),
+                        "elapsed_seconds": round(elapsed, 1),
+                        "presence_detected": False,
+                        "posture_score": 0.0,
+                        "ear_shoulder_offset": 0.0,
+                        "neck_spine_angle": 0.0,
+                        "tracking_confidence": 0.0,
+                        "head_offset_norm": 0.0,
+                        "shoulder_tilt_signed_norm": 0.0,
+                        "shoulder_tilt_norm": 0.0,
+                        "posture_stability_std": 0.0,
+                        "posture_stability_label": "learning",
+                        "heart_rate_bpm": None,
+                        "dominant_emotion": "unknown",
+                        "emotion_score": 0.0,
+                        "respiratory_rate": 0.0,
+                        "rr_confidence": "none",
+                        "resting_hr": resting_hr,
+                        "resting_rr": resting_rr,
+                        "mode": "focus",
+                        "analysis_skipped": True,
+                    }
+                    print(json.dumps(payload), flush=True)
+                    next_cycle_start = now + update_every_seconds
+                    continue
+                cycle_started_at = now
+                streams_active = True
+
+            if not streams_active:
                 time.sleep(0.05)
                 continue
-            next_emit += update_every_seconds
+
+            if cycle_started_at is None or (now - cycle_started_at) < capture_seconds:
+                time.sleep(0.05)
+                continue
 
             posture_metrics = posture.latest_metrics()
             payload = {
@@ -199,12 +224,31 @@ def stream_focus_updates(
                 )
             payload["stress_index"] = int(stress_score)
             payload["stress_index_smoothed"] = int(round(smoothed_stress))
+
+            analysis_skipped = not bool(payload.get("presence_detected"))
+            payload["analysis_skipped"] = analysis_skipped
+            payload["focus_mode"] = True
+            payload["emotion_backend"] = "fer"
+            payload["focus_duration_seconds"] = int(round(float(payload.get("elapsed_seconds", 0.0))))
+            payload["session_duration_seconds"] = float(capture_seconds)
+
+            row_id = None
+            if not analysis_skipped:
+                try:
+                    row_id = log_session(dict(payload), db_path)
+                except Exception as err:
+                    print(f"[focus_stream] failed to log session: {err}", flush=True)
+                    row_id = None
+            payload["session_id"] = row_id
+            payload["session_skipped"] = analysis_skipped
             print(json.dumps(payload), flush=True)
+            stop_streams()
+            streams_active = False
+            cycle_started_at = None
+            next_cycle_start = now + update_every_seconds
     finally:
-        respiratory.stop_live(manager)
-        stress.stop_live(manager)
-        posture.stop_live(manager)
-        presence.stop_live(manager)
+        if streams_active:
+            stop_streams()
         manager.stop()
 
 
@@ -212,12 +256,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Shared-camera focus mode stream.")
     parser.add_argument("--update-every", type=float, default=5.0)
     parser.add_argument("--max-seconds", type=float, default=0.0)
+    parser.add_argument("--capture-seconds", type=float, default=12.0)
     parser.add_argument("--db-path", type=str, default=str(DEFAULT_DB_PATH))
     args = parser.parse_args()
 
     stream_focus_updates(
         update_every_seconds=args.update_every,
         max_seconds=args.max_seconds,
+        capture_seconds=args.capture_seconds,
         db_path=Path(args.db_path).expanduser().resolve(),
     )
 
