@@ -8,6 +8,7 @@ from pathlib import Path
 
 from zeno_backend.data.daily_aggregates import fetch_daily_aggregate, recompute_daily_aggregate
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.db_utils import connect_db, safe_float, safe_int, valid_heart_rate
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
@@ -39,13 +40,15 @@ def _baseline_hr_delta(conn: sqlite3.Connection, day_key: str, current_avg_hr: f
           AND presence_detected = 1
           AND analysis_skipped = 0
           AND heart_rate_bpm IS NOT NULL
-          AND heart_rate_bpm > 0
+        ORDER BY created_at DESC
+        LIMIT 240
         """,
         (day_key,),
     ).fetchall()
-    if not rows:
+    values = [hr for hr in (valid_heart_rate(row[0]) for row in rows) if hr is not None]
+    if not values:
         return None
-    baseline = sum(float(row[0]) for row in rows) / len(rows)
+    baseline = sum(values) / len(values)
     return int(round(float(current_avg_hr) - baseline))
 
 
@@ -69,8 +72,7 @@ def compute_overview_aggregates(db_path: Path, target_day: date) -> dict:
     target_key = target_day.isoformat()
     previous_key = (target_day - timedelta(days=1)).isoformat()
 
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    with connect_db(db_path) as conn:
         ensure_sessions_schema(conn)
 
         today = _ensure_day(conn, target_key)
@@ -83,27 +85,30 @@ def compute_overview_aggregates(db_path: Path, target_day: date) -> dict:
         for offset in range(6, -1, -1):
             day_key = (target_day - timedelta(days=offset)).isoformat()
             day_row = _ensure_day(conn, day_key)
-            peak_stress.append(int(day_row.get("peak_stress_index") or 0))
-            avg_focus_session.append(int(day_row.get("avg_focus_session_minutes") or 0))
-            posture_avg.append(int(round(float(day_row.get("average_posture_score") or 0.0) * 100)))
-            break_minutes.append(int(day_row.get("break_minutes") or 0))
+            peak_stress.append(safe_int(day_row.get("peak_stress_index"), 0) or 0)
+            avg_focus_session.append(safe_int(day_row.get("avg_focus_session_minutes"), 0) or 0)
+            posture_avg.append(
+                int(round((safe_float(day_row.get("average_posture_score"), 0.0) or 0.0) * 100))
+            )
+            break_minutes.append(safe_int(day_row.get("break_minutes"), 0) or 0)
 
-        average_heart_rate = today.get("average_heart_rate")
+        average_heart_rate = safe_float(today.get("average_heart_rate"), None)
         hr_delta_baseline = _baseline_hr_delta(conn, target_key, average_heart_rate)
+        conn.commit()
 
-    avg_stress_today = int(round(float(today.get("average_stress_index") or 0.0)))
-    avg_stress_previous = int(round(float(previous.get("average_stress_index") or 0.0)))
+    avg_stress_today = int(round(safe_float(today.get("average_stress_index"), 0.0) or 0.0))
+    avg_stress_previous = int(round(safe_float(previous.get("average_stress_index"), 0.0) or 0.0))
     return {
         "date": target_key,
-        "sessions": int(today.get("sessions_count") or 0),
+        "sessions": safe_int(today.get("sessions_count"), 0) or 0,
         "average_stress_index": avg_stress_today,
         "previous_average_stress_index": avg_stress_previous,
         "stress_delta_vs_yesterday": avg_stress_today - avg_stress_previous,
-        "focused_minutes": int(today.get("focused_minutes") or 0),
-        "break_count": int(today.get("break_count") or 0),
-        "average_heart_rate": int(round(float(average_heart_rate or 0.0))),
+        "focused_minutes": safe_int(today.get("focused_minutes"), 0) or 0,
+        "break_count": safe_int(today.get("break_count"), 0) or 0,
+        "average_heart_rate": int(round(average_heart_rate or 0.0)),
         "average_respiratory_rate": (
-            round(float(today["average_respiratory_rate"]), 1)
+            round(safe_float(today.get("average_respiratory_rate"), 0.0) or 0.0, 1)
             if today.get("average_respiratory_rate") is not None
             else None
         ),

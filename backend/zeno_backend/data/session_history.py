@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from pathlib import Path
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.db_utils import connect_db
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
@@ -15,6 +15,7 @@ def fetch_history(
     limit: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    max_days: int | None = None,
 ) -> list[dict]:
     if not db_path.exists():
         return []
@@ -23,19 +24,21 @@ def fetch_history(
     params: list[object] = []
     if start_date:
         where_clauses.append("created_at >= ?")
-        params.append(f"{start_date}T00:00:00")
+        params.append(f"{str(start_date)[:10]}T00:00:00")
     if end_date:
         where_clauses.append("created_at <= ?")
-        params.append(f"{end_date}T23:59:59")
+        params.append(f"{str(end_date)[:10]}T23:59:59")
+    if isinstance(max_days, int) and max_days > 0 and not start_date:
+        # Free-tier style lookback: only sessions within the last N local days.
+        where_clauses.append("date(substr(created_at, 1, 10)) >= date('now', 'localtime', ?)")
+        params.append(f"-{int(max_days) - 1} days")
 
     where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
     limit_sql = ""
     if isinstance(limit, int) and limit > 0:
         limit_sql = "LIMIT ?"
-        params.append(limit)
-
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+        params.append(min(limit, 10_000))
+    with connect_db(db_path) as conn:
         ensure_sessions_schema(conn)
         rows = conn.execute(
             f"""
@@ -51,6 +54,10 @@ def fetch_history(
                 shoulder_tilt_norm,
                 posture_stability_std,
                 posture_stability_label,
+                posture_state,
+                posture_dominant_issue,
+                posture_signal_quality,
+                posture_nudge_eligible,
                 baseline_posture_score,
                 posture_deviation,
                 posture_is_poor,
@@ -94,6 +101,12 @@ def main() -> None:
     )
     parser.add_argument("--start-date", default=None, help="Start date YYYY-MM-DD (inclusive).")
     parser.add_argument("--end-date", default=None, help="End date YYYY-MM-DD (inclusive).")
+    parser.add_argument(
+        "--max-days",
+        type=int,
+        default=None,
+        help="Optional lookback window in days (e.g. 7 for free tier).",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db_path).expanduser().resolve()
@@ -102,6 +115,7 @@ def main() -> None:
         limit=args.limit,
         start_date=args.start_date,
         end_date=args.end_date,
+        max_days=args.max_days,
     )
     print(json.dumps({"items": history}))
 
