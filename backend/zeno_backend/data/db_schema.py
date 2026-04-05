@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
+from zeno_backend.data.db_utils import (
+    ensure_break_sessions_table,
+    ensure_breathing_sessions_table,
+    ensure_exercise_sessions_table,
+)
+
 
 def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -44,6 +50,12 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_mode_focus ON sessions(mode, focus_mode)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_presence_analysis ON sessions(presence_detected, analysis_skipped)"
+    )
     columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
 
     if "focus_mode" not in columns:
@@ -220,27 +232,23 @@ def ensure_sessions_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # Satellite activity tables used by aggregates and export paths.
+    ensure_break_sessions_table(conn)
+    ensure_breathing_sessions_table(conn)
+    ensure_exercise_sessions_table(conn)
+
+    # Repair common mode/focus_mode drift from older writers.
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS daily_insight_cards (
-            date TEXT PRIMARY KEY,
-            cards_json TEXT NOT NULL DEFAULT '[]',
-            source TEXT NOT NULL DEFAULT 'template',
-            model TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
+        UPDATE sessions
+        SET focus_mode = 1
+        WHERE LOWER(COALESCE(mode, '')) = 'focus' AND COALESCE(focus_mode, 0) = 0
         """
     )
-
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS study_coach_cache (
-            cache_key TEXT PRIMARY KEY,
-            period TEXT NOT NULL,
-            insights_text TEXT NOT NULL DEFAULT '',
-            source TEXT NOT NULL DEFAULT 'template',
-            model TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
+        UPDATE sessions
+        SET mode = 'focus'
+        WHERE COALESCE(focus_mode, 0) = 1 AND LOWER(COALESCE(mode, '')) <> 'focus'
         """
     )
