@@ -2,28 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
+from datetime import datetime
 from pathlib import Path
+
+from zeno_backend.data.daily_aggregates import recompute_daily_aggregate
+from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.db_utils import connect_db, ensure_break_sessions_table
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS break_sessions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-              break_seconds INTEGER NOT NULL,
-              away_seconds INTEGER NOT NULL,
-              quality_score REAL NOT NULL,
-              genuine_break INTEGER NOT NULL,
-              triggered_by TEXT
-            )
-            """
-        )
+    with connect_db(db_path) as conn:
+        ensure_sessions_schema(conn)
+        ensure_break_sessions_table(conn)
         conn.commit()
 
 
@@ -36,25 +29,31 @@ def log_break_session(
     triggered_by: str,
 ) -> int:
     init_db(db_path)
-    with sqlite3.connect(db_path) as conn:
+    with connect_db(db_path) as conn:
+        ensure_break_sessions_table(conn)
+        timestamp = datetime.now().isoformat(timespec="seconds")
         cursor = conn.execute(
             """
             INSERT INTO break_sessions (
+              timestamp,
               break_seconds,
               away_seconds,
               quality_score,
               genuine_break,
               triggered_by
-            ) VALUES (?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
+                timestamp,
                 max(0, int(break_seconds)),
                 max(0, int(away_seconds)),
                 max(0.0, min(100.0, float(quality_score))),
                 1 if genuine_break else 0,
-                triggered_by,
+                str(triggered_by or "manual"),
             ),
         )
+        day_key = timestamp[:10]
+        recompute_daily_aggregate(conn, day_key)
         conn.commit()
         return int(cursor.lastrowid)
 

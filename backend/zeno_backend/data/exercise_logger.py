@@ -2,28 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from pathlib import Path
+
+from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.db_utils import connect_db, ensure_exercise_sessions_table
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS exercise_sessions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-              exercise_id TEXT NOT NULL,
-              completed INTEGER NOT NULL,
-              form_score REAL,
-              duration_seconds REAL,
-              triggered_by TEXT
-            )
-            """
-        )
+    with connect_db(db_path) as conn:
+        ensure_sessions_schema(conn)
+        ensure_exercise_sessions_table(conn)
         conn.commit()
 
 
@@ -36,7 +27,8 @@ def log_exercise_session(
     triggered_by: str,
 ) -> int:
     init_db(db_path)
-    with sqlite3.connect(db_path) as conn:
+    with connect_db(db_path) as conn:
+        ensure_exercise_sessions_table(conn)
         cursor = conn.execute(
             """
             INSERT INTO exercise_sessions (
