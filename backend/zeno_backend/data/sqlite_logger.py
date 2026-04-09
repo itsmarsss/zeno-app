@@ -9,10 +9,9 @@ from uuid import uuid4
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
 from zeno_backend.data.daily_aggregates import recompute_daily_aggregate
-from zeno_backend.data.insight_cards import recompute_daily_insight_cards
+from zeno_backend.data.db_utils import connect_db, is_focus_session, safe_float, safe_int
 from zeno_backend.data.posture_daily_insights import recompute_posture_daily_insight
 from zeno_backend.core.stress_index import compute_stress_index
-from zeno_backend.pipelines.session_runner import run_session
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
@@ -110,9 +109,73 @@ def _posture_nudge_eligible(
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with connect_db(db_path) as conn:
         ensure_sessions_schema(conn)
         conn.commit()
+
+
+def _normalize_session_result(result: dict) -> dict:
+    """Coerce/validate inbound analyzer payload before persistence."""
+    normalized = dict(result)
+    timestamp = str(normalized.get("timestamp") or datetime.now().isoformat(timespec="seconds"))
+    normalized["timestamp"] = timestamp
+
+    mode = str(normalized.get("mode") or "passive").strip().lower()
+    if mode not in {"passive", "focus"}:
+        mode = "focus" if bool(normalized.get("focus_mode")) else "passive"
+    focus_flag = is_focus_session(mode=mode, focus_mode=normalized.get("focus_mode"))
+    normalized["mode"] = "focus" if focus_flag else "passive"
+    normalized["focus_mode"] = bool(focus_flag)
+
+    posture_score = safe_float(normalized.get("posture_score"), 0.0) or 0.0
+    normalized["posture_score"] = max(0.0, min(1.0, posture_score))
+    normalized["presence_detected"] = bool(normalized.get("presence_detected"))
+    normalized["analysis_skipped"] = bool(normalized.get("analysis_skipped"))
+    normalized["tracking_confidence"] = max(
+        0.0, min(1.0, safe_float(normalized.get("tracking_confidence"), 0.0) or 0.0)
+    )
+    normalized["head_offset_norm"] = safe_float(normalized.get("head_offset_norm"), 0.0) or 0.0
+    normalized["shoulder_tilt_signed_norm"] = (
+        safe_float(normalized.get("shoulder_tilt_signed_norm"), 0.0) or 0.0
+    )
+    normalized["shoulder_tilt_norm"] = abs(
+        safe_float(normalized.get("shoulder_tilt_norm"), abs(normalized["shoulder_tilt_signed_norm"]))
+        or abs(normalized["shoulder_tilt_signed_norm"])
+    )
+    normalized["posture_stability_std"] = max(
+        0.0, safe_float(normalized.get("posture_stability_std"), 0.0) or 0.0
+    )
+    normalized["posture_stability_label"] = str(
+        normalized.get("posture_stability_label") or "learning"
+    )
+    normalized["dominant_emotion"] = str(normalized.get("dominant_emotion") or "unknown")
+    normalized["emotion_score"] = max(
+        0.0, min(1.0, safe_float(normalized.get("emotion_score"), 0.0) or 0.0)
+    )
+    normalized["emotion_backend"] = str(normalized.get("emotion_backend") or "unknown")
+    normalized["respiratory_rate"] = max(0.0, safe_float(normalized.get("respiratory_rate"), 0.0) or 0.0)
+    rr_conf = str(normalized.get("rr_confidence") or "none").strip().lower()
+    if rr_conf not in {"none", "partial", "full"}:
+        rr_conf = "none"
+    normalized["rr_confidence"] = rr_conf
+    normalized["focus_duration_seconds"] = max(
+        0, safe_int(normalized.get("focus_duration_seconds"), 0) or 0
+    )
+    normalized["session_duration_seconds"] = max(
+        0.0, safe_float(normalized.get("session_duration_seconds"), 0.0) or 0.0
+    )
+    normalized["ear_shoulder_offset"] = safe_float(normalized.get("ear_shoulder_offset"), 0.0) or 0.0
+    normalized["neck_spine_angle"] = safe_float(normalized.get("neck_spine_angle"), 0.0) or 0.0
+
+    hr = safe_float(normalized.get("heart_rate_bpm"), None)
+    if hr is not None and (hr <= 0 or hr > 250):
+        hr = None
+    normalized["heart_rate_bpm"] = hr
+
+    if "stress_index" in normalized and normalized["stress_index"] is not None:
+        stress = safe_int(normalized.get("stress_index"), 0) or 0
+        normalized["stress_index"] = max(0, min(100, stress))
+    return normalized
 
 
 def _sync_baseline_state(
@@ -330,10 +393,10 @@ def _posture_quality_flags(
 
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    result = _normalize_session_result(result)
+    with connect_db(db_path) as conn:
         mode = str(result.get("mode", "passive"))
-        is_focus_mode = mode == "focus" or bool(result.get("focus_mode"))
+        is_focus_mode = is_focus_session(mode=mode, focus_mode=result.get("focus_mode"))
         focus_session_id: str | None = None
         if is_focus_mode:
             raw_focus_session_id = result.get("focus_session_id")
@@ -342,6 +405,8 @@ def log_session(result: dict, db_path: Path) -> int:
             )
             focus_session_id = normalized_focus_session_id or str(uuid4())
         result["focus_session_id"] = focus_session_id
+        result["focus_mode"] = is_focus_mode
+        result["mode"] = "focus" if is_focus_mode else "passive"
         posture_score = float(result["posture_score"])
         baseline_score, posture_deviation, is_calibrated, resting_hr, resting_rr, baseline_confidence = _sync_baseline_state(conn, result)
         baseline_geom = conn.execute(
@@ -473,22 +538,24 @@ def log_session(result: dict, db_path: Path) -> int:
                 mode,
                 focus_session_id,
                 int(result.get("focus_duration_seconds", 0)),
-                1 if result.get("focus_mode") else 0,
+                1 if is_focus_mode else 0,
                 "none",
                 "none",
                 float(result["session_duration_seconds"]),
-                json.dumps(result),
+                json.dumps(result, default=str),
             ),
         )
         day_key = str(result["timestamp"])[:10]
         recompute_daily_aggregate(conn, day_key)
-        recompute_daily_insight_cards(conn, day_key)
         recompute_posture_daily_insight(conn, day_key)
         conn.commit()
         return int(cursor.lastrowid)
 
 
 def main() -> None:
+    # Lazy import keeps pure data-path imports free of camera/CV deps.
+    from zeno_backend.pipelines.session_runner import run_session
+
     parser = argparse.ArgumentParser(
         description="Run one session and store results in local SQLite."
     )
@@ -530,7 +597,7 @@ def main() -> None:
         preview=args.preview,
         focus_mode=bool(args.focus_mode),
         shared_camera=not bool(args.focus_mode),
-        passive_duration_seconds=30.0,
+        passive_duration_seconds=18.0,
         hsemotion_model=args.hsemotion_model,
         hsemotion_model_path=args.hsemotion_model_path,
     )

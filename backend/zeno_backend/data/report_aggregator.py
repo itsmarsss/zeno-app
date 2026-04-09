@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
 from zeno_backend.data.daily_aggregates import fetch_daily_aggregate, recompute_daily_aggregate
 from zeno_backend.data.db_schema import ensure_sessions_schema
+from zeno_backend.data.db_utils import connect_db, safe_float, safe_int
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "zeno_sessions.db"
 
@@ -31,13 +31,11 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
     day_end = datetime.combine(target_day, datetime.max.time()).isoformat(timespec="seconds")
     day_key = target_day.isoformat()
 
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    with connect_db(db_path) as conn:
         ensure_sessions_schema(conn)
-        aggregate = fetch_daily_aggregate(conn, day_key)
-        if aggregate is None:
-            aggregate = recompute_daily_aggregate(conn, day_key)
-            conn.commit()
+        # Always recompute so focus-session grouping and break tables stay fresh.
+        aggregate = recompute_daily_aggregate(conn, day_key)
+        conn.commit()
         rows = conn.execute(
             """
             SELECT
@@ -65,30 +63,33 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
             "sessions": 0,
             "average_stress_index": 0,
             "average_respiratory_rate": None,
-            "focused_minutes": 0,
+            "focused_minutes": safe_int(aggregate.get("focused_minutes"), 0) or 0,
             "peak_stress": None,
             "posture_trend": [],
             "stress_trend": [],
             "rr_trend": [],
-            "recommendation": "No data yet. Run a few check-ins to generate insights.",
+            "recommendation": str(
+                aggregate.get("recommendation")
+                or "No data yet. Run a few check-ins to generate insights."
+            ),
         }
 
     items = []
     rr_points: list[float] = []
     for row in rows:
-        stress = int(row["stress_index"] or 0)
+        stress = safe_int(row["stress_index"], 0) or 0
         items.append(
             {
                 "time": row["created_at"],
-                "posture_score": float(row["posture_score"]),
+                "posture_score": safe_float(row["posture_score"], 0.0) or 0.0,
                 "stress_index": stress,
-                "dominant_emotion": str(row["dominant_emotion"]),
-                "respiratory_rate": float(row["respiratory_rate"] or 0.0),
+                "dominant_emotion": str(row["dominant_emotion"] or "unknown"),
+                "respiratory_rate": safe_float(row["respiratory_rate"], 0.0) or 0.0,
                 "rr_confidence": str(row["rr_confidence"] or "none"),
                 "mode": str(row["mode"] or "passive"),
             }
         )
-        rr_value = float(row["respiratory_rate"] or 0.0)
+        rr_value = safe_float(row["respiratory_rate"], 0.0) or 0.0
         rr_confidence = str(row["rr_confidence"] or "none")
         if rr_value > 0.0 and rr_confidence in {"partial", "full"} and str(row["mode"] or "passive") == "focus":
             rr_points.append(rr_value)
@@ -96,20 +97,20 @@ def generate_daily_report(db_path: Path, target_day: date, session_minutes: int 
     peak_stress = None
     if aggregate.get("peak_stress_index") is not None and aggregate.get("peak_stress_time"):
         peak_stress = {
-            "stress_index": int(aggregate["peak_stress_index"]),
+            "stress_index": safe_int(aggregate["peak_stress_index"], 0) or 0,
             "time": str(aggregate["peak_stress_time"]),
         }
 
     return {
         "date": target_day.isoformat(),
-        "sessions": int(aggregate.get("sessions_count") or len(items)),
-        "average_stress_index": float(aggregate.get("average_stress_index") or 0.0),
+        "sessions": safe_int(aggregate.get("sessions_count"), len(items)) or len(items),
+        "average_stress_index": safe_float(aggregate.get("average_stress_index"), 0.0) or 0.0,
         "average_respiratory_rate": (
-            round(float(aggregate["average_respiratory_rate"]), 1)
+            round(safe_float(aggregate["average_respiratory_rate"], 0.0) or 0.0, 1)
             if aggregate.get("average_respiratory_rate") is not None
             else (round(sum(rr_points) / len(rr_points), 1) if rr_points else None)
         ),
-        "focused_minutes": int(aggregate.get("focused_minutes") or 0),
+        "focused_minutes": safe_int(aggregate.get("focused_minutes"), 0) or 0,
         "peak_stress": peak_stress,
         "posture_trend": [
             {

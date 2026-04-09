@@ -3,6 +3,19 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
+from zeno_backend.data.db_utils import (
+    day_break_stats,
+    focused_minutes_from_rows,
+    is_focus_session,
+    mean_or_none,
+    safe_float,
+    safe_int,
+    valid_heart_rate,
+    valid_posture_score,
+    valid_respiratory_rate,
+    valid_stress_index,
+)
+
 
 def recommendation_for_day(avg_stress: float, avg_posture: float) -> str:
     if avg_stress >= 65:
@@ -15,17 +28,25 @@ def recommendation_for_day(avg_stress: float, avg_posture: float) -> str:
 
 
 def recompute_daily_aggregate(conn: sqlite3.Connection, day_key: str) -> dict:
+    day_key = str(day_key or "").strip()[:10]
+    if not day_key:
+        day_key = date.today().isoformat()
+
     rows = conn.execute(
         """
         SELECT
+            id,
             created_at,
             posture_score,
+            posture_signal_quality,
             stress_index,
             heart_rate_bpm,
             respiratory_rate,
             rr_confidence,
             mode,
             focus_mode,
+            focus_session_id,
+            focus_duration_seconds,
             session_duration_seconds
         FROM sessions
         WHERE substr(created_at, 1, 10) = ?
@@ -52,54 +73,103 @@ def recompute_daily_aggregate(conn: sqlite3.Connection, day_key: str) -> dict:
             "peak_stress_time": None,
             "recommendation": "No data yet. Run a few check-ins to generate insights.",
         }
+        # Still allow logged breaks to surface on empty-session days.
+        break_stats = day_break_stats(conn, day_key)
+        if break_stats is not None:
+            payload["break_count"] = break_stats[0]
+            payload["break_minutes"] = break_stats[1]
     else:
         sessions_count = len(rows)
-        stress_values = [int(row["stress_index"] or 0) for row in rows]
-        posture_values = [float(row["posture_score"] or 0.0) for row in rows]
+        stress_values = [
+            stress
+            for stress in (valid_stress_index(row["stress_index"]) for row in rows)
+            if stress is not None
+        ]
+        posture_values: list[float] = []
+        for row in rows:
+            score = valid_posture_score(row["posture_score"])
+            if score is None:
+                continue
+            quality = str(row["posture_signal_quality"] or "").strip().lower()
+            # Prefer medium/high signal samples when available; otherwise keep all.
+            if quality in {"", "low", "medium", "high", "unknown"}:
+                posture_values.append(score)
+
+        # If any higher-quality posture samples exist, drop low/unknown for averages.
+        quality_filtered = [
+            valid_posture_score(row["posture_score"])
+            for row in rows
+            if str(row["posture_signal_quality"] or "").strip().lower() in {"medium", "high"}
+        ]
+        quality_filtered = [score for score in quality_filtered if score is not None]
+        if quality_filtered:
+            posture_values = quality_filtered
 
         hr_values = [
-            float(row["heart_rate_bpm"])
-            for row in rows
-            if row["heart_rate_bpm"] is not None and float(row["heart_rate_bpm"]) > 0
+            hr
+            for hr in (valid_heart_rate(row["heart_rate_bpm"]) for row in rows)
+            if hr is not None
         ]
         rr_values = [
-            float(row["respiratory_rate"])
-            for row in rows
-            if float(row["respiratory_rate"] or 0.0) > 0
-            and str(row["rr_confidence"] or "none") in {"partial", "full"}
-            and (int(row["focus_mode"] or 0) == 1 or str(row["mode"] or "passive") == "focus")
+            rr
+            for rr in (
+                valid_respiratory_rate(
+                    row["respiratory_rate"],
+                    confidence=row["rr_confidence"],
+                )
+                for row in rows
+                if is_focus_session(mode=row["mode"], focus_mode=row["focus_mode"])
+            )
+            if rr is not None
         ]
 
-        focus_rows = [row for row in rows if int(row["focus_mode"] or 0) == 1]
-        passive_rows = [row for row in rows if int(row["focus_mode"] or 0) == 0]
-        focused_minutes = round(sum(float(row["session_duration_seconds"] or 0.0) for row in focus_rows) / 60.0)
-        break_minutes = round(sum(float(row["session_duration_seconds"] or 0.0) for row in passive_rows) / 60.0)
-        avg_focus_session_minutes = (
-            round(
-                sum(float(row["session_duration_seconds"] or 0.0) for row in focus_rows)
-                / max(1, len(focus_rows))
-                / 60.0
-            )
-            if focus_rows
-            else 0
+        focused_minutes, focus_session_count, avg_focus_session_minutes = focused_minutes_from_rows(rows)
+
+        passive_rows = [
+            row
+            for row in rows
+            if not is_focus_session(mode=row["mode"], focus_mode=row["focus_mode"])
+        ]
+        passive_break_minutes = int(
+            round(sum(max(0.0, safe_float(row["session_duration_seconds"], 0.0) or 0.0) for row in passive_rows) / 60.0)
         )
 
-        peak_row = max(rows, key=lambda row: int(row["stress_index"] or 0))
-        avg_stress = sum(stress_values) / max(1, len(stress_values))
-        avg_posture = sum(posture_values) / max(1, len(posture_values))
+        break_stats = day_break_stats(conn, day_key)
+        if break_stats is not None:
+            break_count, break_minutes = break_stats
+        else:
+            # Fallback when break_sessions is empty: treat passive check-ins as break proxies.
+            break_count = len(passive_rows)
+            break_minutes = passive_break_minutes
+
+        peak_row = None
+        peak_stress = None
+        for row in rows:
+            stress = valid_stress_index(row["stress_index"])
+            if stress is None:
+                continue
+            if peak_stress is None or stress > peak_stress:
+                peak_stress = stress
+                peak_row = row
+
+        avg_stress = mean_or_none(stress_values) or 0.0
+        avg_posture = mean_or_none(posture_values) or 0.0
+        avg_hr = mean_or_none(hr_values)
+        avg_rr = mean_or_none(rr_values)
+
         payload = {
             "date": day_key,
             "sessions_count": sessions_count,
             "average_stress_index": round(avg_stress, 1),
             "average_posture_score": round(avg_posture, 3),
-            "average_heart_rate": round(sum(hr_values) / len(hr_values), 1) if hr_values else None,
-            "average_respiratory_rate": round(sum(rr_values) / len(rr_values), 1) if rr_values else None,
+            "average_heart_rate": round(avg_hr, 1) if avg_hr is not None else None,
+            "average_respiratory_rate": round(avg_rr, 1) if avg_rr is not None else None,
             "focused_minutes": focused_minutes,
-            "break_count": len(passive_rows),
+            "break_count": break_count,
             "break_minutes": break_minutes,
-            "avg_focus_session_minutes": avg_focus_session_minutes,
-            "peak_stress_index": int(peak_row["stress_index"] or 0),
-            "peak_stress_time": str(peak_row["created_at"]),
+            "avg_focus_session_minutes": avg_focus_session_minutes if focus_session_count else 0,
+            "peak_stress_index": int(peak_stress) if peak_stress is not None else None,
+            "peak_stress_time": str(peak_row["created_at"]) if peak_row is not None else None,
             "recommendation": recommendation_for_day(avg_stress=avg_stress, avg_posture=avg_posture),
         }
 
@@ -156,6 +226,9 @@ def recompute_daily_aggregate(conn: sqlite3.Connection, day_key: str) -> dict:
 
 
 def fetch_daily_aggregate(conn: sqlite3.Connection, day_key: str) -> dict | None:
+    day_key = str(day_key or "").strip()[:10]
+    if not day_key:
+        return None
     row = conn.execute(
         """
         SELECT
@@ -177,7 +250,23 @@ def fetch_daily_aggregate(conn: sqlite3.Connection, day_key: str) -> dict | None
         """,
         (day_key,),
     ).fetchone()
-    return dict(row) if row is not None else None
+    if row is None:
+        return None
+    return {
+        "date": str(row["date"]),
+        "sessions_count": safe_int(row["sessions_count"], 0) or 0,
+        "average_stress_index": safe_float(row["average_stress_index"], 0.0) or 0.0,
+        "average_posture_score": safe_float(row["average_posture_score"], 0.0) or 0.0,
+        "average_heart_rate": safe_float(row["average_heart_rate"], None),
+        "average_respiratory_rate": safe_float(row["average_respiratory_rate"], None),
+        "focused_minutes": safe_int(row["focused_minutes"], 0) or 0,
+        "break_count": safe_int(row["break_count"], 0) or 0,
+        "break_minutes": safe_int(row["break_minutes"], 0) or 0,
+        "avg_focus_session_minutes": safe_int(row["avg_focus_session_minutes"], 0) or 0,
+        "peak_stress_index": safe_int(row["peak_stress_index"], None),
+        "peak_stress_time": str(row["peak_stress_time"]) if row["peak_stress_time"] is not None else None,
+        "recommendation": str(row["recommendation"] or "Keep a steady pace tomorrow."),
+    }
 
 
 def refresh_all_daily_aggregates(conn: sqlite3.Connection) -> int:
@@ -186,7 +275,24 @@ def refresh_all_daily_aggregates(conn: sqlite3.Connection) -> int:
         for row in conn.execute(
             "SELECT DISTINCT substr(created_at, 1, 10) AS day FROM sessions ORDER BY day ASC"
         ).fetchall()
+        if row[0]
     ]
+    # Also include days that only have break sessions.
+    try:
+        break_days = [
+            str(row[0])
+            for row in conn.execute(
+                "SELECT DISTINCT substr(timestamp, 1, 10) AS day FROM break_sessions ORDER BY day ASC"
+            ).fetchall()
+            if row[0]
+        ]
+        for day in break_days:
+            if day not in days:
+                days.append(day)
+        days.sort()
+    except sqlite3.Error:
+        pass
+
     for day_key in days:
         recompute_daily_aggregate(conn, day_key)
     return len(days)
@@ -195,4 +301,4 @@ def refresh_all_daily_aggregates(conn: sqlite3.Connection) -> int:
 def iso_day(value: str | date) -> str:
     if isinstance(value, date):
         return value.isoformat()
-    return value[:10]
+    return str(value)[:10]

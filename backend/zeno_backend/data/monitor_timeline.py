@@ -66,7 +66,14 @@ def _best_confidence(values: list[str | None]) -> str:
 
 
 def _avg_or_none(values: list[float | int | None]) -> float | None:
-    valid = [float(v) for v in values if isinstance(v, (int, float))]
+    valid: list[float] = []
+    for value in values:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        number = float(value)
+        if number != number:  # NaN
+            continue
+        valid.append(number)
     if not valid:
         return None
     return sum(valid) / len(valid)
@@ -207,10 +214,20 @@ def _bucket_timeline(
                     "emotion_score": _avg_or_none([row.get("emotion_score") for row in bucket_rows]),
                     "stress_index": _avg_or_none([row.get("stress_index") for row in bucket_rows]),
                     "heart_rate_bpm": _avg_or_none(
-                        [row.get("heart_rate_bpm") for row in bucket_rows if (row.get("heart_rate_bpm") or 0) > 0]
+                        [
+                            row.get("heart_rate_bpm")
+                            for row in bucket_rows
+                            if isinstance(row.get("heart_rate_bpm"), (int, float))
+                            and 35.0 <= float(row.get("heart_rate_bpm")) <= 200.0
+                        ]
                     ),
                     "respiratory_rate": _avg_or_none(
-                        [row.get("respiratory_rate") for row in bucket_rows if (row.get("respiratory_rate") or 0) > 0]
+                        [
+                            row.get("respiratory_rate")
+                            for row in bucket_rows
+                            if isinstance(row.get("respiratory_rate"), (int, float))
+                            and 6.0 <= float(row.get("respiratory_rate")) <= 40.0
+                        ]
                     ),
                     "rr_confidence": _best_confidence([row.get("rr_confidence") for row in bucket_rows]),
                     "emotion_backend": latest.get("emotion_backend"),
