@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 from zeno_backend.data.db_schema import ensure_sessions_schema
 from zeno_backend.data.daily_aggregates import refresh_all_daily_aggregates
-from zeno_backend.data.insight_cards import refresh_all_daily_insight_cards
+from zeno_backend.data.db_utils import connect_db
 from zeno_backend.data.posture_daily_insights import refresh_all_posture_daily_insights
 from zeno_backend.core.stress_index import compute_stress_index
 
@@ -19,12 +19,12 @@ EMOTIONS = ["neutral", "happy", "fear", "sad", "anger", "surprise", "disgust"]
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with connect_db(db_path) as conn:
         ensure_sessions_schema(conn)
         conn.commit()
 
 
-def generate_session(ts: datetime, focus_mode: bool) -> dict:
+def generate_session(ts: datetime, focus_mode: bool, focus_session_id: str | None = None) -> dict:
     mode = "focus" if focus_mode else "passive"
     if focus_mode:
         posture = round(random.uniform(0.50, 0.90), 3)
@@ -71,6 +71,23 @@ def generate_session(ts: datetime, focus_mode: bool) -> dict:
     posture_stability_label = (
         "stable" if posture_stability_std < 0.06 else "moderate" if posture_stability_std < 0.12 else "variable"
     )
+    if posture_is_poor:
+        posture_state = "poor_posture"
+        if abs(head_offset_norm) >= shoulder_tilt_norm:
+            posture_dominant_issue = "head_forward"
+        elif shoulder_tilt_signed_norm >= 0.05:
+            posture_dominant_issue = "shoulder_tilt"
+        else:
+            posture_dominant_issue = "trunk_lean"
+    elif posture_deviation > 0.08:
+        posture_state = "mild_drift"
+        posture_dominant_issue = "head_forward" if abs(head_offset_norm) >= 0.08 else "trunk_lean"
+    else:
+        posture_state = "good"
+        posture_dominant_issue = "unknown"
+    posture_signal_quality = (
+        "high" if tracking_confidence >= 0.85 else "medium" if tracking_confidence >= 0.70 else "low"
+    )
 
     return {
         "timestamp": ts.isoformat(timespec="seconds"),
@@ -83,6 +100,10 @@ def generate_session(ts: datetime, focus_mode: bool) -> dict:
         "shoulder_tilt_norm": shoulder_tilt_norm,
         "posture_stability_std": posture_stability_std,
         "posture_stability_label": posture_stability_label,
+        "posture_state": posture_state,
+        "posture_dominant_issue": posture_dominant_issue,
+        "posture_signal_quality": posture_signal_quality,
+        "posture_nudge_eligible": 1 if posture_state == "poor_posture" and not focus_mode else 0,
         "baseline_posture_score": baseline_posture_score,
         "posture_deviation": posture_deviation,
         "posture_is_poor": posture_is_poor,
@@ -103,6 +124,7 @@ def generate_session(ts: datetime, focus_mode: bool) -> dict:
         "rr_confidence": rr_confidence,
         "emotion_backend": "hsemotion",
         "mode": mode,
+        "focus_session_id": focus_session_id if focus_mode else None,
         "focus_duration_seconds": focus_duration_seconds,
         "session_duration_seconds": duration_seconds,
         "focus_mode": focus_mode,
@@ -116,7 +138,80 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
     inserted = 0
 
     now = datetime.now().replace(second=0, microsecond=0)
-    with sqlite3.connect(db_path) as conn:
+    insert_sql = """
+        INSERT INTO sessions (
+            created_at,
+            presence_detected,
+            analysis_skipped,
+            posture_score,
+            tracking_confidence,
+            head_offset_norm,
+            shoulder_tilt_signed_norm,
+            shoulder_tilt_norm,
+            posture_stability_std,
+            posture_stability_label,
+            posture_state,
+            posture_dominant_issue,
+            posture_signal_quality,
+            posture_nudge_eligible,
+            baseline_posture_score,
+            posture_deviation,
+            posture_is_poor,
+            dominant_emotion,
+            emotion_score,
+            stress_index,
+            heart_rate_bpm,
+            respiratory_rate,
+            rr_confidence,
+            emotion_backend,
+            mode,
+            focus_session_id,
+            focus_duration_seconds,
+            session_duration_seconds,
+            focus_mode,
+            notification_sent,
+            notification_dismissed_by,
+            raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+
+    def row_values(session: dict, focus_flag: int) -> tuple:
+        return (
+            session["timestamp"],
+            1,
+            0,
+            session["posture_score"],
+            session["tracking_confidence"],
+            session["head_offset_norm"],
+            session["shoulder_tilt_signed_norm"],
+            session["shoulder_tilt_norm"],
+            session["posture_stability_std"],
+            session["posture_stability_label"],
+            session["posture_state"],
+            session["posture_dominant_issue"],
+            session["posture_signal_quality"],
+            session["posture_nudge_eligible"],
+            session["baseline_posture_score"],
+            session["posture_deviation"],
+            1 if session["posture_is_poor"] else 0,
+            session["dominant_emotion"],
+            session["emotion_score"],
+            session["stress_index"],
+            session["heart_rate_bpm"],
+            session["respiratory_rate"],
+            session["rr_confidence"],
+            session["emotion_backend"],
+            session["mode"],
+            session.get("focus_session_id"),
+            session["focus_duration_seconds"],
+            session["session_duration_seconds"],
+            focus_flag,
+            session["notification_sent"],
+            session["notification_dismissed_by"],
+            json.dumps(session),
+        )
+
+    with connect_db(db_path) as conn:
         for day_offset in range(days):
             day = now - timedelta(days=(days - 1 - day_offset))
             short_checkins = max(2, int(round(sessions_per_day * 0.65)))
@@ -129,68 +224,7 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
             for minute_offset in checkin_slots:
                 ts = day.replace(hour=0, minute=0) + timedelta(minutes=minute_offset)
                 session = generate_session(ts, focus_mode=False)
-                conn.execute(
-                    """
-                    INSERT INTO sessions (
-                        created_at,
-                        presence_detected,
-                        analysis_skipped,
-                        posture_score,
-                        tracking_confidence,
-                        head_offset_norm,
-                        shoulder_tilt_signed_norm,
-                        shoulder_tilt_norm,
-                        posture_stability_std,
-                        posture_stability_label,
-                        baseline_posture_score,
-                        posture_deviation,
-                        posture_is_poor,
-                        dominant_emotion,
-                        emotion_score,
-                        stress_index,
-                        heart_rate_bpm,
-                        respiratory_rate,
-                        rr_confidence,
-                        emotion_backend,
-                        mode,
-                        focus_duration_seconds,
-                        session_duration_seconds,
-                        focus_mode,
-                        notification_sent,
-                        notification_dismissed_by,
-                        raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        session["timestamp"],
-                        1,
-                        0,
-                        session["posture_score"],
-                        session["tracking_confidence"],
-                        session["head_offset_norm"],
-                        session["shoulder_tilt_signed_norm"],
-                        session["shoulder_tilt_norm"],
-                        session["posture_stability_std"],
-                        session["posture_stability_label"],
-                        session["baseline_posture_score"],
-                        session["posture_deviation"],
-                        1 if session["posture_is_poor"] else 0,
-                        session["dominant_emotion"],
-                        session["emotion_score"],
-                        session["stress_index"],
-                        session["heart_rate_bpm"],
-                        session["respiratory_rate"],
-                        session["rr_confidence"],
-                        session["emotion_backend"],
-                        session["mode"],
-                        session["focus_duration_seconds"],
-                        session["session_duration_seconds"],
-                        0,
-                        session["notification_sent"],
-                        session["notification_dismissed_by"],
-                        json.dumps(session),
-                    ),
-                )
+                conn.execute(insert_sql, row_values(session, 0))
                 inserted += 1
 
             # Focus sessions clustered in typical focus windows.
@@ -199,73 +233,11 @@ def seed(db_path: Path, days: int, sessions_per_day: int) -> int:
             )
             for minute_offset in focus_minutes:
                 ts = day.replace(hour=0, minute=0) + timedelta(minutes=minute_offset)
-                session = generate_session(ts, focus_mode=True)
-                conn.execute(
-                    """
-                    INSERT INTO sessions (
-                        created_at,
-                        presence_detected,
-                        analysis_skipped,
-                        posture_score,
-                        tracking_confidence,
-                        head_offset_norm,
-                        shoulder_tilt_signed_norm,
-                        shoulder_tilt_norm,
-                        posture_stability_std,
-                        posture_stability_label,
-                        baseline_posture_score,
-                        posture_deviation,
-                        posture_is_poor,
-                        dominant_emotion,
-                        emotion_score,
-                        stress_index,
-                        heart_rate_bpm,
-                        respiratory_rate,
-                        rr_confidence,
-                        emotion_backend,
-                        mode,
-                        focus_duration_seconds,
-                        session_duration_seconds,
-                        focus_mode,
-                        notification_sent,
-                        notification_dismissed_by,
-                        raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        session["timestamp"],
-                        1,
-                        0,
-                        session["posture_score"],
-                        session["tracking_confidence"],
-                        session["head_offset_norm"],
-                        session["shoulder_tilt_signed_norm"],
-                        session["shoulder_tilt_norm"],
-                        session["posture_stability_std"],
-                        session["posture_stability_label"],
-                        session["baseline_posture_score"],
-                        session["posture_deviation"],
-                        1 if session["posture_is_poor"] else 0,
-                        session["dominant_emotion"],
-                        session["emotion_score"],
-                        session["stress_index"],
-                        session["heart_rate_bpm"],
-                        session["respiratory_rate"],
-                        session["rr_confidence"],
-                        session["emotion_backend"],
-                        session["mode"],
-                        session["focus_duration_seconds"],
-                        session["session_duration_seconds"],
-                        1,
-                        session["notification_sent"],
-                        session["notification_dismissed_by"],
-                        json.dumps(session),
-                    ),
-                )
+                session = generate_session(ts, focus_mode=True, focus_session_id=str(uuid4()))
+                conn.execute(insert_sql, row_values(session, 1))
                 inserted += 1
         conn.commit()
         refresh_all_daily_aggregates(conn)
-        refresh_all_daily_insight_cards(conn)
         refresh_all_posture_daily_insights(conn)
         conn.commit()
 
