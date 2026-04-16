@@ -11,11 +11,7 @@ DEFAULT_SETTINGS = {
     "session_frequency_minutes": 10,
     "daily_report_hour": 21,
     "daily_report_minute": 0,
-    "local_ai_insights_enabled": False,
-    "local_ai_model": "",
     "onboarding_completed": False,
-    "plan_tier": "free",
-    "license_key": "",
 }
 
 
@@ -33,14 +29,14 @@ def _sanitize(settings: dict) -> dict:
 
     cleaned["daily_report_minute"] = int(cleaned.get("daily_report_minute", 0))
     cleaned["daily_report_minute"] = min(59, max(0, cleaned["daily_report_minute"]))
-    cleaned["local_ai_insights_enabled"] = bool(cleaned.get("local_ai_insights_enabled", False))
-    cleaned["local_ai_model"] = str(cleaned.get("local_ai_model", "")).strip()
+    # Drop retired settings if present in older files.
+    cleaned.pop("local_ai_insights_enabled", None)
+    cleaned.pop("local_ai_model", None)
+    cleaned.pop("plan_tier", None)
+    cleaned.pop("license_key", None)
     cleaned["onboarding_completed"] = bool(cleaned.get("onboarding_completed", False))
-    cleaned["plan_tier"] = str(cleaned.get("plan_tier", "free")).lower()
-    if cleaned["plan_tier"] not in {"free", "pro"}:
-        cleaned["plan_tier"] = "free"
-    cleaned["license_key"] = str(cleaned.get("license_key", "")).strip()
-    return cleaned
+    # Keep only known keys so legacy pro/cloud fields cannot reappear.
+    return {key: cleaned[key] for key in DEFAULT_SETTINGS}
 
 
 def load_settings(path: Path) -> dict:
