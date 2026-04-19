@@ -195,17 +195,35 @@ def _exercise_target_reps(exercise_id: str) -> int:
     if exercise_id in {"wall-angels", "thoracic-extension"}:
         return 8
     if exercise_id == "doorway-pec-stretch":
-        return 6
+        return 6  # 3 per side, simplified as 6 holds
+    if exercise_id == "seated-side-bend":
+        return 8  # 4 rounds × 2 sides
     return 10
 
 
+def _exercise_hold_target_seconds(exercise_id: str) -> float | None:
+    """Hold-based stretches need a per-rep hold target (seconds)."""
+    if exercise_id == "doorway-pec-stretch":
+        return 20.0
+    if exercise_id == "seated-side-bend":
+        return 15.0
+    if exercise_id in {"chin-tuck", "scap-squeeze"}:
+        return 3.0
+    if exercise_id in {"wall-angels", "thoracic-extension"}:
+        return 2.0
+    return None
+
+
 def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: str | None) -> int:
+    from zeno_backend.core.camera_manager import open_camera
+
     fps = max(1.0, min(30.0, fps))
     quality = max(40, min(95, jpeg_quality))
     frame_interval = 1.0 / fps
 
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
+    try:
+        cap = open_camera(camera_index, width=640, height=480, fps=fps, warmup_frames=3)
+    except RuntimeError:
         print(json.dumps({"error": "Unable to open camera"}), flush=True)
         return 1
 
@@ -222,12 +240,16 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
     )
     exercise_state = {
         "rep_count": 0,
-        "hold_seconds": 0.0,
+        "hold_seconds": 0.0,  # cumulative good-form hold time
+        "rep_hold_seconds": 0.0,  # hold time in current rep
         "active_frames": 0,
         "inactive_frames": 0,
         "stable_active": False,
         "quality_ema": 0.0,
+        "form_hits": 0,
+        "form_samples": 0,
         "last_tick": time.perf_counter(),
+        "completed": False,
     }
     posture_window: deque[float] = deque(maxlen=60)
 
@@ -267,7 +289,7 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                     shoulder_tilt_norm = float(features["shoulder_tilt_norm"])
                     posture_window.append(posture_score)
                     feedback = _exercise_feedback(exercise_id, landmarks, posture_score)
-                    if exercise_id:
+                    if exercise_id and not bool(exercise_state["completed"]):
                         now_tick = time.perf_counter()
                         elapsed = max(0.0, now_tick - float(exercise_state["last_tick"]))
                         exercise_state["last_tick"] = now_tick
@@ -280,32 +302,77 @@ def run_stream(camera_index: int, fps: float, jpeg_quality: int, exercise_id: st
                             exercise_state["inactive_frames"] = int(exercise_state["inactive_frames"]) + 1
                             exercise_state["active_frames"] = 0
 
+                        hold_target = _exercise_hold_target_seconds(exercise_id)
                         stable_active = bool(exercise_state["stable_active"])
                         if not stable_active and int(exercise_state["active_frames"]) >= 2:
                             stable_active = True
-                            exercise_state["rep_count"] = int(exercise_state["rep_count"]) + 1
-                        if stable_active and int(exercise_state["inactive_frames"]) >= 2:
+                            # Motion-style: count rep on activation edge when no hold target.
+                            if hold_target is None:
+                                exercise_state["rep_count"] = int(exercise_state["rep_count"]) + 1
+                        if stable_active and int(exercise_state["inactive_frames"]) >= 3:
                             stable_active = False
+                            exercise_state["rep_hold_seconds"] = 0.0
                         exercise_state["stable_active"] = stable_active
 
                         if stable_active:
                             exercise_state["hold_seconds"] = float(exercise_state["hold_seconds"]) + elapsed
+                            exercise_state["rep_hold_seconds"] = float(exercise_state["rep_hold_seconds"]) + elapsed
+                            # Hold-based: complete a rep after holding target seconds in good form.
+                            if hold_target is not None and float(exercise_state["rep_hold_seconds"]) >= hold_target:
+                                exercise_state["rep_count"] = int(exercise_state["rep_count"]) + 1
+                                exercise_state["rep_hold_seconds"] = 0.0
+                                exercise_state["stable_active"] = False
+                                exercise_state["active_frames"] = 0
+                                stable_active = False
 
+                        # Form score blends posture quality with on-target ratio.
+                        exercise_state["form_samples"] = int(exercise_state["form_samples"]) + 1
+                        if raw_active:
+                            exercise_state["form_hits"] = int(exercise_state["form_hits"]) + 1
+                        form_ratio = float(exercise_state["form_hits"]) / max(1, int(exercise_state["form_samples"]))
                         previous_q = float(exercise_state["quality_ema"])
+                        blended = 0.55 * posture_score + 0.45 * form_ratio
                         exercise_state["quality_ema"] = (
-                            posture_score if previous_q <= 0 else previous_q * 0.9 + posture_score * 0.1
+                            blended if previous_q <= 0 else previous_q * 0.88 + blended * 0.12
                         )
                         target_reps = _exercise_target_reps(exercise_id)
                         rep_count = int(exercise_state["rep_count"])
                         hold_seconds = round(float(exercise_state["hold_seconds"]), 1)
+                        rep_hold = round(float(exercise_state["rep_hold_seconds"]), 1)
                         progress_pct = min(100, int((rep_count / max(1, target_reps)) * 100))
+                        if hold_target is not None and target_reps > 0:
+                            # Smooth progress within current hold.
+                            partial = min(1.0, rep_hold / hold_target) / target_reps
+                            progress_pct = min(
+                                100,
+                                int(((rep_count / target_reps) + partial) * 100),
+                            )
+                        if rep_count >= target_reps:
+                            exercise_state["completed"] = True
+                            progress_pct = 100
                         exercise_metrics = {
                             "rep_count": rep_count,
                             "target_reps": target_reps,
                             "hold_seconds": hold_seconds,
+                            "rep_hold_seconds": rep_hold,
+                            "hold_target_seconds": hold_target,
                             "quality_score": round(float(exercise_state["quality_ema"]), 3),
                             "target_active": stable_active,
                             "progress_pct": progress_pct,
+                            "completed": bool(exercise_state["completed"]),
+                        }
+                    elif exercise_id and bool(exercise_state["completed"]):
+                        target_reps = _exercise_target_reps(exercise_id)
+                        exercise_metrics = {
+                            "rep_count": int(exercise_state["rep_count"]),
+                            "target_reps": target_reps,
+                            "hold_seconds": round(float(exercise_state["hold_seconds"]), 1),
+                            "rep_hold_seconds": 0.0,
+                            "hold_target_seconds": _exercise_hold_target_seconds(exercise_id),
+                            "quality_score": round(float(exercise_state["quality_ema"]), 3),
+                            "target_active": False,
+                            "progress_pct": 100,
+                            "completed": True,
                         }
                 elif exercise_id:
                     exercise_state["active_frames"] = 0
