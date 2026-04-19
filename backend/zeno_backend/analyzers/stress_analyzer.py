@@ -41,10 +41,10 @@ class StressAnalyzer:
         self._emotion_sample_every_seconds = max(0.4, float(emotion_sample_every_seconds))
         self._hr_hold_seconds = max(0.0, float(hr_hold_seconds))
         self._signal_method = _normalize_signal_method(signal_method)
-        self._face_detectors = _build_face_detectors()
-        self._emotion_detector = (
-            FER(mtcnn=False, min_face_size=30, min_neighbors=3) if FER is not None else None
-        )
+        # Lazy-load heavy models (OpenCV cascades / FER) on first frame or start_live.
+        self._face_detectors = None
+        self._emotion_detector = None
+        self._models_ready = False
         self._subscriber_name = "stress-analyzer"
         self._lock = threading.Lock()
 
@@ -66,6 +66,15 @@ class StressAnalyzer:
             "dominant_emotion": "unknown",
             "emotion_score": 0.0,
         }
+
+    def _ensure_models(self) -> None:
+        if self._models_ready:
+            return
+        self._face_detectors = _build_face_detectors()
+        self._emotion_detector = (
+            FER(mtcnn=False, min_face_size=30, min_neighbors=3) if FER is not None else None
+        )
+        self._models_ready = True
 
     def _smooth_hr(self, bpm: float, now: float) -> float | None:
         if self._smoothed_bpm is None:
@@ -108,11 +117,12 @@ class StressAnalyzer:
         return float(round(self._smoothed_bpm, 1))
 
     def analyze_frame(self, frame: np.ndarray) -> dict:
+        self._ensure_models()
         now = time.perf_counter()
         elapsed = now - self._started_at
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        found_face = _detect_primary_face(frame, gray, self._face_detectors)
+        found_face = _detect_primary_face(frame, gray, self._face_detectors or [])
         if found_face is not None:
             self._last_face = found_face
 
@@ -185,6 +195,7 @@ class StressAnalyzer:
         return current
 
     def start_live(self, camera_manager: CameraManager) -> None:
+        self._ensure_models()
         with self._lock:
             self._started_at = time.perf_counter()
             self._signal = []

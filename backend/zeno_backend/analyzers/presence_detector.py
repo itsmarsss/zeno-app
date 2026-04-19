@@ -132,8 +132,8 @@ class PresenceDetector:
         camera_manager.subscribe(self._subscriber_name, self._process_frame)
 
     def stop_live(self, camera_manager: CameraManager) -> None:
+        # Keep models warm — reloading MediaPipe each cycle is a major latency hit.
         camera_manager.unsubscribe(self._subscriber_name)
-        self.close()
 
     def latest_result(self) -> bool:
         with self._lock:
@@ -206,16 +206,19 @@ class PresenceDetector:
 def detect_presence(
     camera_index: int = 0,
     min_detection_confidence: float = 0.5,
-    warmup_seconds: float = 0.6,
+    warmup_seconds: float = 0.2,
     preview_seconds: float = 0.0,
-    live_check_seconds: float = 0.8,
-    min_face_frames: int = 3,
+    live_check_seconds: float = 0.6,
+    min_face_frames: int = 2,
     liveness_diff_threshold: float = 1.2,
     allow_static_face: bool = False,
 ) -> bool:
+    from zeno_backend.core.camera_manager import open_camera
+
     detector = PresenceDetector(min_detection_confidence=min_detection_confidence)
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
+    try:
+        cap = open_camera(camera_index, warmup_frames=2)
+    except RuntimeError:
         return False
     face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
     if face_cascade.empty():
@@ -252,6 +255,9 @@ def detect_presence(
                 )
                 box = _largest_face_box(boxes)
                 if box is None:
+                    # Face detector already saw a face — skip cascade micro-check.
+                    if face_frames >= min_face_frames and allow_static_face:
+                        return True
                     continue
                 x, y, w, h = box
                 patch = gray[y : y + h, x : x + w]
@@ -281,12 +287,12 @@ def detect_presence(
             return True
 
         if not liveness_diffs:
-            return False
+            # MediaPipe saw a face but cascade micro-motion unavailable — accept.
+            return face_frames >= min_face_frames
         return float(np.mean(liveness_diffs)) >= float(liveness_diff_threshold)
     finally:
         detector.close()
         cap.release()
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="One-shot face presence detection.")
