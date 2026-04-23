@@ -67,7 +67,8 @@ class RespiratoryAnalyzer:
     def __init__(self, window_seconds: float = 90.0, signal_method: str = "hybrid") -> None:
         self._window_seconds = max(30.0, float(window_seconds))
         self._signal_method = _normalize_signal_method(signal_method)
-        self._face_detectors = _build_face_detectors()
+        self._face_detectors = None
+        self._models_ready = False
         self._subscriber_name = "respiratory-analyzer"
         self._lock = threading.Lock()
         self._started_at = time.perf_counter()
@@ -81,11 +82,18 @@ class RespiratoryAnalyzer:
             "elapsed_seconds": 0.0,
         }
 
+    def _ensure_models(self) -> None:
+        if self._models_ready:
+            return
+        self._face_detectors = _build_face_detectors()
+        self._models_ready = True
+
     def analyze_frame(self, frame: np.ndarray) -> dict:
+        self._ensure_models()
         now = time.perf_counter()
         elapsed = now - self._started_at
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        found_face = _detect_primary_face(frame, gray, self._face_detectors)
+        found_face = _detect_primary_face(frame, gray, self._face_detectors or [])
         if found_face is not None:
             self._last_face = found_face
 
@@ -136,6 +144,7 @@ class RespiratoryAnalyzer:
         return latest
 
     def start_live(self, camera_manager: CameraManager) -> None:
+        self._ensure_models()
         with self._lock:
             self._started_at = time.perf_counter()
             self._signal = []

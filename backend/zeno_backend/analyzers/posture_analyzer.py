@@ -200,8 +200,8 @@ class PostureAnalyzer:
         camera_manager.subscribe(self._subscriber_name, self._process_frame)
 
     def stop_live(self, camera_manager: CameraManager) -> None:
+        # Keep PoseLandmarker loaded across focus cycles / stream restarts.
         camera_manager.unsubscribe(self._subscriber_name)
-        self.close()
 
     def latest_score(self) -> float:
         with self._lock:
@@ -258,12 +258,15 @@ class PostureAnalyzer:
 def analyze_posture(
     camera_index: int = 0,
     min_pose_presence_confidence: float = 0.5,
-    warmup_seconds: float = 0.6,
+    warmup_seconds: float = 0.2,
     preview_seconds: float = 0.0,
 ) -> float:
+    from zeno_backend.core.camera_manager import open_camera
+
     analyzer = PostureAnalyzer(min_pose_presence_confidence=min_pose_presence_confidence)
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
+    try:
+        cap = open_camera(camera_index, warmup_frames=2)
+    except RuntimeError:
         return 0.0
 
     try:
