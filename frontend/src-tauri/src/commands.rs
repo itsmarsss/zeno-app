@@ -1,16 +1,13 @@
 use crate::notifications::{notify_for_session, start_gesture_dismiss_listener};
 use crate::python_sidecar::{
     run_calibration_status_blocking, run_clear_data_blocking, run_daily_report_blocking,
-    run_export_sessions_csv_blocking, run_log_break_session_blocking,
-    run_log_breathing_session_blocking, run_log_exercise_session_blocking,
-    run_insight_cards_blocking, run_local_ai_status_blocking, run_monitor_timeline_blocking,
-    run_overview_aggregates_blocking,
-    run_posture_insights_blocking,
-    run_recalibrate_baseline_blocking,
-    run_study_coach_blocking,
-    run_presence_check_blocking, run_python_session_blocking, run_session_days_blocking,
-    run_session_history_blocking, run_settings_blocking,
-    run_update_session_notification_blocking,
+    run_activity_stats_blocking, run_exercise_history_blocking, run_export_sessions_csv_blocking,
+    run_log_break_session_blocking, run_log_breathing_session_blocking,
+    run_log_exercise_session_blocking, run_monitor_timeline_blocking,
+    run_overview_aggregates_blocking, run_posture_insights_blocking,
+    run_recalibrate_baseline_blocking, run_presence_check_blocking,
+    run_python_session_blocking, run_session_days_blocking, run_session_history_blocking,
+    run_settings_blocking, run_update_session_notification_blocking,
 };
 use crate::state::{
     FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
@@ -49,6 +46,32 @@ fn log_stream_stderr(name: &'static str, stderr: std::process::ChildStderr) {
     });
 }
 
+fn kill_stream_child(child: &mut Option<std::process::Child>) {
+    if let Some(mut process) = child.take() {
+        let _ = process.kill();
+        let _ = process.wait();
+    }
+}
+
+/// Free the webcam before a check-in so capture doesn't hang behind live streams.
+fn release_camera_streams(
+    posture: &PostureStreamState,
+    hr: &HrStreamState,
+    focus: &FocusStreamState,
+) {
+    if let Ok(mut guard) = posture.child.lock() {
+        kill_stream_child(&mut guard);
+    }
+    if let Ok(mut guard) = hr.child.lock() {
+        kill_stream_child(&mut guard);
+    }
+    if let Ok(mut guard) = focus.child.lock() {
+        kill_stream_child(&mut guard);
+    }
+    // Give AVFoundation a beat to release the device between processes.
+    std::thread::sleep(std::time::Duration::from_millis(250));
+}
+
 #[tauri::command]
 pub async fn run_python_session(
     emotion_backend: Option<String>,
@@ -56,6 +79,9 @@ pub async fn run_python_session(
     state: tauri::State<'_, SessionState>,
     notification_state: tauri::State<'_, NotificationState>,
     settings_state: tauri::State<'_, SettingsState>,
+    posture_state: tauri::State<'_, PostureStreamState>,
+    hr_state: tauri::State<'_, HrStreamState>,
+    focus_stream_state: tauri::State<'_, FocusStreamState>,
 ) -> Result<Value, String> {
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A session is already running.".to_string());
@@ -67,27 +93,48 @@ pub async fn run_python_session(
         .map(|g| g.focus_mode_active)
         .unwrap_or(false);
 
+    // Live posture/HR/focus sidecars hold the camera exclusive on macOS.
+    release_camera_streams(&posture_state, &hr_state, &focus_stream_state);
+    let _ = app.emit(
+        "session-progress",
+        serde_json::json!({ "phase": "camera", "message": "Opening camera…" }),
+    );
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         run_python_session_blocking(emotion_backend, focus_mode)
     })
     .await
-    .map_err(|e| format!("Session task join error: {e}"))?;
+    .map_err(|e| format!("Session task join error: {e}"));
 
     state.running.store(false, Ordering::SeqCst);
-    if let Ok(ref payload) = result {
-        if let Some(dispatch) = notify_for_session(&app, &notification_state, payload) {
-            let session_id = payload.get("session_id").and_then(|v| v.as_u64()).unwrap_or(0);
-            if session_id > 0 {
-                notification_state
-                    .last_notified_session_id
-                    .store(session_id, Ordering::SeqCst);
-                let _ = run_update_session_notification_blocking(
-                    session_id,
-                    Some(dispatch.kind),
-                    None,
-                );
+
+    let result = result?;
+    match &result {
+        Ok(payload) => {
+            let _ = app.emit(
+                "session-result",
+                serde_json::json!({ "source": "manual", "result": payload }),
+            );
+            if let Some(dispatch) = notify_for_session(&app, &notification_state, payload) {
+                let session_id = payload.get("session_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                if session_id > 0 {
+                    notification_state
+                        .last_notified_session_id
+                        .store(session_id, Ordering::SeqCst);
+                    let _ = run_update_session_notification_blocking(
+                        session_id,
+                        Some(dispatch.kind),
+                        None,
+                    );
+                }
+                start_gesture_dismiss_listener(&app);
             }
-            start_gesture_dismiss_listener(&app);
+        }
+        Err(err) => {
+            let _ = app.emit(
+                "session-error",
+                serde_json::json!({ "error": err }),
+            );
         }
     }
     result
@@ -98,12 +145,27 @@ pub async fn run_session_history(
     limit: Option<u32>,
     start_date: Option<String>,
     end_date: Option<String>,
+    max_days: Option<u32>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        run_session_history_blocking(limit, start_date, end_date)
+        run_session_history_blocking(limit, start_date, end_date, max_days)
     })
         .await
         .map_err(|e| format!("History task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_exercise_history(limit: Option<u32>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_exercise_history_blocking(limit))
+        .await
+        .map_err(|e| format!("Exercise history task join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn run_activity_stats() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(run_activity_stats_blocking)
+        .await
+        .map_err(|e| format!("Activity stats task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -128,44 +190,10 @@ pub async fn run_overview_aggregates(date_iso: Option<String>) -> Result<Value, 
 }
 
 #[tauri::command]
-pub async fn run_insight_cards(
-    date_iso: Option<String>,
-    force: Option<bool>,
-    allow_ai: Option<bool>,
-    model: Option<String>,
-) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_insight_cards_blocking(date_iso, force, allow_ai, model))
-        .await
-        .map_err(|e| format!("Insight cards task join error: {e}"))?
-}
-
-#[tauri::command]
-pub async fn run_local_ai_status(setup: Option<bool>, model: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_local_ai_status_blocking(setup, model))
-        .await
-        .map_err(|e| format!("Local AI status task join error: {e}"))?
-}
-
-#[tauri::command]
 pub async fn run_posture_insights(days: Option<u32>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || run_posture_insights_blocking(days))
         .await
         .map_err(|e| format!("Posture insights task join error: {e}"))?
-}
-
-#[tauri::command]
-pub async fn run_study_coach(
-    period: Option<String>,
-    date_iso: Option<String>,
-    force: Option<bool>,
-    allow_ai: Option<bool>,
-    model: Option<String>,
-) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        run_study_coach_blocking(period, date_iso, force, allow_ai, model)
-    })
-    .await
-    .map_err(|e| format!("Study coach task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -325,6 +353,15 @@ pub async fn run_monitor_timeline(
     .map_err(|e| format!("Monitor timeline task join error: {e}"))?
 }
 
+/// Hide the calling window. Used by the menubar popover close button so hide
+/// goes through a trusted invoke path (not only the JS window plugin ACL).
+#[tauri::command]
+pub fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window
+        .hide()
+        .map_err(|e| format!("Failed to hide window: {e}"))
+}
+
 #[tauri::command]
 pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -355,6 +392,23 @@ pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
     let window = builder
         .build()
         .map_err(|e| format!("Failed to create main window: {e}"))?;
+
+    // Ensure Dock / window chrome use the product icon (not the generic exec glyph).
+    let icon_candidates = [
+        project_root().join("frontend/src-tauri/icons/icon.png"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/icon.png"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/app-icon-source.png"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/128x128.png"),
+    ];
+    for path in icon_candidates {
+        if path.is_file() {
+            if let Ok(icon) = tauri::image::Image::from_path(&path) {
+                let _ = window.set_icon(icon);
+                break;
+            }
+        }
+    }
+
     let _ = window.show();
     let _ = window.set_focus();
     Ok(())

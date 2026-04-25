@@ -26,11 +26,7 @@ pub struct AppSettings {
     pub session_frequency_minutes: u32,
     pub daily_report_hour: u32,
     pub daily_report_minute: u32,
-    pub local_ai_insights_enabled: bool,
-    pub local_ai_model: String,
     pub onboarding_completed: bool,
-    pub plan_tier: String,
-    pub license_key: String,
 }
 
 impl Default for AppSettings {
@@ -41,11 +37,7 @@ impl Default for AppSettings {
             session_frequency_minutes: 10,
             daily_report_hour: 21,
             daily_report_minute: 0,
-            local_ai_insights_enabled: false,
-            local_ai_model: String::new(),
             onboarding_completed: false,
-            plan_tier: "free".to_string(),
-            license_key: String::new(),
         }
     }
 }

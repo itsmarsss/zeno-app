@@ -184,6 +184,7 @@ pub fn run_session_history_blocking(
     limit: Option<u32>,
     start_date: Option<String>,
     end_date: Option<String>,
+    max_days: Option<u32>,
 ) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -201,6 +202,9 @@ pub fn run_session_history_blocking(
     }
     if let Some(value) = end_date {
         cmd.arg("--end-date").arg(value);
+    }
+    if let Some(value) = max_days {
+        cmd.arg("--max-days").arg(value.max(1).to_string());
     }
 
     let output = cmd
@@ -313,91 +317,6 @@ pub fn run_overview_aggregates_blocking(date_iso: Option<String>) -> Result<Valu
     parse_json_line(&stdout)
 }
 
-pub fn run_insight_cards_blocking(
-    date_iso: Option<String>,
-    force: Option<bool>,
-    allow_ai: Option<bool>,
-    model: Option<String>,
-) -> Result<Value, String> {
-    let root = project_root();
-    let python_bin = resolve_python_bin(&root);
-    let backend_dir = resolve_backend_dir(&root)?;
-
-    let mut cmd = Command::new(python_bin);
-    cmd.current_dir(&backend_dir)
-        .arg("-m")
-        .arg("zeno_backend.data.insight_cards");
-    if let Some(date) = date_iso {
-        cmd.arg("--date").arg(date);
-    }
-    if force.unwrap_or(false) {
-        cmd.arg("--force");
-    }
-    if !allow_ai.unwrap_or(true) {
-        cmd.arg("--no-ai");
-    }
-    if let Some(selected_model) = model {
-        if !selected_model.trim().is_empty() {
-            cmd.arg("--model").arg(selected_model);
-        }
-    }
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to run insight cards: {e}"))?;
-    debug_log_python_output("insight_cards", &output);
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        return Err(format!(
-            "Insight cards failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
-            stdout,
-            stderr
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    parse_json_line(&stdout)
-}
-
-pub fn run_local_ai_status_blocking(setup: Option<bool>, model: Option<String>) -> Result<Value, String> {
-    let root = project_root();
-    let python_bin = resolve_python_bin(&root);
-    let backend_dir = resolve_backend_dir(&root)?;
-
-    let mut cmd = Command::new(python_bin);
-    cmd.current_dir(&backend_dir)
-        .arg("-m")
-        .arg("zeno_backend.data.local_ai_status");
-    if setup.unwrap_or(false) {
-        cmd.arg("--setup");
-    }
-    if let Some(selected_model) = model {
-        if !selected_model.trim().is_empty() {
-            cmd.arg("--model").arg(selected_model);
-        }
-    }
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to run local AI status: {e}"))?;
-    debug_log_python_output("local_ai_status", &output);
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        return Err(format!(
-            "Local AI status failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
-            stdout,
-            stderr
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    parse_json_line(&stdout)
-}
-
 pub fn run_posture_insights_blocking(days: Option<u32>) -> Result<Value, String> {
     let root = project_root();
     let python_bin = resolve_python_bin(&root);
@@ -419,58 +338,6 @@ pub fn run_posture_insights_blocking(days: Option<u32>) -> Result<Value, String>
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         return Err(format!(
             "Posture insights failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
-            stdout,
-            stderr
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    parse_json_line(&stdout)
-}
-
-pub fn run_study_coach_blocking(
-    period: Option<String>,
-    date_iso: Option<String>,
-    force: Option<bool>,
-    allow_ai: Option<bool>,
-    model: Option<String>,
-) -> Result<Value, String> {
-    let root = project_root();
-    let python_bin = resolve_python_bin(&root);
-    let backend_dir = resolve_backend_dir(&root)?;
-
-    let mut cmd = Command::new(python_bin);
-    cmd.current_dir(&backend_dir)
-        .arg("-m")
-        .arg("zeno_backend.data.study_coach");
-    if let Some(period_value) = period {
-        cmd.arg("--period").arg(period_value);
-    }
-    if let Some(date_value) = date_iso {
-        cmd.arg("--date").arg(date_value);
-    }
-    if force.unwrap_or(false) {
-        cmd.arg("--force");
-    }
-    if !allow_ai.unwrap_or(true) {
-        cmd.arg("--no-ai");
-    }
-    if let Some(selected_model) = model {
-        if !selected_model.trim().is_empty() {
-            cmd.arg("--model").arg(selected_model);
-        }
-    }
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to run study coach: {e}"))?;
-    debug_log_python_output("study_coach", &output);
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        return Err(format!(
-            "Study coach failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
             output.status.code(),
             stdout,
             stderr
@@ -771,6 +638,63 @@ pub fn run_update_session_notification_blocking(
         ));
     }
 
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_exercise_history_blocking(limit: Option<u32>) -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let mut cmd = Command::new(python_bin);
+    cmd.current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.exercise_history");
+    if let Some(value) = limit {
+        cmd.arg("--limit").arg(value.max(1).to_string());
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to read exercise history: {e}"))?;
+    debug_log_python_output("exercise_history", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Exercise history failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_json_line(&stdout)
+}
+
+pub fn run_activity_stats_blocking() -> Result<Value, String> {
+    let root = project_root();
+    let python_bin = resolve_python_bin(&root);
+    let backend_dir = resolve_backend_dir(&root)?;
+
+    let output = Command::new(python_bin)
+        .current_dir(&backend_dir)
+        .arg("-m")
+        .arg("zeno_backend.data.activity_stats")
+        .output()
+        .map_err(|e| format!("Failed to read activity stats: {e}"))?;
+    debug_log_python_output("activity_stats", &output);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        return Err(format!(
+            "Activity stats failed (code: {:?})\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        ));
+    }
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     parse_json_line(&stdout)
 }
