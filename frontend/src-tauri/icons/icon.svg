@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Zeno">
+  <!--
+    Friendly flat mark for Zeno.
+    UI cues: warm cream, accent green, sidebar pulse-dot brand.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="180" y1="0" x2="860" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5BA882"/>
+      <stop offset="50%" stop-color="#2D6A4F"/>
+      <stop offset="100%" stop-color="#255C44"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="512" y1="0" x2="512" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" ry="228" fill="url(#sheen)"/>
+
+  <!-- Soft halo (presence), low contrast so it stays calm not "target" -->
+  <circle cx="512" cy="512" r="290" fill="#F7F5F2" fill-opacity="0.12"/>
+  <circle cx="512" cy="512" r="220" fill="#F7F5F2" fill-opacity="0.16"/>
+
+  <!-- Brand pulse: cream disc + green core -->
+  <circle cx="512" cy="512" r="128" fill="#F7F5F2"/>
+  <circle cx="512" cy="512" r="72" fill="#2D6A4F"/>
+</svg>
