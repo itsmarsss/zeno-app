@@ -12,7 +12,7 @@ def run_session(
     preview: bool = False,
     focus_mode: bool = False,
     shared_camera: bool = False,
-    passive_duration_seconds: float = 30.0,
+    passive_duration_seconds: float = 18.0,
     hsemotion_model: str = "enet_b0_8_best_afew",
     hsemotion_model_path: str | None = None,
 ) -> dict:
@@ -48,6 +48,7 @@ def run_session(
             "rr_confidence": "none",
             "emotion_backend": emotion_backend,
             "mode": "focus" if focus_mode else "passive",
+            "focus_mode": bool(focus_mode),
             "focus_duration_seconds": 0 if not focus_mode else int(duration_seconds),
             "session_duration_seconds": duration_seconds,
         }
@@ -88,6 +89,7 @@ def run_session(
         "rr_confidence": "none",
         "emotion_backend": emotion_backend,
         "mode": "focus" if focus_mode else "passive",
+        "focus_mode": bool(focus_mode),
         "focus_duration_seconds": 0 if not focus_mode else int(duration_seconds),
         "session_duration_seconds": duration_seconds,
     }
