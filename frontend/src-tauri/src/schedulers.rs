@@ -150,7 +150,8 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
                 .unwrap_or_default();
 
             let timer_state = app_handle.state::<FocusTimerState>();
-            let title = if settings.focus_mode_active {
+            // Menubar shows icon only unless focus mode is on — then just the timer.
+            let title: Option<String> = if settings.focus_mode_active {
                 let now = now_unix_secs();
                 let current = timer_state.started_at_unix.load(Ordering::SeqCst);
                 let started_at = if current == 0 {
@@ -180,7 +181,11 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
                         }),
                     );
                 }
-                format!("zeno · {}m", elapsed_minutes)
+                Some(if elapsed_minutes >= 60 {
+                    format!("{}h {:02}m", elapsed_minutes / 60, elapsed_minutes % 60)
+                } else {
+                    format!("{}m", elapsed_minutes)
+                })
             } else {
                 if was_active {
                     let started_at = timer_state.started_at_unix.load(Ordering::SeqCst);
@@ -211,17 +216,20 @@ pub fn start_focus_mode_timer(app: &tauri::AppHandle) {
                     .store(false, Ordering::SeqCst);
                 timer_state.stress_sum.store(0, Ordering::SeqCst);
                 timer_state.stress_samples.store(0, Ordering::SeqCst);
-                "zeno".to_string()
+                None
             };
             was_active = settings.focus_mode_active;
 
-            if title == last_title {
+            // Empty string = no menubar text (icon only).
+            let title_key = title.clone().unwrap_or_default();
+            if title_key == last_title {
                 continue;
             }
 
             if let Some(tray) = app_handle.tray_by_id("zeno-tray") {
-                let _ = tray.set_title(Some(title.clone()));
-                last_title = title;
+                // None clears the title so idle tray is icon-only.
+                let _ = tray.set_title(title);
+                last_title = title_key;
             }
         }
     });

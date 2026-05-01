@@ -7,14 +7,13 @@ mod schedulers;
 mod state;
 
 use commands::{
-    open_main_window, run_calibration_status, run_clear_data, run_daily_report, run_get_settings,
-    run_export_sessions_csv, run_log_break_session, run_log_breathing_session,
-    run_insight_cards, run_local_ai_status, run_log_exercise_session, run_monitor_timeline, run_overview_aggregates,
-    run_posture_insights, run_presence_check, run_python_session, run_session_days, run_session_history,
-    run_study_coach, run_recalibrate_baseline,
-    run_update_settings,
-    start_focus_stream, start_hr_stream, start_posture_stream, stop_focus_stream, stop_hr_stream,
-    stop_posture_stream,
+    hide_window, open_main_window, run_activity_stats, run_calibration_status, run_clear_data,
+    run_daily_report, run_exercise_history, run_export_sessions_csv, run_get_settings,
+    run_log_break_session, run_log_breathing_session, run_log_exercise_session,
+    run_monitor_timeline, run_overview_aggregates, run_posture_insights, run_presence_check,
+    run_python_session, run_recalibrate_baseline, run_session_days, run_session_history,
+    run_update_settings, start_focus_stream, start_hr_stream, start_posture_stream,
+    stop_focus_stream, stop_hr_stream, stop_posture_stream,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
@@ -24,14 +23,38 @@ use state::{
     FocusStreamState, FocusTimerState, HrStreamState, NotificationState, PostureStreamState,
     ReportState, SessionState, SettingsState,
 };
+use std::path::PathBuf;
 use tauri::{
+    image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    window::Color,
     Manager, PhysicalPosition, Position, Rect, Size, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
+
+fn icons_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("icons")
+}
+
+fn load_app_icon() -> Option<Image<'static>> {
+    let candidates = [
+        icons_dir().join("icon.png"),
+        icons_dir().join("app-icon-source.png"),
+        icons_dir().join("128x128.png"),
+        icons_dir().join("henry.w@example.net"),
+    ];
+    for path in candidates {
+        if path.is_file() {
+            if let Ok(image) = Image::from_path(&path) {
+                return Some(image);
+            }
+        }
+    }
+    None
+}
 
 fn check_for_updates_on_launch(app: &tauri::AppHandle) {
     let app_handle = app.clone();
@@ -98,10 +121,13 @@ fn tray_anchor_point(
     scale_factor: f64,
 ) -> (f64, f64) {
     let (x, y, width, height) = rect_as_physical(rect, scale_factor);
+    // Keep the popover snug under the menu bar (only a couple physical px of air).
+    // Extra gap used to come from this offset stacked with CSS top margin.
+    let gap = (2.0 * scale_factor).max(2.0);
     if width > 0.0 && height > 0.0 {
-        (x + width / 2.0, y + height + 8.0)
+        (x + width / 2.0, y + height + gap)
     } else {
-        (click_position.x, click_position.y + 12.0)
+        (click_position.x, click_position.y + gap)
     }
 }
 
@@ -171,10 +197,7 @@ fn main() {
             run_session_days,
             run_daily_report,
             run_overview_aggregates,
-            run_insight_cards,
-            run_local_ai_status,
             run_posture_insights,
-            run_study_coach,
             run_get_settings,
             run_update_settings,
             run_clear_data,
@@ -184,8 +207,11 @@ fn main() {
             run_presence_check,
             run_log_break_session,
             run_log_exercise_session,
+            run_exercise_history,
+            run_activity_stats,
             run_export_sessions_csv,
             run_monitor_timeline,
+            hide_window,
             open_main_window,
             start_posture_stream,
             stop_posture_stream,
@@ -202,20 +228,42 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|window, event| {
-            if window.label() == "main-window" {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    #[cfg(target_os = "macos")]
-                    let _ = window
-                        .app_handle()
-                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
+            match window.label() {
+                "main-window" => {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        #[cfg(target_os = "macos")]
+                        let _ = window
+                            .app_handle()
+                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
                 }
+                "main" => {
+                    // Close menubar popover when user focuses elsewhere — but keep it
+                    // open during an active check-in so progress/state stay visible.
+                    if let WindowEvent::Focused(false) = event {
+                        let session_busy = window
+                            .app_handle()
+                            .try_state::<SessionState>()
+                            .map(|s| s.running.load(std::sync::atomic::Ordering::SeqCst))
+                            .unwrap_or(false);
+                        if !session_busy {
+                            let _ = window.hide();
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Force a fully transparent webview/window fill for rounded CSS chrome.
+            if let Some(popover) = app.get_webview_window("main") {
+                let _ = popover.set_background_color(Some(Color(0, 0, 0, 0)));
+            }
 
             if let Ok(settings) = run_settings_blocking(None) {
                 let settings_state = app.state::<SettingsState>();
@@ -235,11 +283,17 @@ fn main() {
                 .item(&quit_item)
                 .build()?;
 
+            let tray_icon = load_app_icon().unwrap_or_else(|| {
+                app.default_window_icon()
+                    .expect("default window icon")
+                    .clone()
+            });
+
+            // Icon only by default — tray title is reserved for live focus timer text.
             let _tray = TrayIconBuilder::with_id("zeno-tray")
-                .title("zeno")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -257,7 +311,10 @@ fn main() {
                             } else {
                                 position_popover_window(&window, &position, &rect);
                                 println!("[tray] show main window");
+                                // Transparent window + CSS shadow (no native rectangular shadow).
+                                let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
                                 let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         } else {
                             println!("[tray] main window not found");
@@ -268,6 +325,7 @@ fn main() {
                     "quit" => app.exit(0),
                     "open" => {
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
