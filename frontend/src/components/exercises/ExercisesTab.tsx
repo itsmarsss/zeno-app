@@ -1,31 +1,29 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Clock3, Play, Search } from 'lucide-react'
+import { ArrowLeft, Clock3, Play, RotateCcw, Search, Square } from 'lucide-react'
 import { PostureFrame } from '../common/PostureFrame'
 import type { Exercise, PostureLandmarks, PostureStreamFrame } from '../../shared/types'
 import './ExercisesTab.css'
 import { easeOut, springToggle } from '../../shared/motion'
 
-type ExerciseCategory = 'all' | 'neck' | 'shoulders' | 'upper-back' | 'eyes' | 'breathing'
+type ExerciseCategory = 'all' | 'neck' | 'shoulders' | 'upper-back'
 
 const CATEGORIES: Array<{ key: ExerciseCategory; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'neck', label: 'Neck' },
   { key: 'shoulders', label: 'Shoulders' },
   { key: 'upper-back', label: 'Upper back' },
-  { key: 'eyes', label: 'Eyes' },
-  { key: 'breathing', label: 'Breathing' },
 ]
-
-const SUGGESTED_IDS = new Set(['chin-tuck', 'wall-angels', 'scap-squeeze'])
 
 function categoryForExercise(exercise: Exercise): ExerciseCategory {
   const text = `${exercise.name} ${exercise.target}`.toLowerCase()
   if (text.includes('neck') || text.includes('chin')) return 'neck'
-  if (text.includes('shoulder') || text.includes('scap')) return 'shoulders'
-  if (text.includes('upper back') || text.includes('thoracic') || text.includes('spine')) return 'upper-back'
-  if (text.includes('eye')) return 'eyes'
-  if (text.includes('breath')) return 'breathing'
+  if (text.includes('shoulder') || text.includes('scap') || text.includes('chest') || text.includes('pec')) {
+    return 'shoulders'
+  }
+  if (text.includes('upper back') || text.includes('thoracic') || text.includes('spine') || text.includes('side')) {
+    return 'upper-back'
+  }
   return 'all'
 }
 
@@ -42,30 +40,62 @@ function exerciseLineArt(exerciseId: string): string {
   return 'M 16 78 C 34 56, 66 56, 84 78 M 44 45 L 56 45 M 50 45 L 50 30'
 }
 
+export type ExerciseSessionSummary = {
+  exerciseId: string
+  exerciseName: string
+  completed: boolean
+  repCount: number
+  targetReps: number
+  formScore: number | null
+  durationSeconds: number
+  holdSeconds: number
+}
+
 export function ExercisesTab({
   exercises,
   selectedExerciseId,
   setSelectedExerciseId,
   exerciseGuidedActive,
   toggleGuided,
+  startGuided,
+  stopGuided,
   postureStreamState,
   exerciseMetrics,
   postureFrame,
   postureLandmarks,
   exerciseFeedback,
-  paywallMessage,
+  recommendedIds,
+  sessionSummary,
+  onDismissSummary,
+  onDoAgain,
+  recentHistory = [],
+  softSuggestionId = null,
 }: {
   exercises: Exercise[]
   selectedExerciseId: string
   setSelectedExerciseId: (value: string) => void
   exerciseGuidedActive: boolean
   toggleGuided: (exerciseId?: string) => void
+  startGuided: (exerciseId: string) => void
+  stopGuided: () => void
   postureStreamState: 'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
   exerciseMetrics: PostureStreamFrame['exercise_metrics']
   postureFrame: string | null
   postureLandmarks: PostureLandmarks
   exerciseFeedback: string | null
-  paywallMessage: string | null
+  recommendedIds: string[]
+  sessionSummary: ExerciseSessionSummary | null
+  onDismissSummary: () => void
+  onDoAgain: () => void
+  recentHistory?: Array<{
+    id: number
+    timestamp: string
+    exercise_id: string
+    completed: boolean
+    form_score: number | null
+    duration_seconds: number
+  }>
+  softSuggestionId?: string | null
 }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<ExerciseCategory>('all')
@@ -74,6 +104,12 @@ export function ExercisesTab({
     () => exercises.find((exercise) => exercise.id === selectedExerciseId) ?? exercises[0] ?? null,
     [exercises, selectedExerciseId],
   )
+
+  const suggestedIds = useMemo(() => {
+    const fromInsights = recommendedIds.filter((id) => exercises.some((ex) => ex.id === id))
+    if (fromInsights.length > 0) return new Set(fromInsights.slice(0, 3))
+    return new Set(['chin-tuck', 'wall-angels', 'scap-squeeze'])
+  }, [recommendedIds, exercises])
 
   const filteredExercises = useMemo(
     () =>
@@ -87,11 +123,90 @@ export function ExercisesTab({
     [exercises, query, category],
   )
 
-  const activeInstruction = exerciseFeedback ?? selectedExercise?.steps[0] ?? 'Hold still and breathe naturally.'
+  const nextSuggestion = useMemo(() => {
+    if (!selectedExercise) return exercises[0] ?? null
+    const suggested = exercises.find((ex) => suggestedIds.has(ex.id) && ex.id !== selectedExercise.id)
+    if (suggested) return suggested
+    return exercises.find((ex) => ex.id !== selectedExercise.id) ?? null
+  }, [exercises, selectedExercise, suggestedIds])
+
+  const activeInstruction =
+    exerciseFeedback ?? selectedExercise?.steps[0] ?? 'Hold still and breathe naturally.'
   const repCount = exerciseMetrics?.rep_count ?? 0
-  const repTarget = exerciseMetrics?.target_reps ?? 3
-  const phaseSeconds = Math.max(0, 10 - Math.min(10, exerciseMetrics?.hold_seconds ?? 0))
+  const repTarget = exerciseMetrics?.target_reps ?? 10
+  const holdTarget = exerciseMetrics?.hold_target_seconds ?? null
+  const repHold = exerciseMetrics?.rep_hold_seconds ?? 0
   const progressPct = Math.max(0, Math.min(100, Math.round(exerciseMetrics?.progress_pct ?? 0)))
+  const phaseSeconds =
+    holdTarget != null
+      ? Math.max(0, Math.ceil(holdTarget - repHold))
+      : Math.max(0, 10 - Math.min(10, exerciseMetrics?.hold_seconds ?? 0))
+
+  // Completion screen
+  if (sessionSummary) {
+    const formPct =
+      sessionSummary.formScore == null ? null : Math.round(Math.max(0, Math.min(1, sessionSummary.formScore)) * 100)
+    return (
+      <motion.section
+        className="exercise-complete"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={easeOut}
+      >
+        <div className="exercise-complete-card">
+          <div className={`exercise-complete-mark ${sessionSummary.completed ? 'is-done' : 'is-partial'}`}>
+            <svg viewBox="0 0 52 52" className="exercise-check-svg" aria-hidden>
+              <circle cx="26" cy="26" r="24" className="exercise-check-ring" />
+              {sessionSummary.completed ? (
+                <path className="exercise-check-path" d="M14 27 L22 35 L38 17" />
+              ) : (
+                <path className="exercise-check-path" d="M18 26 L34 26" />
+              )}
+            </svg>
+          </div>
+          <h2>{sessionSummary.completed ? 'Nice work' : 'Session saved'}</h2>
+          <p className="exercise-complete-sub">{sessionSummary.exerciseName}</p>
+
+          <div className="exercise-complete-stats">
+            <div>
+              <strong>
+                {sessionSummary.repCount}/{sessionSummary.targetReps}
+              </strong>
+              <span>Reps</span>
+            </div>
+            <div>
+              <strong>{formPct == null ? '—' : `${formPct}%`}</strong>
+              <span>Form</span>
+            </div>
+            <div>
+              <strong>{Math.max(1, Math.round(sessionSummary.durationSeconds / 60))}m</strong>
+              <span>Time</span>
+            </div>
+          </div>
+
+          <div className="exercise-complete-actions">
+            <button className="exercise-complete-primary" onClick={onDoAgain}>
+              <RotateCcw size={14} /> Do it again
+            </button>
+            {nextSuggestion && (
+              <button
+                className="exercise-complete-secondary"
+                onClick={() => {
+                  onDismissSummary()
+                  startGuided(nextSuggestion.id)
+                }}
+              >
+                <Play size={14} /> Try {nextSuggestion.name}
+              </button>
+            )}
+            <button className="exercise-complete-ghost" onClick={onDismissSummary}>
+              Back to exercises
+            </button>
+          </div>
+        </div>
+      </motion.section>
+    )
+  }
 
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -113,10 +228,14 @@ export function ExercisesTab({
             />
 
             <div className="exercise-phase-badge">
-              {exerciseMetrics?.target_active ? 'Hold still' : 'Adjust posture'}
+              {exerciseMetrics?.target_active
+                ? holdTarget != null
+                  ? 'Hold'
+                  : 'Good form'
+                : 'Find position'}
             </div>
             <div className="exercise-rep-badge">
-              Rep {repCount} of {repTarget}
+              Rep {Math.min(repCount, repTarget)} of {repTarget}
             </div>
 
             <div className="exercise-overlay-bottom">
@@ -139,7 +258,7 @@ export function ExercisesTab({
           </div>
 
           <aside className="exercise-coach-panel">
-            <button className="exercise-back-link" onClick={() => toggleGuided()}>
+            <button className="exercise-back-link" onClick={stopGuided}>
               <ArrowLeft size={14} /> Back to exercises
             </button>
             <h2>{selectedExercise.name}</h2>
@@ -147,7 +266,9 @@ export function ExercisesTab({
             <hr />
 
             <div className="exercise-phase-hero">
-              <p className="exercise-phase-label">Current phase</p>
+              <p className="exercise-phase-label">
+                {holdTarget != null ? 'Hold remaining' : 'Coaching'}
+              </p>
               <AnimatePresence mode="wait" initial={false}>
                 <motion.p
                   key={`phase-${activeInstruction}`}
@@ -163,7 +284,7 @@ export function ExercisesTab({
 
               <div className="exercise-timer-row">
                 <p className="exercise-timer">{phaseSeconds}</p>
-                <span>seconds</span>
+                <span>{holdTarget != null ? 'sec hold' : 'seconds'}</span>
                 <svg viewBox="0 0 40 40" className="exercise-ring">
                   <circle cx="20" cy="20" r="16" className="ring-base" />
                   <circle
@@ -179,14 +300,12 @@ export function ExercisesTab({
 
             <hr />
             <div className="exercise-overall-progress">
-              <p>Exercise progress</p>
+              <p>Exercise progress · {progressPct}%</p>
               <div className="exercise-phase-dots">
-                {selectedExercise.steps.map((step, index) => (
+                {Array.from({ length: Math.min(repTarget, 10) }).map((_, index) => (
                   <motion.i
-                    key={step}
-                    className={
-                      index <= Math.floor((progressPct / 100) * (selectedExercise.steps.length - 1)) ? 'is-done' : ''
-                    }
+                    key={index}
+                    className={index < repCount ? 'is-done' : ''}
                     layout
                     transition={springToggle}
                   />
@@ -199,8 +318,14 @@ export function ExercisesTab({
                 ? 'Live coaching active'
                 : postureStreamState === 'connecting'
                   ? 'Connecting to camera...'
-                  : (paywallMessage ?? 'Waiting for camera feed...')}
+                  : postureStreamState === 'no-pose'
+                    ? 'Step into frame so we can see your shoulders'
+                    : 'Waiting for camera feed...'}
             </p>
+
+            <button className="exercise-stop-btn" onClick={stopGuided}>
+              <Square size={12} /> Stop exercise
+            </button>
           </aside>
         </motion.section>
       ) : (
@@ -225,6 +350,21 @@ export function ExercisesTab({
             </label>
           </header>
 
+          {softSuggestionId && (
+            <button
+              className="exercise-soft-suggest"
+              onClick={() => {
+                setSelectedExerciseId(softSuggestionId)
+                startGuided(softSuggestionId)
+              }}
+            >
+              <span>Posture drift earlier</span>
+              <strong>
+                Try {exercises.find((ex) => ex.id === softSuggestionId)?.name ?? 'a reset'} →
+              </strong>
+            </button>
+          )}
+
           <div className="exercise-pill-row">
             {CATEGORIES.map((pill) => (
               <button
@@ -239,10 +379,13 @@ export function ExercisesTab({
 
           <section className="exercise-grid-v2">
             {filteredExercises.map((exercise) => {
-              const isSuggested = SUGGESTED_IDS.has(exercise.id)
+              const isSuggested = suggestedIds.has(exercise.id)
               const isSelected = selectedExercise?.id === exercise.id
               return (
-                <article key={exercise.id} className={`exercise-v2-card ${isSelected ? 'is-selected' : ''}`}>
+                <article
+                  key={exercise.id}
+                  className={`exercise-v2-card ${isSelected ? 'is-selected' : ''}`}
+                >
                   <div className="exercise-v2-illustration">
                     <svg viewBox="0 0 100 100">
                       <path d={exerciseLineArt(exercise.id)} />
@@ -271,7 +414,7 @@ export function ExercisesTab({
                       className="exercise-v2-start"
                       onClick={() => {
                         setSelectedExerciseId(exercise.id)
-                        toggleGuided(exercise.id)
+                        startGuided(exercise.id)
                       }}
                     >
                       <Play size={12} /> Begin exercise
@@ -281,6 +424,52 @@ export function ExercisesTab({
               )
             })}
           </section>
+
+          {filteredExercises.length === 0 && (
+            <p className="exercise-empty">No exercises match that filter.</p>
+          )}
+
+          {recentHistory.length > 0 && (
+            <section className="exercise-history">
+              <div className="exercise-history-head">
+                <h3>Recent sessions</h3>
+                <span>{recentHistory.length} logged</span>
+              </div>
+              <ul className="exercise-history-list">
+                {recentHistory.slice(0, 8).map((item) => {
+                  const name =
+                    exercises.find((ex) => ex.id === item.exercise_id)?.name ?? item.exercise_id
+                  const formPct =
+                    item.form_score == null
+                      ? null
+                      : Math.round(Math.max(0, Math.min(1, item.form_score)) * 100)
+                  const when = item.timestamp
+                    ? new Date(item.timestamp).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })
+                    : '—'
+                  return (
+                    <li key={item.id}>
+                      <div>
+                        <strong>{name}</strong>
+                        <span>{when}</span>
+                      </div>
+                      <div className="exercise-history-meta">
+                        <span className={item.completed ? 'is-done' : ''}>
+                          {item.completed ? 'Done' : 'Partial'}
+                        </span>
+                        <span>{formPct == null ? '—' : `${formPct}% form`}</span>
+                        <span>{Math.max(1, Math.round(item.duration_seconds / 60))}m</span>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

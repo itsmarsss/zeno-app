@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, CheckCircle2, ChevronRight, Download, ExternalLink, Loader2, LogOut, Trash2, User } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
+import { Check, ChevronRight, Download, ExternalLink, Loader2, Trash2 } from 'lucide-react'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
-import { useAuth } from '../../context/AuthContext'
 import './SettingsTab.css'
 import { easeOut } from '../../shared/motion'
 
@@ -54,9 +52,6 @@ const SHEET_LABELS: Record<SelectKey, string> = {
 export function SettingsTab({
   settings,
   updateSettings,
-  isPro,
-  licenseInput,
-  setLicenseInput,
   calibration,
   replayOnboarding,
   clearAllData,
@@ -67,9 +62,6 @@ export function SettingsTab({
 }: {
   settings: AppSettings | null
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>
-  isPro: boolean
-  licenseInput: string
-  setLicenseInput: (value: string) => void
   calibration: CalibrationStatus | null
   replayOnboarding: () => void
   clearAllData: () => Promise<void>
@@ -78,19 +70,6 @@ export function SettingsTab({
   onExportData: () => Promise<void>
   exportMessage: string | null
 }) {
-  const [aiStatus, setAiStatus] = useState<{
-    reachable: boolean
-    model: string
-    model_available: boolean
-    installed_models: string[]
-    setup_attempted: boolean
-    setup_succeeded: boolean
-    message: string
-  } | null>(null)
-  const [aiStatusState, setAiStatusState] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [aiSetupState, setAiSetupState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [aiSetupStartedAt, setAiSetupStartedAt] = useState<number | null>(null)
-  const [aiSetupElapsedSec, setAiSetupElapsedSec] = useState(0)
   const [cameraIndicator, setCameraIndicator] = useState(true)
   const [postureNudges, setPostureNudges] = useState(true)
   const [stressNudges, setStressNudges] = useState(true)
@@ -98,13 +77,9 @@ export function SettingsTab({
   const [focusWarning, setFocusWarning] = useState('90')
   const [nudgeGap, setNudgeGap] = useState('20')
   const [startMode, setStartMode] = useState('login')
-  const [licenseExpanded, setLicenseExpanded] = useState(false)
   const [clearExpanded, setClearExpanded] = useState(false)
   const [checkingUpdates, setCheckingUpdates] = useState<'idle' | 'loading' | 'updated'>('idle')
   const [activeSheet, setActiveSheet] = useState<SelectKey | null>(null)
-  const [licenseError, setLicenseError] = useState<string | null>(null)
-  const [deleteAccountExpanded, setDeleteAccountExpanded] = useState(false)
-  const { user, isGuest, logout } = useAuth()
 
   const passiveMonitoring = !(settings?.monitoring_paused ?? false)
   const frequencyValue = String(settings?.session_frequency_minutes ?? 10)
@@ -121,46 +96,6 @@ export function SettingsTab({
     report_time: reportValue,
     start_mode: startMode,
   }
-
-  async function checkLocalAiStatus(setup = false) {
-    setAiStatusState('loading')
-    try {
-      const payload = await invoke<{
-        reachable: boolean
-        model: string
-        model_available: boolean
-        installed_models: string[]
-        setup_attempted: boolean
-        setup_succeeded: boolean
-        message: string
-      }>('run_local_ai_status', { setup, model: settings?.local_ai_model?.trim() ? settings.local_ai_model : undefined })
-      setAiStatus(payload)
-      setAiStatusState('idle')
-    } catch {
-      setAiStatusState('error')
-    }
-  }
-
-  useEffect(() => {
-    if (settings?.local_ai_insights_enabled) {
-      void checkLocalAiStatus(false)
-    } else {
-      setAiStatus(null)
-      setAiStatusState('idle')
-      setAiSetupState('idle')
-      setAiSetupStartedAt(null)
-      setAiSetupElapsedSec(0)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.local_ai_insights_enabled, settings?.local_ai_model])
-
-  useEffect(() => {
-    if (aiSetupState !== 'running' || aiSetupStartedAt == null) return
-    const timer = window.setInterval(() => {
-      setAiSetupElapsedSec(Math.max(0, Math.floor((Date.now() - aiSetupStartedAt) / 1000)))
-    }, 500)
-    return () => window.clearInterval(timer)
-  }, [aiSetupStartedAt, aiSetupState])
 
   function selectLabel(key: SelectKey): string {
     const options = SELECT_OPTIONS[key]
@@ -188,17 +123,6 @@ export function SettingsTab({
     setActiveSheet(null)
   }
 
-  async function activateLicense() {
-    const trimmed = licenseInput.trim()
-    if (trimmed.length < 8) {
-      setLicenseError('Key not recognized. Check your email.')
-      return
-    }
-    setLicenseError(null)
-    await updateSettings({ license_key: trimmed, plan_tier: trimmed.length > 10 ? 'pro' : 'free' })
-    window.setTimeout(() => setLicenseExpanded(false), 2000)
-  }
-
   async function checkUpdates() {
     setCheckingUpdates('loading')
     window.setTimeout(() => setCheckingUpdates('updated'), 1200)
@@ -208,139 +132,8 @@ export function SettingsTab({
     <section className="settings-page">
       <header className="settings-header">
         <h1>Settings</h1>
-        <p>How Zeno works for you</p>
+        <p>How Zeno works for you — everything stays on this device</p>
       </header>
-
-      {!isGuest && (
-        <section className="settings-section">
-          <p className="settings-section-title">Account</p>
-          <div className="settings-card">
-            <div className="settings-row settings-row--info">
-              <div className="settings-account-info">
-                <User size={16} className="settings-account-icon" />
-                <div>
-                  <strong>{user?.email || 'Not signed in'}</strong>
-                  <p>
-                    {user?.subscriptionTier === 'paid' ? 'Paid subscription' : 'Free tier'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-row settings-row--info settings-referral-row">
-              <div>
-                <strong>Your referral code</strong>
-                <p>Share with friends to earn rewards</p>
-              </div>
-              <div className="settings-referral-code">
-                <code>{user?.referralCode || 'ZENO-XXXX'}</code>
-                <button
-                  className="settings-copy-btn"
-                  onClick={() => {
-                    if (user?.referralCode) {
-                      navigator.clipboard.writeText(user.referralCode)
-                    }
-                  }}
-                  title="Copy code"
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-
-            {user?.subscriptionTier === 'free' && (
-              <button className="settings-row settings-row--select">
-                <div>
-                  <strong>Upgrade to paid</strong>
-                  <p>Unlock higher rate limits and priority support</p>
-                </div>
-                <span>
-                  <ExternalLink size={12} /> <ChevronRight size={14} />
-                </span>
-              </button>
-            )}
-
-            <button className="settings-row settings-row--action" onClick={logout}>
-              <div>
-                <strong>Sign out</strong>
-                <p>You'll lose access to AI insights</p>
-              </div>
-              <span className="settings-action-cta">
-                <LogOut size={14} /> Sign out
-              </span>
-            </button>
-
-            <button
-              className="settings-row settings-row--danger"
-              onClick={() => setDeleteAccountExpanded((value) => !value)}
-            >
-              <div>
-                <strong>Delete account</strong>
-                <p>Permanently delete your account and all data</p>
-              </div>
-              <span>
-                <Trash2 size={14} />
-              </span>
-            </button>
-
-            <AnimatePresence initial={false}>
-              {deleteAccountExpanded && (
-                <motion.div
-                  className="settings-inline-block settings-inline-block--danger"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={easeOut}
-                >
-                  <p>
-                    This will permanently delete your account, all analysis history, and cached insights. Your local session
-                    data will remain on this device. This cannot be undone.
-                  </p>
-                  <div className="settings-inline-actions">
-                    <button className="btn-ghost" onClick={() => setDeleteAccountExpanded(false)}>
-                      Cancel
-                    </button>
-                    <button
-                      className="btn-danger"
-                      onClick={() => {
-                        // TODO: Implement account deletion API call
-                        setDeleteAccountExpanded(false)
-                        logout()
-                      }}
-                    >
-                      Delete account
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </section>
-      )}
-
-      {isGuest && (
-        <section className="settings-section">
-          <p className="settings-section-title">Account</p>
-          <div className="settings-card">
-            <div className="settings-row settings-row--info">
-              <div>
-                <strong>Guest mode</strong>
-                <p>Create an account to unlock AI insights</p>
-              </div>
-            </div>
-
-            <button className="settings-row settings-row--action" onClick={logout}>
-              <div>
-                <strong>Create account</strong>
-                <p>Get personalized study coaching</p>
-              </div>
-              <span className="settings-action-cta">
-                <User size={14} /> Sign up
-              </span>
-            </button>
-          </div>
-        </section>
-      )}
 
       <section className="settings-section">
         <p className="settings-section-title">How Zeno watches you</p>
@@ -474,149 +267,12 @@ export function SettingsTab({
       </section>
 
       <section className="settings-section">
-        <p className="settings-section-title">Local AI (Optional)</p>
-        <div className="settings-card">
-          <div className="settings-row settings-row--toggle">
-            <div>
-              <strong>AI insight cards</strong>
-              <p>Generate richer daily insight cards locally on-device</p>
-            </div>
-            <button
-              className={`toggle ${settings?.local_ai_insights_enabled ? 'is-active' : 'is-paused'}`}
-              onClick={() =>
-                void (async () => {
-                  const next = !(settings?.local_ai_insights_enabled ?? false)
-                  await updateSettings({ local_ai_insights_enabled: next })
-                  if (next) {
-                    await checkLocalAiStatus(false)
-                  }
-                })()
-              }
-              aria-label="Toggle local AI insight cards"
-            >
-              <span className="knob" />
-            </button>
-          </div>
-          <div className="settings-row settings-row--info">
-            <div>
-              <strong>Status</strong>
-              <p>
-                {!settings?.local_ai_insights_enabled
-                  ? 'Disabled. Zeno uses template insights only.'
-                  : aiSetupState === 'running'
-                    ? `Downloading ${aiStatus?.model ?? 'model'}... ${aiSetupElapsedSec}s elapsed`
-                    : aiSetupState === 'done'
-                      ? `Model ready: ${aiStatus?.model ?? 'local model'}`
-                      : aiSetupState === 'error'
-                        ? 'Setup failed. Check Ollama and try again.'
-                  : aiStatusState === 'loading'
-                    ? 'Checking local AI runtime...'
-                    : aiStatusState === 'error'
-                      ? 'Could not check runtime. Try again.'
-                      : aiStatus == null
-                        ? 'AI enabled. Check runtime status.'
-                        : !aiStatus.model
-                          ? 'Connected. Select an installed model.'
-                        : aiStatus.model_available
-                          ? `Connected · ${aiStatus.model} ready`
-                          : aiStatus.reachable
-                            ? `Connected · ${aiStatus.model} not installed`
-                            : 'Ollama not detected'}
-              </p>
-            </div>
-          </div>
-          <div className="settings-row settings-row--action">
-            <div>
-              <strong>AI model</strong>
-              <p>Choose from installed Ollama models</p>
-            </div>
-            <span className="settings-action-cta">
-              <select
-                className="settings-model-select"
-                value={settings?.local_ai_model ?? ''}
-                onChange={(event) =>
-                  void (async () => {
-                    const nextModel = event.target.value
-                    await updateSettings({ local_ai_model: nextModel })
-                    await checkLocalAiStatus(false)
-                  })()
-                }
-                disabled={!settings?.local_ai_insights_enabled || aiStatusState === 'loading' || aiSetupState === 'running'}
-              >
-                <option value="">Select model...</option>
-                {(aiStatus?.installed_models?.length ?? 0) > 0 ? (
-                  (aiStatus?.installed_models ?? []).map((modelName) => (
-                    <option key={modelName} value={modelName}>
-                      {modelName}
-                    </option>
-                  ))
-                ) : null}
-              </select>
-            </span>
-          </div>
-          <div className="settings-row settings-row--action">
-            <div>
-              <strong>Runtime check</strong>
-              <p>Verify Ollama connectivity and model readiness</p>
-            </div>
-            <span className="settings-action-cta">
-              <button
-                className="settings-mini-btn"
-                onClick={() => void checkLocalAiStatus(false)}
-                disabled={!settings?.local_ai_insights_enabled || aiStatusState === 'loading' || aiSetupState === 'running'}
-              >
-                {aiStatusState === 'loading' ? 'Checking…' : 'Check now'}
-              </button>
-              <button
-                className="settings-mini-btn"
-                onClick={() =>
-                  void (async () => {
-                    setAiSetupState('running')
-                    setAiSetupStartedAt(Date.now())
-                    setAiSetupElapsedSec(0)
-                    try {
-                      await checkLocalAiStatus(true)
-                      setAiSetupState('done')
-                    } catch {
-                      setAiSetupState('error')
-                    }
-                  })()
-                }
-                disabled={
-                  !settings?.local_ai_insights_enabled ||
-                  aiStatusState === 'loading' ||
-                  aiSetupState === 'running' ||
-                  !(settings?.local_ai_model ?? '').trim()
-                }
-              >
-                {aiSetupState === 'running' ? `Downloading… ${aiSetupElapsedSec}s` : 'Set up'}
-              </button>
-            </span>
-          </div>
-          <a
-            className="settings-row settings-row--select"
-            href="https://ollama.com/download"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <div>
-              <strong>Install Ollama (optional)</strong>
-              <p>Required only for local LLM-generated insights</p>
-            </div>
-            <span>
-              <ExternalLink size={12} /> <ChevronRight size={14} />
-            </span>
-          </a>
-        </div>
-      </section>
-
-      <section className="settings-section">
         <p className="settings-section-title">Your data</p>
         <div className="settings-card">
           <button className="settings-row settings-row--action" onClick={() => void onExportData()}>
             <div>
               <strong>Export my data</strong>
-              <p>Download everything as CSV</p>
+              <p>Download local history as CSV</p>
             </div>
             <span className="settings-action-cta">
               <Download size={14} /> Export
@@ -624,51 +280,12 @@ export function SettingsTab({
           </button>
           {exportMessage ? <p className="settings-inline-note">{exportMessage}</p> : null}
 
-          <button className="settings-row settings-row--select" onClick={() => setLicenseExpanded((value) => !value)}>
+          <div className="settings-row settings-row--info">
             <div>
-              <strong>License key</strong>
-              <p>Enter your Zeno Pro key</p>
+              <strong>Local only</strong>
+              <p>Sessions, posture, and settings never leave this machine</p>
             </div>
-            <span className={isPro ? 'settings-license-ok' : ''}>
-              {isPro ? 'Pro · Active' : 'Not activated'}{' '}
-              {isPro ? <CheckCircle2 size={14} /> : <ChevronRight size={14} />}
-            </span>
-          </button>
-
-          <AnimatePresence initial={false}>
-            {licenseExpanded && (
-              <motion.div
-                className="settings-inline-block"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={easeOut}
-              >
-                <label>Enter your license key</label>
-                {!isPro ? (
-                  <>
-                    <input
-                      value={licenseInput}
-                      onChange={(event) => setLicenseInput(event.target.value)}
-                      placeholder="ZENO-XXXX-XXXX-XXXX"
-                    />
-                    {licenseError ? <p className="settings-inline-error">{licenseError}</p> : null}
-                    <button
-                      className="btn-solid"
-                      disabled={licenseInput.trim().length === 0}
-                      onClick={() => void activateLicense()}
-                    >
-                      Activate
-                    </button>
-                  </>
-                ) : (
-                  <p className="settings-license-success">
-                    <CheckCircle2 size={16} /> Zeno Pro activated
-                  </p>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          </div>
 
           <button className="settings-row settings-row--danger" onClick={() => setClearExpanded((value) => !value)}>
             <div>

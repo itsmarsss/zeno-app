@@ -4,29 +4,6 @@ import type { SessionHistoryItem } from './types'
 export type FocusPeriod = 'week' | 'month' | 'quarter'
 export type DeltaTone = 'positive' | 'neutral' | 'negative'
 
-export type InsightCard = {
-  key: string
-  tag: string
-  text: string
-  stat: string
-  icon:
-    | 'activity'
-    | 'trending'
-    | 'trending-up'
-    | 'bar-chart-3'
-    | 'brain'
-    | 'heart-pulse'
-    | 'clock-3'
-    | 'timer'
-    | 'target'
-    | 'zap'
-    | 'shield-check'
-    | 'coffee'
-    | 'moon'
-    | 'sun'
-    | 'user'
-}
-
 export type SessionNarrative = {
   headline: string
   tone: DeltaTone
@@ -229,79 +206,4 @@ export function periodTitle(period: FocusPeriod): string {
   if (period === 'week') return 'This Week'
   if (period === 'month') return 'Last 30 Days'
   return 'Last 3 Months'
-}
-
-export function buildInsights(history: SessionHistoryItem[], todaySessions: SessionHistoryItem[]): InsightCard[] {
-  if (history.length < 4) {
-    return [
-      {
-        key: 'need-data',
-        tag: 'Pattern',
-        text: 'More data needed',
-        stat: 'Run a few more sessions to unlock insights.',
-        icon: 'trending',
-      },
-      {
-        key: 'need-data-2',
-        tag: 'Win',
-        text: 'Early baseline forming',
-        stat: 'Daily trends get better after 7 sessions.',
-        icon: 'activity',
-      },
-      {
-        key: 'need-data-3',
-        tag: 'Posture',
-        text: 'Posture trend pending',
-        stat: 'Keep check-ins consistent through the week.',
-        icon: 'user',
-      },
-    ]
-  }
-
-  const recent = history.slice(0, 56)
-  const byHour = new Map<number, number[]>()
-  recent.forEach((item) => {
-    const hour = new Date(item.created_at).getHours()
-    if (!byHour.has(hour)) byHour.set(hour, [])
-    byHour.get(hour)?.push(stressIndexFromHistory(item))
-  })
-
-  const peakHour = Array.from(byHour.entries()).sort((a, b) => mean(b[1]) - mean(a[1]))[0]
-  const poorPostureCount = recent.filter((item) => item.posture_score < 0.5).length
-  const todayHr = todaySessions.map((item) => item.heart_rate_bpm).filter((value): value is number => value != null)
-  const earlierHr = history
-    .slice(todaySessions.length)
-    .map((item) => item.heart_rate_bpm)
-    .filter((value): value is number => value != null)
-
-  const hrDelta = earlierHr.length && todayHr.length ? Math.round(mean(todayHr) - mean(earlierHr)) : 0
-  const hourLabel = peakHour ? formatHourLabel(peakHour[0]) : 'midday'
-
-  return [
-    {
-      key: 'pattern',
-      tag: 'Pattern',
-      text: `Stress peaks around ${hourLabel}`,
-      stat: `Based on ${Math.min(recent.length, 56)} recent sessions`,
-      icon: 'trending',
-    },
-    {
-      key: 'win',
-      tag: 'Win',
-      text: hrDelta <= 0 ? 'Breathing habits are helping' : 'Heart rate rose during work blocks',
-      stat:
-        hrDelta <= 0 ? `Avg ${Math.abs(hrDelta)} bpm below baseline` : `Avg ${Math.abs(hrDelta)} bpm above baseline`,
-      icon: 'activity',
-    },
-    {
-      key: 'posture',
-      tag: 'Posture',
-      text: poorPostureCount >= 4 ? 'Shoulders dip after long sessions' : 'Posture consistency is improving',
-      stat:
-        poorPostureCount >= 4
-          ? `${poorPostureCount} low-posture check-ins this week`
-          : 'Fewer posture alerts than last week',
-      icon: 'user',
-    },
-  ]
 }

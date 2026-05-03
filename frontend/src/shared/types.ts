@@ -112,11 +112,7 @@ export type AppSettings = {
   session_frequency_minutes: number
   daily_report_hour: number
   daily_report_minute: number
-  local_ai_insights_enabled: boolean
-  local_ai_model: string
   onboarding_completed: boolean
-  plan_tier: 'free' | 'pro'
-  license_key: string
 }
 
 export type BreathingPatternId = 'box' | 'four-seven-eight'
@@ -145,9 +141,12 @@ export type PostureStreamFrame = {
     rep_count: number
     target_reps: number
     hold_seconds: number
+    rep_hold_seconds?: number
+    hold_target_seconds?: number | null
     quality_score: number
     target_active: boolean
     progress_pct: number
+    completed?: boolean
   } | null
 }
 
