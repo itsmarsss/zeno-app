@@ -1,23 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import {
-  Activity,
-  BarChart3,
-  Brain,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Coffee,
-  HeartPulse,
-  Moon,
-  ShieldCheck,
-  Sun,
-  Target,
-  Timer,
-  TrendingUp,
-  User,
-  Zap,
-} from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { stressIndexFromHistory } from '../../shared/metrics'
 import type { DailyReport, SessionHistoryItem } from '../../shared/types'
@@ -25,7 +7,6 @@ import './OverviewTab.css'
 import { staggerItem } from '../../shared/motion'
 import {
   type DeltaTone,
-  type InsightCard,
   classifySession,
   formatClockRange,
   formatDelta,
@@ -387,12 +368,6 @@ export function OverviewTab({
   maxDayIso,
   canShiftOverviewPrev,
   canShiftOverviewNext,
-  insights,
-  insightsSource,
-  insightsModel,
-  insightsLoading,
-  insightsRefreshing,
-  onRequestAiInsights,
   secondaryMetricSeries,
   dailyReport,
   onViewFocusHistory,
@@ -420,12 +395,6 @@ export function OverviewTab({
   maxDayIso: string
   canShiftOverviewPrev: boolean
   canShiftOverviewNext: boolean
-  insights: InsightCard[]
-  insightsSource: 'ai' | 'template'
-  insightsModel: string | null
-  insightsLoading: boolean
-  insightsRefreshing: boolean
-  onRequestAiInsights: () => void
   secondaryMetricSeries: SecondaryMetricSeries
   dailyReport: DailyReport | null
   onViewFocusHistory: () => void
@@ -809,72 +778,8 @@ export function OverviewTab({
         )}
       </motion.section>
       <motion.section
-        className="overview-section insight-cards"
-        variants={staggerItem(0.12)}
-        initial="hidden"
-        animate="visible"
-      >
-        <div className="insight-cards-meta">
-          <div className="insight-cards-meta-left">
-            {insightsLoading ? (
-              <span className="insight-source-badge">Loading...</span>
-            ) : insightsSource === 'ai' ? (
-              <span className="insight-source-badge insight-source-badge--ai">
-                AI generated{insightsModel ? ` · ${insightsModel}` : ''}
-              </span>
-            ) : (
-              <span className="insight-source-badge">Template</span>
-            )}
-          </div>
-          <button className="insight-ai-request-btn" onClick={onRequestAiInsights} disabled={insightsRefreshing}>
-            {insightsRefreshing ? 'Requesting...' : 'Request AI insight'}
-          </button>
-        </div>
-        <div className="insight-cards-row">
-          {insights.map((card) => {
-            const Icon =
-              card.icon === 'activity'
-                ? Activity
-                : card.icon === 'trending' || card.icon === 'trending-up'
-                  ? TrendingUp
-                  : card.icon === 'bar-chart-3'
-                    ? BarChart3
-                    : card.icon === 'brain'
-                      ? Brain
-                      : card.icon === 'heart-pulse'
-                        ? HeartPulse
-                        : card.icon === 'clock-3'
-                          ? Clock3
-                          : card.icon === 'timer'
-                            ? Timer
-                            : card.icon === 'target'
-                              ? Target
-                              : card.icon === 'zap'
-                                ? Zap
-                                : card.icon === 'shield-check'
-                                  ? ShieldCheck
-                                  : card.icon === 'coffee'
-                                    ? Coffee
-                                    : card.icon === 'moon'
-                                      ? Moon
-                                      : card.icon === 'sun'
-                                        ? Sun
-                                        : User
-            return (
-              <article key={card.key} className="insight-card">
-                <Icon size={14} />
-                <p className="insight-tag">{card.tag}</p>
-                <p className="insight-text">{card.text}</p>
-                <p className="insight-stat">{card.stat}</p>
-              </article>
-            )
-          })}
-        </div>
-      </motion.section>
-
-      <motion.section
         className="overview-section secondary-metrics"
-        variants={staggerItem(0.16)}
+        variants={staggerItem(0.12)}
         initial="hidden"
         animate="visible"
       >

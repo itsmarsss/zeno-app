@@ -8,15 +8,16 @@ import { FocusHistoryTab } from './focus/FocusHistoryTab'
 import { MonitorTab } from './monitor/MonitorTab'
 import { OverviewTab } from './overview/OverviewTab'
 import { PostureTab } from './posture/PostureTab'
-import { ExercisesTab } from './exercises/ExercisesTab'
+import { ExercisesTab, type ExerciseSessionSummary } from './exercises/ExercisesTab'
 import { SettingsTab } from './settings/SettingsTab'
 import { SidebarNav, type MainTab } from './common/SidebarNav'
-import { EXERCISE_LIBRARY, FREE_EXERCISE_IDS } from '../shared/constants'
+import { EXERCISE_LIBRARY } from '../shared/constants'
 import { stressIndexFromHistory } from '../shared/metrics'
 import type {
   CalibrationStatus,
   DailyReport,
   OverviewAggregates,
+  PostureInsights,
   PostureLandmarks,
   PostureStreamFrame,
   SessionHistoryItem,
@@ -32,7 +33,6 @@ import {
   mean,
   startDateForPeriod,
   trendTone,
-  type InsightCard,
   type FocusPeriod,
 } from '../shared/dashboard'
 import { useAppSettings } from '../context/AppSettingsContext'
@@ -104,8 +104,20 @@ export function MainWindowShell({
   const [exerciseGuidedActive, setExerciseGuidedActive] = useState(false)
   const [exerciseFeedback, setExerciseFeedback] = useState<string | null>(null)
   const [exerciseMetrics, setExerciseMetrics] = useState<PostureStreamFrame['exercise_metrics']>(null)
-  const [licenseInput, setLicenseInput] = useState('')
-  const [paywallMessage, setPaywallMessage] = useState<string | null>(null)
+  const [exerciseSessionSummary, setExerciseSessionSummary] = useState<ExerciseSessionSummary | null>(null)
+  const [postureRecommendedIds, setPostureRecommendedIds] = useState<string[]>([])
+  const [exerciseHistory, setExerciseHistory] = useState<
+    Array<{
+      id: number
+      timestamp: string
+      exercise_id: string
+      completed: boolean
+      form_score: number | null
+      duration_seconds: number
+    }>
+  >([])
+  const [softSuggestionId, setSoftSuggestionId] = useState<string | null>(null)
+  const exerciseCompletionLoggedRef = useRef(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
   const [postureFrame, setPostureFrame] = useState<string | null>(null)
   const [postureLandmarks, setPostureLandmarks] = useState<PostureLandmarks>(null)
@@ -127,11 +139,6 @@ export function MainWindowShell({
   const [timelineBucketMinutes, setTimelineBucketMinutes] = useState<number>(DEFAULT_TIMELINE_BUCKET_MINUTES)
   const [overviewTimelinePoints, setOverviewTimelinePoints] = useState<MonitorTimelinePoint[]>([])
   const [overviewAggregates, setOverviewAggregates] = useState<OverviewAggregates | null>(null)
-  const [overviewInsights, setOverviewInsights] = useState<InsightCard[]>([])
-  const [overviewInsightsSource, setOverviewInsightsSource] = useState<'ai' | 'template'>('template')
-  const [overviewInsightsModel, setOverviewInsightsModel] = useState<string | null>(null)
-  const [overviewInsightsLoading, setOverviewInsightsLoading] = useState(false)
-  const [overviewInsightsRefreshing, setOverviewInsightsRefreshing] = useState(false)
   const [overviewDaySessions, setOverviewDaySessions] = useState<SessionHistoryItem[]>([])
   const [sessionDayIndex, setSessionDayIndex] = useState<SessionDayIndexResponse | null>(null)
   const [overviewDate, setOverviewDate] = useState<Date>(() => {
@@ -141,6 +148,7 @@ export function MainWindowShell({
   })
   const guidedStartedAtRef = useRef<number | null>(null)
   const guidedExerciseIdRef = useRef<string | null>(null)
+  const guidedTriggeredByRef = useRef<string>('manual')
   const overlayScrollbarOptions = useMemo(
     () => ({
       overflow: { x: 'hidden' as const, y: 'scroll' as const },
@@ -239,7 +247,6 @@ export function MainWindowShell({
 
   const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
-  const insights = overviewInsights
 
   const minOverviewDate = useMemo(() => {
     if (sessionDayIndex?.min_date) {
@@ -356,65 +363,6 @@ export function MainWindowShell({
       cancelled = true
     }
   }, [historyRevision, overviewKey])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function fetchOverviewInsights() {
-      setOverviewInsightsLoading(true)
-      if (!isTauriRuntime()) {
-        setOverviewInsights([])
-        setOverviewInsightsSource('template')
-        setOverviewInsightsModel(null)
-        setOverviewInsightsLoading(false)
-        return
-      }
-      try {
-        const response = await invoke<{ cards?: InsightCard[]; source?: string; model?: string | null }>('run_insight_cards', {
-          dateIso: overviewKey,
-          force: false,
-          allowAi: false,
-        })
-        if (cancelled) return
-        setOverviewInsights(Array.isArray(response?.cards) ? response.cards : [])
-        setOverviewInsightsSource(response?.source === 'ai' ? 'ai' : 'template')
-        setOverviewInsightsModel(typeof response?.model === 'string' ? response.model : null)
-      } catch (err) {
-        if (cancelled) return
-        console.error('Failed to fetch overview insights:', err)
-        setOverviewInsights([])
-        setOverviewInsightsSource('template')
-        setOverviewInsightsModel(null)
-      } finally {
-        if (!cancelled) setOverviewInsightsLoading(false)
-      }
-    }
-
-    void fetchOverviewInsights()
-    return () => {
-      cancelled = true
-    }
-  }, [overviewKey, historyRevision])
-
-  async function requestOverviewAiInsights() {
-    if (!isTauriRuntime() || overviewInsightsRefreshing) return
-    setOverviewInsightsRefreshing(true)
-    try {
-      const response = await invoke<{ cards?: InsightCard[]; source?: string; model?: string | null }>('run_insight_cards', {
-        dateIso: overviewKey,
-        force: true,
-        allowAi: true,
-        model: settings?.local_ai_model?.trim() ? settings.local_ai_model : undefined,
-      })
-      setOverviewInsights(Array.isArray(response?.cards) ? response.cards : [])
-      setOverviewInsightsSource(response?.source === 'ai' ? 'ai' : 'template')
-      setOverviewInsightsModel(typeof response?.model === 'string' ? response.model : null)
-    } catch (err) {
-      console.error('Failed to request AI insights:', err)
-    } finally {
-      setOverviewInsightsRefreshing(false)
-    }
-  }
 
   useEffect(() => {
     let cancelled = false
@@ -899,7 +847,6 @@ export function MainWindowShell({
 
   const selectedExercise =
     EXERCISE_LIBRARY.find((exercise) => exercise.id === selectedExerciseId) ?? EXERCISE_LIBRARY[0] ?? null
-  const isPro = settings?.plan_tier === 'pro'
   const tabTitle =
     tab === 'overview'
       ? 'Overview'
@@ -917,19 +864,26 @@ export function MainWindowShell({
       ? 'Live signal stack and camera state'
       : `Today ${todaySessions.length} sessions · ${formatMinutes(todayFocusedMinutes)} focused`
 
-  async function logExerciseSessionOnExit() {
+  async function logExerciseSessionOnExit(options?: {
+    forceCompleted?: boolean
+    triggeredBy?: string
+  }): Promise<ExerciseSessionSummary | null> {
     const exerciseId = guidedExerciseIdRef.current ?? selectedExercise?.id
     const startedAt = guidedStartedAtRef.current
-    if (!exerciseId || startedAt == null) return
+    if (!exerciseId || startedAt == null) return null
+    if (exerciseCompletionLoggedRef.current) return null
+    exerciseCompletionLoggedRef.current = true
 
     const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
     const completionByReps =
       exerciseMetrics?.target_reps && exerciseMetrics.target_reps > 0
         ? exerciseMetrics.rep_count >= exerciseMetrics.target_reps
         : false
-    const completionByProgress = (exerciseMetrics?.progress_pct ?? 0) >= 90
-    const completed = completionByReps || completionByProgress
+    const completionByProgress = (exerciseMetrics?.progress_pct ?? 0) >= 100 || Boolean(exerciseMetrics?.completed)
+    const completed = options?.forceCompleted ?? (completionByReps || completionByProgress)
     const formScore = exerciseMetrics?.quality_score ?? null
+    const exerciseName =
+      EXERCISE_LIBRARY.find((item) => item.id === exerciseId)?.name ?? exerciseId
 
     try {
       await invoke('run_log_exercise_session', {
@@ -937,46 +891,77 @@ export function MainWindowShell({
         completed,
         formScore,
         durationSeconds,
-        triggeredBy: 'manual',
+        triggeredBy: options?.triggeredBy ?? guidedTriggeredByRef.current ?? 'manual',
       })
     } catch {
       // Exercise logging should not block UX.
     }
+
+    return {
+      exerciseId,
+      exerciseName,
+      completed,
+      repCount: exerciseMetrics?.rep_count ?? 0,
+      targetReps: exerciseMetrics?.target_reps ?? 0,
+      formScore,
+      durationSeconds,
+      holdSeconds: exerciseMetrics?.hold_seconds ?? 0,
+    }
+  }
+
+  function startGuidedExercise(exerciseId: string, triggeredBy: string = 'manual') {
+    setSelectedExerciseId(exerciseId)
+    setExerciseFeedback(null)
+    setExerciseMetrics(null)
+    setExerciseSessionSummary(null)
+    exerciseCompletionLoggedRef.current = false
+    guidedStartedAtRef.current = Date.now()
+    guidedExerciseIdRef.current = exerciseId
+    guidedTriggeredByRef.current = triggeredBy
+    setExerciseGuidedActive(true)
+    setTab('exercises')
+  }
+
+  async function refreshExerciseHistory() {
+    try {
+      const historyPayload = await invoke<{
+        items?: Array<{
+          id: number
+          timestamp: string
+          exercise_id: string
+          completed: boolean
+          form_score: number | null
+          duration_seconds: number
+        }>
+      }>('run_exercise_history', { limit: 12 })
+      setExerciseHistory(Array.isArray(historyPayload?.items) ? historyPayload.items : [])
+    } catch {
+      // non-blocking
+    }
+  }
+
+  async function stopGuidedExercise(showSummary = true) {
+    if (!exerciseGuidedActive && !guidedExerciseIdRef.current) return
+    const summary = await logExerciseSessionOnExit()
+    setExerciseGuidedActive(false)
+    setExerciseFeedback(null)
+    setExerciseMetrics(null)
+    guidedStartedAtRef.current = null
+    guidedExerciseIdRef.current = null
+    void refreshExerciseHistory()
+    if (showSummary && summary) {
+      setExerciseSessionSummary(summary)
+    }
   }
 
   function toggleGuidedExercise(exerciseId?: string) {
-    const targetExercise =
-      (exerciseId ? EXERCISE_LIBRARY.find((exercise) => exercise.id === exerciseId) : selectedExercise) ??
-      selectedExercise
-
-    if (!isPro) {
-      setPaywallMessage('Guided sets are a Pro feature. Add your license key in Settings.')
+    if (exerciseGuidedActive) {
+      void stopGuidedExercise(true)
       return
     }
-    if (targetExercise && !FREE_EXERCISE_IDS.has(targetExercise.id)) {
-      setPaywallMessage('This exercise requires Pro.')
-      return
-    }
-
-    if (targetExercise) {
-      setSelectedExerciseId(targetExercise.id)
-    }
-    setPaywallMessage(null)
-
-    setExerciseGuidedActive((v) => {
-      const next = !v
-      if (!next) {
-        void logExerciseSessionOnExit()
-        setExerciseFeedback(null)
-        setExerciseMetrics(null)
-        guidedStartedAtRef.current = null
-        guidedExerciseIdRef.current = null
-      } else {
-        guidedStartedAtRef.current = Date.now()
-        guidedExerciseIdRef.current = targetExercise?.id ?? selectedExercise?.id ?? null
-      }
-      return next
-    })
+    const targetId = exerciseId ?? selectedExercise?.id
+    if (!targetId) return
+    startGuidedExercise(targetId)
   }
 
   function openExercisesTab() {
@@ -984,12 +969,7 @@ export function MainWindowShell({
   }
 
   function startExerciseFromPosture(exerciseId: string) {
-    setSelectedExerciseId(exerciseId)
-    setPaywallMessage(null)
-    setExerciseFeedback(null)
-    setExerciseMetrics(null)
-    setExerciseGuidedActive(false)
-    setTab('exercises')
+    startGuidedExercise(exerciseId, 'posture_alert')
   }
 
   async function exportDataAsCsv() {
@@ -1024,6 +1004,74 @@ export function MainWindowShell({
     }
   }
 
+  // Prefetch posture recs, exercise history, and soft-trigger suggestion.
+  useEffect(() => {
+    let cancelled = false
+    async function loadExerciseContext() {
+      try {
+        const [insights, historyPayload] = await Promise.all([
+          invoke<PostureInsights>('run_posture_insights', { days: 7 }),
+          invoke<{
+            items?: Array<{
+              id: number
+              timestamp: string
+              exercise_id: string
+              completed: boolean
+              form_score: number | null
+              duration_seconds: number
+            }>
+          }>('run_exercise_history', { limit: 12 }),
+        ])
+        if (cancelled) return
+        const recs = Array.isArray(insights?.recommended_ids) ? insights.recommended_ids : []
+        setPostureRecommendedIds(recs)
+        setExerciseHistory(Array.isArray(historyPayload?.items) ? historyPayload.items : [])
+
+        // Soft trigger: recent poor posture sessions suggest a reset exercise.
+        const recentPoor = history
+          .slice(0, 12)
+          .filter((item) => Boolean(item.posture_is_poor) || item.posture_score < 0.52).length
+        if (recentPoor >= 3) {
+          const pick = recs.find((id) => EXERCISE_LIBRARY.some((ex) => ex.id === id)) ?? 'chin-tuck'
+          setSoftSuggestionId(pick)
+        } else {
+          setSoftSuggestionId(null)
+        }
+      } catch {
+        if (!cancelled) {
+          setPostureRecommendedIds([])
+          setExerciseHistory([])
+          setSoftSuggestionId(null)
+        }
+      }
+    }
+    void loadExerciseContext()
+    return () => {
+      cancelled = true
+    }
+  }, [historyRevision, history])
+
+  // Auto-finish guided exercise when backend reports completion.
+  useEffect(() => {
+    if (!exerciseGuidedActive) return
+    const done =
+      Boolean(exerciseMetrics?.completed) ||
+      ((exerciseMetrics?.target_reps ?? 0) > 0 &&
+        (exerciseMetrics?.rep_count ?? 0) >= (exerciseMetrics?.target_reps ?? 0))
+    if (!done) return
+    void (async () => {
+      const summary = await logExerciseSessionOnExit({ forceCompleted: true })
+      setExerciseGuidedActive(false)
+      setExerciseFeedback(null)
+      guidedStartedAtRef.current = null
+      guidedExerciseIdRef.current = null
+      void refreshExerciseHistory()
+      if (summary) setExerciseSessionSummary(summary)
+      setExerciseMetrics(null)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exerciseGuidedActive, exerciseMetrics?.completed, exerciseMetrics?.rep_count, exerciseMetrics?.target_reps])
+
   useEffect(() => {
     const shouldStream =
       !postureStreamSuspended &&
@@ -1039,7 +1087,10 @@ export function MainWindowShell({
       setPostureStreamState('connecting')
       setPostureStreamError(null)
       try {
-        const exerciseIdArg = tab === 'exercises' ? (selectedExercise?.id ?? null) : null
+        const exerciseIdArg =
+          tab === 'exercises' && exerciseGuidedActive
+            ? (guidedExerciseIdRef.current ?? selectedExercise?.id ?? null)
+            : null
         await invoke('start_posture_stream', { fps: 8, exerciseId: exerciseIdArg })
         unlistenFrame = await listen<PostureStreamFrame>('posture-stream-frame', (event) => {
           const payload = event.payload
@@ -1164,12 +1215,6 @@ export function MainWindowShell({
                   maxDayIso={todayKey}
                   canShiftOverviewPrev={canShiftOverviewPrev}
                   canShiftOverviewNext={canShiftOverviewNext}
-                  insights={insights}
-                  insightsSource={overviewInsightsSource}
-                  insightsModel={overviewInsightsModel}
-                  insightsLoading={overviewInsightsLoading}
-                  insightsRefreshing={overviewInsightsRefreshing}
-                  onRequestAiInsights={requestOverviewAiInsights}
                   secondaryMetricSeries={secondaryMetricSeries}
                   dailyReport={dailyReport}
                   onViewFocusHistory={() => setTab('focus')}
@@ -1242,12 +1287,23 @@ export function MainWindowShell({
                   setSelectedExerciseId={setSelectedExerciseId}
                   exerciseGuidedActive={exerciseGuidedActive}
                   toggleGuided={toggleGuidedExercise}
+                  startGuided={(id) => startGuidedExercise(id)}
+                  stopGuided={() => void stopGuidedExercise(true)}
                   postureStreamState={postureStreamState}
                   exerciseMetrics={exerciseMetrics}
                   postureFrame={postureFrame}
                   postureLandmarks={postureLandmarks}
                   exerciseFeedback={exerciseFeedback}
-                  paywallMessage={paywallMessage}
+                  recommendedIds={postureRecommendedIds}
+                  sessionSummary={exerciseSessionSummary}
+                  onDismissSummary={() => setExerciseSessionSummary(null)}
+                  onDoAgain={() => {
+                    const id = exerciseSessionSummary?.exerciseId ?? selectedExerciseId
+                    setExerciseSessionSummary(null)
+                    startGuidedExercise(id)
+                  }}
+                  recentHistory={exerciseHistory}
+                  softSuggestionId={softSuggestionId}
                 />
               </motion.div>
             )}
@@ -1257,9 +1313,6 @@ export function MainWindowShell({
                 <SettingsTab
                   settings={settings}
                   updateSettings={updateSettings}
-                  isPro={isPro}
-                  licenseInput={licenseInput}
-                  setLicenseInput={setLicenseInput}
                   calibration={calibration}
                   replayOnboarding={replayOnboarding}
                   clearAllData={clearAllData}

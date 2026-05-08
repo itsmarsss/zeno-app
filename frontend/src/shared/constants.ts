@@ -101,5 +101,3 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     ],
   },
 ]
-
-export const FREE_EXERCISE_IDS = new Set(['chin-tuck', 'scap-squeeze'])

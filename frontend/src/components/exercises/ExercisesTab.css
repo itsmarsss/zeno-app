@@ -444,6 +444,320 @@
   color: var(--text-secondary);
 }
 
+.exercise-stop-btn {
+  margin-top: 18px;
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 11px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.exercise-stop-btn:hover {
+  background: var(--bg-overlay);
+}
+
+.exercise-paywall-banner {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--state-mild) 35%, white);
+  background: color-mix(in srgb, var(--state-mild) 10%, white);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.exercise-v2-card.is-locked {
+  opacity: 0.92;
+}
+
+.exercise-v2-locked {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(26, 25, 23, 0.72);
+  color: #fff;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exercise-empty {
+  margin: 24px 0 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.exercise-soft-suggest {
+  width: 100%;
+  margin: 0 0 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, white);
+  border-radius: 12px;
+  background: var(--accent-light);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.exercise-soft-suggest span {
+  font-size: 11px;
+  color: var(--accent-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.exercise-soft-suggest strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.exercise-history {
+  margin-top: 28px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 18px;
+}
+
+.exercise-history-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.exercise-history-head h3 {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+}
+
+.exercise-history-head span {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.exercise-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exercise-history-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  padding: 12px 14px;
+}
+
+.exercise-history-list strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.exercise-history-list span {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.exercise-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.exercise-history-meta .is-done {
+  color: var(--accent);
+}
+
+.exercise-complete {
+  min-height: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.exercise-complete-card {
+  width: min(420px, 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  padding: 36px 28px 28px;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+}
+
+.exercise-complete-mark {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+}
+
+.exercise-check-svg {
+  width: 72px;
+  height: 72px;
+}
+
+.exercise-check-ring {
+  fill: none;
+  stroke: var(--accent-light);
+  stroke-width: 3;
+}
+
+.exercise-complete-mark.is-done .exercise-check-ring {
+  stroke: color-mix(in srgb, var(--accent) 35%, white);
+}
+
+.exercise-check-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 0;
+  animation: exerciseCheckDraw 520ms ease forwards;
+}
+
+.exercise-complete-mark.is-partial .exercise-check-path {
+  stroke: var(--text-tertiary);
+}
+
+@keyframes exerciseCheckDraw {
+  from {
+    stroke-dashoffset: 48;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.exercise-complete-card h2 {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px;
+  color: var(--text-primary);
+}
+
+.exercise-complete-sub {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.exercise-complete-stats {
+  margin: 24px 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.exercise-complete-stats div {
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  padding: 14px 8px;
+}
+
+.exercise-complete-stats strong {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 20px;
+  color: var(--text-primary);
+}
+
+.exercise-complete-stats span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.exercise-complete-actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.exercise-complete-primary,
+.exercise-complete-secondary,
+.exercise-complete-ghost {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.exercise-complete-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.exercise-complete-primary:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+.exercise-complete-secondary {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.exercise-complete-secondary:hover {
+  background: var(--bg-subtle);
+}
+
+.exercise-complete-ghost {
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.exercise-complete-ghost:hover {
+  color: var(--text-secondary);
+}
+
 @media (max-width: 1160px) {
   .exercise-grid-v2 {
     grid-template-columns: 1fr;
