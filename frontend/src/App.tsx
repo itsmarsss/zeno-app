@@ -7,9 +7,7 @@ import { ArrowUpRight, ChartNoAxesCombined, Ellipsis, House } from 'lucide-react
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import { MainWindowShell } from './components/MainWindowShell'
 import { QuickActionsPopover } from './components/QuickActionsPopover'
-import { AuthScreen } from './components/auth/AuthScreen'
 import { AppSettingsProvider } from './context/AppSettingsContext'
-import { useAuth } from './context/AuthContext'
 import { BREATHING_PATTERNS } from './shared/constants'
 import {
   friendlyPosture,
@@ -69,9 +67,44 @@ function ScrollArea({
   return <div className="content-scroll">{children}</div>
 }
 
+const CHECKIN_STORAGE_KEY = 'zeno.checkin.v1'
+
+type PersistedCheckIn = {
+  status: 'Idle' | 'Running' | 'Done' | 'Error'
+  message: string | null
+  result: SessionResult | null
+  lastNudge: string
+  lastRunSource: 'manual' | 'scheduler' | 'focus-mode' | null
+  updatedAt: number
+}
+
+function readPersistedCheckIn(): PersistedCheckIn | null {
+  try {
+    const raw = sessionStorage.getItem(CHECKIN_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PersistedCheckIn
+    // Drop stale "running" markers after 2 minutes (process likely finished).
+    if (parsed.status === 'Running' && Date.now() - (parsed.updatedAt || 0) > 120_000) {
+      return { ...parsed, status: 'Idle', message: null }
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writePersistedCheckIn(payload: PersistedCheckIn) {
+  try {
+    sessionStorage.setItem(CHECKIN_STORAGE_KEY, JSON.stringify({ ...payload, updatedAt: Date.now() }))
+  } catch {
+    // sessionStorage may be unavailable; ignore.
+  }
+}
+
 function App() {
   const isMainWindow = getCurrentWindow().label === 'main-window'
-  const { isAuthenticated, loading: authLoading } = useAuth()
+  const isPopoverWindow = !isMainWindow
+  const persisted = useMemo(() => (isPopoverWindow ? readPersistedCheckIn() : null), [isPopoverWindow])
   const overlayScrollbarOptions = useMemo(
     () => ({
       overflow: { x: 'hidden' as const, y: 'scroll' as const },
@@ -85,18 +118,20 @@ function App() {
     }),
     [],
   )
-  const [status, setStatus] = useState<'Idle' | 'Running' | 'Done' | 'Error'>('Idle')
+  const [status, setStatus] = useState<'Idle' | 'Running' | 'Done' | 'Error'>(persisted?.status ?? 'Idle')
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<SessionResult | null>(null)
+  const [result, setResult] = useState<SessionResult | null>(persisted?.result ?? null)
   const [history, setHistory] = useState<SessionHistoryItem[]>([])
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null)
   const [calibration, setCalibration] = useState<CalibrationStatus | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [activePage, setActivePage] = useState<'home' | 'report'>('home')
-  const [lastNudge, setLastNudge] = useState('No nudges yet.')
-  const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(null)
-  const [displayedStress, setDisplayedStress] = useState(0)
+  const [lastNudge, setLastNudge] = useState(persisted?.lastNudge ?? 'No nudges yet.')
+  const [lastRunSource, setLastRunSource] = useState<'manual' | 'scheduler' | 'focus-mode' | null>(
+    persisted?.lastRunSource ?? null,
+  )
+  const [displayedStress, setDisplayedStress] = useState(() => stressIndex(persisted?.result ?? null))
   const [breathingActive, setBreathingActive] = useState(false)
   const [breathingPattern, setBreathingPattern] = useState<BreathingPatternId>('box')
   const [breathingPhaseIndex, setBreathingPhaseIndex] = useState(0)
@@ -117,13 +152,36 @@ function App() {
   const [breathingStartRr, setBreathingStartRr] = useState<number | null>(null)
   const [breakUseGenuinityChecks, setBreakUseGenuinityChecks] = useState(true)
   const [breakPlannedMinutes, setBreakPlannedMinutes] = useState(5)
+  const [checkInMessage, setCheckInMessage] = useState<string | null>(persisted?.message ?? null)
   const breakActiveRef = useRef(false)
   const breathingActiveRef = useRef(false)
-  const latestResultRef = useRef<SessionResult | null>(null)
+  const latestResultRef = useRef<SessionResult | null>(persisted?.result ?? null)
+  const statusRef = useRef(status)
+  const checkInMessageRef = useRef(checkInMessage)
+  const lastNudgeRef = useRef(lastNudge)
+  const lastRunSourceRef = useRef(lastRunSource)
   const breathingUseHrSensingRef = useRef(true)
   const breakReminderTwoSentRef = useRef(false)
   const breakReminderFourSentRef = useRef(false)
   const finishBreakRef = useRef<(reason: 'complete' | 'early') => Promise<void>>(async () => {})
+  const checkInProgressTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    statusRef.current = status
+    checkInMessageRef.current = checkInMessage
+    lastNudgeRef.current = lastNudge
+    lastRunSourceRef.current = lastRunSource
+    latestResultRef.current = result
+    if (!isPopoverWindow) return
+    writePersistedCheckIn({
+      status,
+      message: checkInMessage,
+      result,
+      lastNudge,
+      lastRunSource,
+      updatedAt: Date.now(),
+    })
+  }, [status, checkInMessage, result, lastNudge, lastRunSource, isPopoverWindow])
 
   const canRun = status !== 'Running'
   const stress = useMemo(() => stressIndex(result), [result])
@@ -544,6 +602,7 @@ function App() {
       setBreathingStartRr(snapshot?.respiratory_rate && snapshot.respiratory_rate > 0 ? snapshot.respiratory_rate : null)
       setBreathingLiveHr(null)
       setBreathingSummary(null)
+      setShowQuickActions(false)
     },
     [activePattern.phases],
   )
@@ -664,51 +723,100 @@ function App() {
     void getCurrentWindow().startDragging()
   }
 
-  async function closeWindow(event: MouseEvent<HTMLButtonElement>) {
-    event.preventDefault()
-    event.stopPropagation()
-    const win = getCurrentWindow()
+  async function closeWindow(event?: { preventDefault?: () => void; stopPropagation?: () => void }) {
+    event?.preventDefault?.()
+    event?.stopPropagation?.()
     try {
-      await win.hide()
+      // Prefer a dedicated Rust command — more reliable than the JS window plugin ACL alone.
+      await invoke('hide_window')
       return
     } catch {
-      // fall through to minimize/close fallback
+      // Fall through to the window API.
     }
     try {
-      await win.minimize()
-      return
-    } catch {
-      // final fallback below
-    }
-    try {
-      await win.close()
+      await getCurrentWindow().hide()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
 
+  function clearCheckInProgressTimer() {
+    if (checkInProgressTimerRef.current != null) {
+      window.clearInterval(checkInProgressTimerRef.current)
+      checkInProgressTimerRef.current = null
+    }
+  }
+
+  function applyCheckInResult(payload: SessionResult, source: 'manual' | 'scheduler' | 'focus-mode' = 'manual') {
+    if (payload.session_skipped || !payload.presence_detected) {
+      setLastNudge('No face detected, skipped this check-in.')
+      setCheckInMessage('No face detected — try again when you are in frame.')
+      setStatus('Done')
+      window.setTimeout(() => {
+        if (statusRef.current === 'Done') setCheckInMessage(null)
+      }, 3200)
+      return
+    }
+    setResult(payload)
+    latestResultRef.current = payload
+    updateNudgeFromResult(payload)
+    setLastRunSource(source)
+    setStatus('Done')
+    const stressValue = stressIndex(payload)
+    setCheckInMessage(
+      `Check-in complete · stress ${stressValue} · posture ${friendlyPosture(payload.posture_score)}`,
+    )
+    void loadHistory()
+    void loadDailyReport()
+    void loadCalibrationStatus()
+    window.setTimeout(() => {
+      if (statusRef.current === 'Done') setCheckInMessage(null)
+    }, 5000)
+  }
+
   async function runSession() {
+    if (status === 'Running') return
+    clearCheckInProgressTimer()
     try {
       setStatus('Running')
       setError(null)
+      setCheckInMessage('Freeing camera…')
+      setShowQuickActions(false)
+      setQuickActionStep('menu')
+
+      // Progressive status so the 15–20s capture doesn't feel frozen.
+      const startedAt = Date.now()
+      checkInProgressTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+        if (elapsed < 2) setCheckInMessage('Opening camera…')
+        else if (elapsed < 5) setCheckInMessage('Looking for your face…')
+        else if (elapsed < 12) setCheckInMessage(`Capturing posture & vitals… ${elapsed}s`)
+        else setCheckInMessage(`Almost done… ${elapsed}s`)
+      }, 400)
+
+      // Best-effort: stop live streams from this window too (Rust also does this).
+      await Promise.allSettled([
+        invoke('stop_posture_stream'),
+        invoke('stop_hr_stream'),
+        invoke('stop_focus_stream'),
+      ])
+
       const payload = await invoke<SessionResult>('run_python_session')
-      if (payload.session_skipped || !payload.presence_detected) {
-        setLastNudge('No face detected, skipped this check-in.')
-        setStatus('Done')
-        await loadSettings()
-        return
-      }
-      setResult(payload)
-      updateNudgeFromResult(payload)
-      setLastRunSource('manual')
-      setStatus('Done')
-      await loadHistory()
-      await loadDailyReport()
-      await loadCalibrationStatus()
+      clearCheckInProgressTimer()
+      applyCheckInResult(payload, 'manual')
       await loadSettings()
     } catch (e) {
+      clearCheckInProgressTimer()
       setStatus('Error')
-      setError(e instanceof Error ? e.message : String(e))
+      const message = e instanceof Error ? e.message : String(e)
+      setError(message)
+      const friendly = message.includes('already running')
+        ? 'A check-in is already in progress. Wait a moment and try again.'
+        : 'Check-in failed. Check camera permissions and try again.'
+      setCheckInMessage(friendly)
+      window.setTimeout(() => {
+        if (statusRef.current === 'Error') setCheckInMessage(null)
+      }, 4200)
     }
   }
 
@@ -725,34 +833,40 @@ function App() {
       await loadCalibrationStatus()
       await loadSettings()
 
+      // If we reopened mid-check-in (or after it finished while hidden), resync from DB.
+      if (statusRef.current === 'Running' || statusRef.current === 'Done') {
+        await loadHistory()
+      }
+
       unlistenResult = await listen<{ source: string; result: SessionResult }>('session-result', (event) => {
-        if (event.payload.result.session_skipped || !event.payload.result.presence_detected) {
-          setLastNudge('No face detected, skipped this check-in.')
-          setStatus('Done')
-          setError(null)
-          return
-        }
-        setResult(event.payload.result)
-        updateNudgeFromResult(event.payload.result)
-        if (event.payload.source === 'focus-mode') {
-          setLastRunSource('focus-mode')
-          if (!breathingActiveRef.current && !breakActiveRef.current && stressIndex(event.payload.result) > 60) {
-            setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
-            startBreathing('auto')
-          }
-        } else {
-          setLastRunSource('scheduler')
-        }
-        setStatus('Done')
+        clearCheckInProgressTimer()
+        const source =
+          event.payload.source === 'focus-mode'
+            ? 'focus-mode'
+            : event.payload.source === 'manual'
+              ? 'manual'
+              : 'scheduler'
+        applyCheckInResult(event.payload.result, source)
         setError(null)
-        void loadHistory()
-        void loadDailyReport()
-        void loadCalibrationStatus()
+        if (
+          source === 'focus-mode' &&
+          !breathingActiveRef.current &&
+          !breakActiveRef.current &&
+          stressIndex(event.payload.result) > 60
+        ) {
+          setLastNudge('Elevated stress detected during focus mode. Starting breathing exercise.')
+          startBreathing('auto')
+        }
       })
 
       unlistenError = await listen<{ error: string }>('session-error', (event) => {
+        clearCheckInProgressTimer()
         setStatus('Error')
         setError(event.payload.error)
+        setCheckInMessage('Check-in failed. Check camera permissions and try again.')
+        window.setTimeout(() => {
+          if (statusRef.current === 'Error') setCheckInMessage(null)
+        }, 4200)
       })
 
       unlistenSkip = await listen('scheduler-skip', () => {
@@ -791,10 +905,50 @@ function App() {
     updateNudgeFromResult,
   ])
 
-  // Show auth screen for main window if not authenticated
-  if (isMainWindow && !authLoading && !isAuthenticated) {
-    return <AuthScreen />
-  }
+  // Tag document so CSS can use transparent chrome for the menubar popover only.
+  useEffect(() => {
+    const label = isMainWindow ? 'main-window' : 'main'
+    document.documentElement.dataset.window = label
+    document.body.dataset.window = label
+  }, [isMainWindow])
+
+  // When the menubar popover is shown again, resync latest sessions so check-in
+  // results completed while hidden are visible immediately.
+  useEffect(() => {
+    if (!isPopoverWindow) return
+    let unlisten: (() => void) | undefined
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (!focused) return
+        void loadHistory()
+        void loadDailyReport()
+        void loadCalibrationStatus()
+      })
+      .then((fn) => {
+        unlisten = fn
+      })
+    return () => {
+      unlisten?.()
+    }
+  }, [isPopoverWindow, loadHistory, loadDailyReport, loadCalibrationStatus])
+
+  // Recover from a stale "Running" UI if the backend finished while we were hidden.
+  useEffect(() => {
+    if (status !== 'Running') return
+    const timer = window.setTimeout(() => {
+      void loadHistory().then(() => {
+        // If still marked running after a long wait, soft-reset so the user can retry.
+        if (statusRef.current === 'Running') {
+          setStatus('Idle')
+          setCheckInMessage('Previous check-in finished. Tap Check in to run again.')
+          window.setTimeout(() => {
+            if (statusRef.current === 'Idle') setCheckInMessage(null)
+          }, 3500)
+        }
+      })
+    }, 45_000)
+    return () => window.clearTimeout(timer)
+  }, [status, loadHistory])
 
   return (
     <AppSettingsProvider value={{ settings, updateSettings }}>
@@ -863,7 +1017,24 @@ function App() {
                   Back
                 </button>
               )}
-              <button className="icon-btn icon-btn-close" aria-label="Close window" title="Close" onClick={closeWindow}>
+              <button
+                type="button"
+                className="icon-btn icon-btn-close"
+                aria-label="Close window"
+                title="Close"
+                onPointerDown={(event) => {
+                  // Close on pointerdown so header drag / focus loss can't steal the gesture.
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void closeWindow(event)
+                }}
+                onClick={(event) => {
+                  // Fallback if pointerdown was cancelled by the OS.
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void closeWindow(event)
+                }}
+              >
                 ×
               </button>
             </div>
@@ -1137,121 +1308,160 @@ function App() {
             </AnimatePresence>
           </ScrollArea>
 
-          <AnimatePresence>
-            {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-                <QuickActionsPopover
-                  quickActionStep={quickActionStep}
-                  setQuickActionStep={setQuickActionStep}
-                  breathingPattern={breathingPattern}
-                  setBreathingPattern={setBreathingPattern}
-                  breathingUseHrSensing={breathingUseHrSensing}
-                  setBreathingUseHrSensing={setBreathingUseHrSensing}
-                  breakUseGenuinityChecks={breakUseGenuinityChecks}
-                  setBreakUseGenuinityChecks={setBreakUseGenuinityChecks}
-                  breakPlannedMinutes={breakPlannedMinutes}
-                  setBreakPlannedMinutes={setBreakPlannedMinutes}
-                  onStartBreathing={() => {
-                    setShowQuickActions(false)
-                    setQuickActionStep('menu')
-                    startBreathing()
-                  }}
-                  onStartBreak={(seconds) => {
-                    setShowQuickActions(false)
-                    setQuickActionStep('menu')
-                    startBreak(seconds)
-                  }}
-                  onClose={() => {
-                    setShowQuickActions(false)
-                    setQuickActionStep('menu')
-                  }}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className={`popover-bottom-stack ${showQuickActions ? 'has-panel' : ''}`}>
+            <AnimatePresence initial={false} mode="popLayout">
+              {showQuickActions && activePage === 'home' && !breathingActive && !breakActive && (
+                <motion.div
+                  key="quick-actions"
+                  className="quick-actions-slot"
+                  initial={{ opacity: 0, y: 10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: 8, height: 0 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <QuickActionsPopover
+                    quickActionStep={quickActionStep}
+                    setQuickActionStep={setQuickActionStep}
+                    breathingPattern={breathingPattern}
+                    setBreathingPattern={setBreathingPattern}
+                    breathingUseHrSensing={breathingUseHrSensing}
+                    setBreathingUseHrSensing={setBreathingUseHrSensing}
+                    breakUseGenuinityChecks={breakUseGenuinityChecks}
+                    setBreakUseGenuinityChecks={setBreakUseGenuinityChecks}
+                    breakPlannedMinutes={breakPlannedMinutes}
+                    setBreakPlannedMinutes={setBreakPlannedMinutes}
+                    onStartBreathing={() => {
+                      setShowQuickActions(false)
+                      setQuickActionStep('menu')
+                      startBreathing()
+                    }}
+                    onStartBreak={(seconds) => {
+                      setShowQuickActions(false)
+                      setQuickActionStep('menu')
+                      startBreak(seconds)
+                    }}
+                    onClose={() => {
+                      setShowQuickActions(false)
+                      setQuickActionStep('menu')
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <footer className="footerbar">
-            {activePage === 'home' ? (
-              <button
-                className="icon-action-btn"
-                onClick={() => setActivePage('report')}
-                aria-label="Open report"
-                title="Report"
-              >
-                <ChartNoAxesCombined className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-              </button>
-            ) : (
-              <button
-                className="icon-action-btn"
-                onClick={() => setActivePage('home')}
-                aria-label="Go to home"
-                title="Home"
-              >
-                <House className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-              </button>
-            )}
-            <button
-              className="icon-action-btn"
-              onClick={() => void openMainWindow()}
-              aria-label="Open main app window"
-              title="Open app"
-            >
-              <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-            </button>
-            {activePage === 'home' && !breathingActive && !breakActive && (
-              <button
-                className="icon-action-btn"
-                onClick={() =>
-                  setShowQuickActions((v) => {
-                    const next = !v
-                    if (next) setQuickActionStep('menu')
-                    return next
-                  })
-                }
-                aria-label="Open quick actions"
-                title="Actions"
-              >
-                <Ellipsis className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
-                <span className="sr-only">Actions</span>
-              </button>
-            )}
-            {activePage === 'home' && breathingActive && (
-              <button className="report-link" onClick={() => void stopBreathing()}>
-                Stop
-              </button>
-            )}
-            {activePage === 'home' && breakActive && (
-              <button className="report-link" onClick={stopBreak}>
-                End break
-              </button>
-            )}
-            <div className="toggle-wrap">
-              <button
-                className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
-                onClick={toggleFocusMode}
-              >
-                {settings?.focus_mode_active ? 'Focus on' : 'Focus off'}
-              </button>
-              <span>Pause</span>
-              <button
-                className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}
-                onClick={() => updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
-                aria-label="Toggle monitoring"
-              >
-                <span className="knob" />
-              </button>
-            </div>
-          </footer>
+            <AnimatePresence initial={false} mode="popLayout">
+              {activePage === 'home' && !breathingActive && !breakActive && !showQuickActions && (
+                <motion.div
+                  key="checkin-slot"
+                  className="checkin-slot"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  {checkInMessage && (
+                    <motion.p
+                      className={`checkin-toast ${status === 'Error' ? 'is-error' : status === 'Running' ? 'is-running' : 'is-done'}`}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      {checkInMessage}
+                    </motion.p>
+                  )}
+                  <button
+                    className={`checkin-fab ${status === 'Running' ? 'is-running' : ''}`}
+                    onClick={() => void runSession()}
+                    disabled={!canRun || breakActive}
+                    aria-busy={status === 'Running'}
+                  >
+                    {status === 'Running' ? (
+                      <>
+                        <span className="checkin-spinner" aria-hidden />
+                        Checking in…
+                      </>
+                    ) : (
+                      'Check in'
+                    )}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          {activePage === 'home' && !breathingActive && !breakActive && (
-            <button
-              className="checkin-fab"
-              onClick={runSession}
-              disabled={!canRun || breakActive}
-            >
-              {status === 'Running' ? 'Checking' : 'Check in'}
-            </button>
-          )}
+            <footer className="footerbar">
+              {activePage === 'home' ? (
+                <button
+                  className="icon-action-btn"
+                  onClick={() => setActivePage('report')}
+                  aria-label="Open report"
+                  title="Report"
+                >
+                  <ChartNoAxesCombined className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+                </button>
+              ) : (
+                <button
+                  className="icon-action-btn"
+                  onClick={() => setActivePage('home')}
+                  aria-label="Go to home"
+                  title="Home"
+                >
+                  <House className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+                </button>
+              )}
+              <button
+                className="icon-action-btn"
+                onClick={() => void openMainWindow()}
+                aria-label="Open main app window"
+                title="Open app"
+              >
+                <ArrowUpRight className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+              </button>
+              {activePage === 'home' && !breathingActive && !breakActive && (
+                <button
+                  className={`icon-action-btn ${showQuickActions ? 'is-active' : ''}`}
+                  onClick={() =>
+                    setShowQuickActions((v) => {
+                      const next = !v
+                      if (next) setQuickActionStep('menu')
+                      return next
+                    })
+                  }
+                  aria-label="Open quick actions"
+                  title="Actions"
+                  aria-pressed={showQuickActions}
+                >
+                  <Ellipsis className="icon-action-svg" aria-hidden="true" strokeWidth={2.25} />
+                  <span className="sr-only">Actions</span>
+                </button>
+              )}
+              {activePage === 'home' && breathingActive && (
+                <button className="report-link" onClick={() => void stopBreathing()}>
+                  Stop
+                </button>
+              )}
+              {activePage === 'home' && breakActive && (
+                <button className="report-link" onClick={stopBreak}>
+                  End break
+                </button>
+              )}
+              <div className="toggle-wrap">
+                <button
+                  className={`focus-toggle ${settings?.focus_mode_active ? 'is-on' : 'is-off'}`}
+                  onClick={toggleFocusMode}
+                >
+                  {settings?.focus_mode_active ? 'Focus on' : 'Focus off'}
+                </button>
+                <span>Pause</span>
+                <button
+                  className={`toggle ${settings?.monitoring_paused ? 'is-paused' : 'is-active'}`}
+                  onClick={() => updateSettings({ monitoring_paused: !settings?.monitoring_paused })}
+                  aria-label="Toggle monitoring"
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+            </footer>
+          </div>
         </main>
       )}
     </AppSettingsProvider>

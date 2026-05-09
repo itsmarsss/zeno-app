@@ -74,16 +74,21 @@
   background: color-mix(in srgb, var(--state-elevated) 8%, transparent);
 }
 .popover {
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
+  /* Inset for rounded corners + side/bottom shadow. Keep top almost flush so
+     the panel sits tight under the menu bar (native status-item spacing). */
+  width: calc(100% - 16px);
+  height: calc(100% - 12px);
+  max-height: calc(100% - 12px);
+  margin: 2px 8px 10px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg-base);
   border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    0 10px 28px rgba(26, 25, 23, 0.14),
+    0 2px 6px rgba(26, 25, 23, 0.07);
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
   position: relative;
@@ -93,6 +98,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  padding-bottom: 8px;
 }
 
 .overlay {
@@ -215,10 +221,16 @@
   line-height: 1;
   color: var(--text-secondary);
   background: var(--bg-surface);
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .icon-btn-close:hover {
   background: var(--bg-subtle);
+  color: var(--text-primary);
 }
 
 .stress-card {
@@ -500,6 +512,7 @@
 .footerbar {
   height: 44px;
   flex-shrink: 0;
+  margin: 0 -12px;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -523,21 +536,73 @@
   color: var(--accent-dim);
 }
 
+.popover-bottom-stack {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 0;
+  background: linear-gradient(180deg, transparent 0%, var(--bg-base) 18%);
+}
+
+.quick-actions-slot,
+.checkin-slot {
+  overflow: hidden;
+}
+
+.checkin-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkin-toast {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.checkin-toast.is-running {
+  border-color: color-mix(in srgb, var(--accent) 35%, white);
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.checkin-toast.is-done {
+  border-color: color-mix(in srgb, var(--accent) 28%, white);
+}
+
+.checkin-toast.is-error {
+  border-color: color-mix(in srgb, var(--state-elevated) 35%, white);
+  background: color-mix(in srgb, var(--state-elevated) 8%, white);
+  color: var(--state-elevated);
+}
+
 .checkin-fab {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 58px;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
   height: 46px;
   border: 1px solid var(--accent);
   border-radius: 12px;
   background: var(--accent);
   color: var(--text-inverse);
   font-family: 'DM Sans', sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   box-shadow: 0 6px 16px rgba(45, 106, 79, 0.18);
@@ -560,10 +625,36 @@
 }
 
 .checkin-fab:disabled {
-  opacity: 0.45;
+  opacity: 0.7;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.checkin-fab.is-running {
+  background: color-mix(in srgb, var(--accent) 88%, #1a1917);
+  border-color: color-mix(in srgb, var(--accent) 88%, #1a1917);
+}
+
+.checkin-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: checkinSpin 0.7s linear infinite;
+}
+
+@keyframes checkinSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-action-btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, white);
+  background: var(--accent-light);
+  color: var(--accent);
 }
 
 .toggle-wrap {
