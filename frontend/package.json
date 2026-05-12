@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tauri": "tauri dev",
     "build": "tsc -b && vite build",
+    "build:tauri": "tauri build",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

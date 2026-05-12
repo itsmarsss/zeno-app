@@ -10,7 +10,9 @@ body,
   margin: 0;
   width: 100%;
   height: 100%;
-  background: #f7f5f2;
+  /* Menubar popover lives in a transparent Tauri window — keep the webview
+     fully clear so only the rounded .popover chrome is painted. */
+  background: transparent !important;
 }
 
 html {
@@ -19,9 +21,16 @@ html {
 
 body {
   overflow: hidden;
-  background: #f7f5f2;
+  background: transparent !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Main desktop window keeps the warm solid app background. */
+html[data-window='main-window'],
+html[data-window='main-window'] body,
+html[data-window='main-window'] #root {
+  background: #f7f5f2 !important;
 }
 
 .main-content,

@@ -26,19 +26,31 @@
 }
 
 .quick-actions-pop {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 52px;
-  z-index: 20;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 2;
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-surface);
   box-shadow: var(--shadow-md);
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+.quick-actions-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+.quick-actions-row .report-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .quick-actions-head {
