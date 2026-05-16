@@ -42,11 +42,21 @@ def _skipped_payload(duration: float, duration_seconds: float, started_at: datet
     }
 
 
+def _wait_for_camera_frames(manager: CameraManager, timeout_seconds: float = 5.0) -> bool:
+    """Block until the capture thread is producing frames (or timeout)."""
+    deadline = time.perf_counter() + max(0.5, float(timeout_seconds))
+    while time.perf_counter() < deadline:
+        if manager.get_latest_frame() is not None:
+            # A couple extra frames so exposure can settle before face detection.
+            time.sleep(0.25)
+            return True
+        time.sleep(0.04)
+    return False
+
+
 def run_passive_checkin(duration_seconds: float = 18.0) -> dict:
     # Cap total capture — keep check-ins snappy (still enough for rPPG samples).
-    duration_seconds = max(3.0, min(float(duration_seconds), 22.0))
-    # Fast presence gate: confirm face quickly, then load heavier analyzers.
-    presence_gate_seconds = min(1.5, duration_seconds)
+    duration_seconds = max(8.0, min(float(duration_seconds), 22.0))
     manager = CameraManager()
     presence = PresenceDetector()
     posture: PostureAnalyzer | None = None
@@ -56,21 +66,33 @@ def run_passive_checkin(duration_seconds: float = 18.0) -> dict:
     presence_confirmed = False
 
     try:
-        # Phase 1: open camera + light face detector only.
+        # 1) Open camera and wait until frames are actually flowing.
+        #    Presence must NOT run before this — empty/black frames look like "no face".
+        manager.start()
+        if not _wait_for_camera_frames(manager, timeout_seconds=5.0):
+            duration = round(time.perf_counter() - started, 2)
+            return _skipped_payload(duration, duration_seconds, started_at)
+
+        # 2) Preload face model before the gate timer starts.
+        presence.ensure_backend()
+
+        # 3) Presence gate only after camera + model are ready.
         presence.start_live(manager)
-        gate_deadline = started + presence_gate_seconds
+        presence_gate_seconds = min(5.0, max(3.0, duration_seconds * 0.35))
+        gate_deadline = time.perf_counter() + presence_gate_seconds
         while time.perf_counter() < gate_deadline:
             if bool(presence.latest_result()):
                 presence_confirmed = True
                 break
-            time.sleep(0.03)
+            time.sleep(0.04)
+
         if not presence_confirmed:
             duration = round(time.perf_counter() - started, 2)
             return _skipped_payload(duration, duration_seconds, started_at)
 
-        # Phase 2: load posture + stress only after a face is confirmed.
+        # 4) Load heavier analyzers only after a face is confirmed.
         posture = PostureAnalyzer()
-        stress = StressAnalyzer(hr_window_seconds=min(16.0, duration_seconds))
+        stress = StressAnalyzer(hr_window_seconds=min(14.0, duration_seconds))
         posture.start_live(manager)
         stress.start_live(manager)
         remaining = max(0.0, duration_seconds - (time.perf_counter() - started))
@@ -128,7 +150,7 @@ def run_passive_checkin(duration_seconds: float = 18.0) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run passive check-in on shared camera manager.")
-    parser.add_argument("--duration-seconds", type=float, default=30.0)
+    parser.add_argument("--duration-seconds", type=float, default=18.0)
     args = parser.parse_args()
 
     result = run_passive_checkin(duration_seconds=args.duration_seconds)

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, ChevronRight, Download, ExternalLink, Loader2, Trash2 } from 'lucide-react'
+import { Check, ChevronRight, Download, Loader2, Trash2 } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
 import './SettingsTab.css'
 import { easeOut } from '../../shared/motion'
@@ -70,21 +72,21 @@ export function SettingsTab({
   onExportData: () => Promise<void>
   exportMessage: string | null
 }) {
-  const [cameraIndicator, setCameraIndicator] = useState(true)
-  const [postureNudges, setPostureNudges] = useState(true)
-  const [stressNudges, setStressNudges] = useState(true)
-  const [breakReminders, setBreakReminders] = useState(true)
   const [focusWarning, setFocusWarning] = useState('90')
   const [nudgeGap, setNudgeGap] = useState('20')
-  const [startMode, setStartMode] = useState('login')
   const [clearExpanded, setClearExpanded] = useState(false)
   const [checkingUpdates, setCheckingUpdates] = useState<'idle' | 'loading' | 'updated'>('idle')
   const [activeSheet, setActiveSheet] = useState<SelectKey | null>(null)
+  const [startModeBusy, setStartModeBusy] = useState(false)
+  const [startModeError, setStartModeError] = useState<string | null>(null)
+  const [onboardingFlash, setOnboardingFlash] = useState(false)
 
   const passiveMonitoring = !(settings?.monitoring_paused ?? false)
   const frequencyValue = String(settings?.session_frequency_minutes ?? 10)
+  const startMode = settings?.launch_at_login === false ? 'manual' : 'login'
   const reportValue = useMemo(() => {
     const hour = settings?.daily_report_hour ?? 21
+    if (hour < 0) return 'off'
     const minute = settings?.daily_report_minute ?? 0
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
   }, [settings?.daily_report_hour, settings?.daily_report_minute])
@@ -118,7 +120,20 @@ export function SettingsTab({
 
     if (key === 'focus_warning') setFocusWarning(value)
     if (key === 'nudge_gap') setNudgeGap(value)
-    if (key === 'start_mode') setStartMode(value)
+
+    if (key === 'start_mode') {
+      setStartModeBusy(true)
+      setStartModeError(null)
+      const enabled = value === 'login'
+      try {
+        await invoke<boolean>('set_launch_at_login', { enabled })
+        await updateSettings({ launch_at_login: enabled })
+      } catch (e) {
+        setStartModeError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setStartModeBusy(false)
+      }
+    }
 
     setActiveSheet(null)
   }
@@ -127,6 +142,56 @@ export function SettingsTab({
     setCheckingUpdates('loading')
     window.setTimeout(() => setCheckingUpdates('updated'), 1200)
   }
+
+  function handleReplayOnboarding() {
+    setOnboardingFlash(true)
+    replayOnboarding()
+    window.setTimeout(() => setOnboardingFlash(false), 1600)
+  }
+
+  const sheet =
+    activeSheet == null
+      ? null
+      : createPortal(
+          <AnimatePresence>
+            <motion.div
+              key="settings-sheet"
+              className="settings-sheet-wrap"
+              onClick={() => setActiveSheet(null)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <motion.div
+                className="settings-sheet"
+                onClick={(event) => event.stopPropagation()}
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={easeOut}
+              >
+                <div className="settings-sheet-handle" />
+                <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
+                <div className="settings-sheet-list">
+                  {SELECT_OPTIONS[activeSheet].map((option) => {
+                    const selected = option.value === selectValues[activeSheet]
+                    return (
+                      <button key={option.value} type="button" onClick={() => void applySelect(activeSheet, option.value)}>
+                        <span className={selected ? 'is-selected' : ''}>{option.label}</span>
+                        {selected ? <Check size={14} /> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button type="button" className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>
+                  Cancel
+                </button>
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>,
+          document.body,
+        )
 
   return (
     <section className="settings-page">
@@ -144,6 +209,7 @@ export function SettingsTab({
               <p>Check in every few minutes while you work</p>
             </div>
             <button
+              type="button"
               className={`toggle ${passiveMonitoring ? 'is-active' : 'is-paused'}`}
               onClick={() => void updateSettings({ monitoring_paused: passiveMonitoring })}
               aria-label="Toggle passive monitoring"
@@ -153,19 +219,21 @@ export function SettingsTab({
           </div>
 
           <button
+            type="button"
             className={`settings-row settings-row--select ${!passiveMonitoring ? 'is-disabled' : ''}`}
             disabled={!passiveMonitoring}
             onClick={() => setActiveSheet('frequency')}
           >
             <div>
               <strong>Check-in frequency</strong>
+              <p>How often passive check-ins run</p>
             </div>
             <span>
               {selectLabel('frequency')} <ChevronRight size={14} />
             </span>
           </button>
 
-          <button className="settings-row settings-row--select" onClick={() => setActiveSheet('focus_warning')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('focus_warning')}>
             <div>
               <strong>Focus session warning</strong>
               <p>Alert me when a session runs long</p>
@@ -175,77 +243,29 @@ export function SettingsTab({
             </span>
           </button>
 
-          <div className="settings-row settings-row--toggle">
-            <div>
-              <strong>Show camera indicator</strong>
-              <p>Green dot in menubar when camera is active</p>
-            </div>
-            <button
-              className={`toggle ${cameraIndicator ? 'is-active' : 'is-paused'}`}
-              onClick={() => setCameraIndicator((value) => !value)}
-              aria-label="Toggle camera indicator"
-            >
-              <span className="knob" />
-            </button>
-          </div>
-
-          <button className="settings-row settings-row--select" onClick={() => setActiveSheet('start_mode')}>
+          <button
+            type="button"
+            className="settings-row settings-row--select"
+            onClick={() => setActiveSheet('start_mode')}
+            disabled={startModeBusy}
+          >
             <div>
               <strong>Start Zeno</strong>
+              <p>{startMode === 'login' ? 'Launches automatically when you log in' : 'Only starts when you open it'}</p>
             </div>
             <span>
+              {startModeBusy ? <Loader2 size={14} className="spin" /> : null}
               {selectLabel('start_mode')} <ChevronRight size={14} />
             </span>
           </button>
+          {startModeError ? <p className="settings-inline-error">{startModeError}</p> : null}
         </div>
       </section>
 
       <section className="settings-section">
         <p className="settings-section-title">When Zeno speaks up</p>
         <div className="settings-card">
-          <div className="settings-row settings-row--toggle">
-            <div>
-              <strong>Posture nudges</strong>
-              <p>Tell me when I'm slouching</p>
-            </div>
-            <button
-              className={`toggle ${postureNudges ? 'is-active' : 'is-paused'}`}
-              onClick={() => setPostureNudges((value) => !value)}
-              aria-label="Toggle posture nudges"
-            >
-              <span className="knob" />
-            </button>
-          </div>
-
-          <div className="settings-row settings-row--toggle">
-            <div>
-              <strong>Stress nudges</strong>
-              <p>Suggest breaks when stress is elevated</p>
-            </div>
-            <button
-              className={`toggle ${stressNudges ? 'is-active' : 'is-paused'}`}
-              onClick={() => setStressNudges((value) => !value)}
-              aria-label="Toggle stress nudges"
-            >
-              <span className="knob" />
-            </button>
-          </div>
-
-          <div className="settings-row settings-row--toggle">
-            <div>
-              <strong>Break reminders</strong>
-              <p>Remind me to step away after long sessions</p>
-            </div>
-            <button
-              className={`toggle ${breakReminders ? 'is-active' : 'is-paused'}`}
-              onClick={() => setBreakReminders((value) => !value)}
-              aria-label="Toggle break reminders"
-            >
-              <span className="knob" />
-            </button>
-          </div>
-
-          <button className="settings-row settings-row--select" onClick={() => setActiveSheet('nudge_gap')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('nudge_gap')}>
             <div>
               <strong>Minimum time between nudges</strong>
               <p>Avoid being interrupted too often</p>
@@ -255,9 +275,10 @@ export function SettingsTab({
             </span>
           </button>
 
-          <button className="settings-row settings-row--select" onClick={() => setActiveSheet('report_time')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('report_time')}>
             <div>
               <strong>Daily report time</strong>
+              <p>{reportValue === 'off' ? 'Daily report notifications are off' : 'When to surface your daily summary'}</p>
             </div>
             <span>
               {selectLabel('report_time')} <ChevronRight size={14} />
@@ -269,7 +290,7 @@ export function SettingsTab({
       <section className="settings-section">
         <p className="settings-section-title">Your data</p>
         <div className="settings-card">
-          <button className="settings-row settings-row--action" onClick={() => void onExportData()}>
+          <button type="button" className="settings-row settings-row--action" onClick={() => void onExportData()}>
             <div>
               <strong>Export my data</strong>
               <p>Download local history as CSV</p>
@@ -287,7 +308,7 @@ export function SettingsTab({
             </div>
           </div>
 
-          <button className="settings-row settings-row--danger" onClick={() => setClearExpanded((value) => !value)}>
+          <button type="button" className="settings-row settings-row--danger" onClick={() => setClearExpanded((value) => !value)}>
             <div>
               <strong>Clear all data</strong>
               <p>Permanently delete your history and baseline</p>
@@ -310,10 +331,10 @@ export function SettingsTab({
                   This will delete all session history, posture data, and your personal baseline. This cannot be undone.
                 </p>
                 <div className="settings-inline-actions">
-                  <button className="btn-ghost" onClick={() => setClearExpanded(false)}>
+                  <button type="button" className="btn-ghost" onClick={() => setClearExpanded(false)}>
                     Cancel
                   </button>
-                  <button className="btn-danger" onClick={() => void clearAllData()}>
+                  <button type="button" className="btn-danger" onClick={() => void clearAllData()}>
                     Delete everything
                   </button>
                 </div>
@@ -331,7 +352,7 @@ export function SettingsTab({
             <span>0.2.0</span>
           </div>
 
-          <button className="settings-row settings-row--select" onClick={() => void checkUpdates()}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => void checkUpdates()}>
             <div>
               <strong>Check for updates</strong>
             </div>
@@ -346,29 +367,17 @@ export function SettingsTab({
                   <Check size={14} className="ok" /> Up to date
                 </>
               )}
-              {checkingUpdates === 'idle' && (
-                <>
-                  <ChevronRight size={14} />
-                </>
-              )}
+              {checkingUpdates === 'idle' && <ChevronRight size={14} />}
             </span>
           </button>
 
-          <button className="settings-row settings-row--select">
-            <div>
-              <strong>Privacy policy</strong>
-            </div>
-            <span>
-              <ExternalLink size={12} /> <ChevronRight size={14} />
-            </span>
-          </button>
-
-          <button className="settings-row settings-row--select" onClick={replayOnboarding}>
+          <button type="button" className="settings-row settings-row--select" onClick={handleReplayOnboarding}>
             <div>
               <strong>Replay onboarding</strong>
+              <p>Show the welcome tips again</p>
             </div>
             <span>
-              <ChevronRight size={14} />
+              {onboardingFlash ? <Check size={14} className="ok" /> : <ChevronRight size={14} />}
             </span>
           </button>
 
@@ -387,44 +396,7 @@ export function SettingsTab({
       <p className="settings-footer-note">Last run: {lastRunSource ?? 'none'}</p>
       {error && <p className="settings-footer-error">{error}</p>}
 
-      <AnimatePresence>
-        {activeSheet && (
-          <motion.div
-            className="settings-sheet-wrap"
-            onClick={() => setActiveSheet(null)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <motion.div
-              className="settings-sheet"
-              onClick={(event) => event.stopPropagation()}
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={easeOut}
-            >
-              <div className="settings-sheet-handle" />
-              <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
-              <div className="settings-sheet-list">
-                {SELECT_OPTIONS[activeSheet].map((option) => {
-                  const selected = option.value === selectValues[activeSheet]
-                  return (
-                    <button key={option.value} onClick={() => void applySelect(activeSheet, option.value)}>
-                      <span className={selected ? 'is-selected' : ''}>{option.label}</span>
-                      {selected ? <Check size={14} /> : null}
-                    </button>
-                  )
-                })}
-              </div>
-              <button className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>
-                Cancel
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {sheet}
     </section>
   )
 }

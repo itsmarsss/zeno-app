@@ -101,7 +101,13 @@ pub fn start_daily_report_trigger(app: &tauri::AppHandle) {
                 .map(|g| g.clone())
                 .unwrap_or_default();
 
-            if now.hour() != settings.daily_report_hour || now.minute() != settings.daily_report_minute {
+            // -1 disables the daily report notification.
+            if settings.daily_report_hour < 0 {
+                continue;
+            }
+            if now.hour() as i32 != settings.daily_report_hour
+                || now.minute() != settings.daily_report_minute
+            {
                 continue;
             }
 

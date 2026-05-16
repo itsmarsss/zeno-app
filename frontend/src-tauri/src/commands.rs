@@ -363,6 +363,32 @@ pub fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_launch_at_login(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| format!("Failed to read launch-at-login: {e}"))
+}
+
+#[tauri::command]
+pub fn set_launch_at_login(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if enabled {
+        launcher
+            .enable()
+            .map_err(|e| format!("Failed to enable launch-at-login: {e}"))?;
+    } else {
+        launcher
+            .disable()
+            .map_err(|e| format!("Failed to disable launch-at-login: {e}"))?;
+    }
+    launcher
+        .is_enabled()
+        .map_err(|e| format!("Failed to confirm launch-at-login: {e}"))
+}
+
+#[tauri::command]
 pub fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);

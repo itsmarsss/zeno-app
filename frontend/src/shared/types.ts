@@ -110,9 +110,11 @@ export type AppSettings = {
   monitoring_paused: boolean
   focus_mode_active: boolean
   session_frequency_minutes: number
+  /** 0-23, or -1 when daily report is off */
   daily_report_hour: number
   daily_report_minute: number
   onboarding_completed: boolean
+  launch_at_login: boolean
 }
 
 export type BreathingPatternId = 'box' | 'four-seven-eight'

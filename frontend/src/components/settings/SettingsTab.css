@@ -225,6 +225,16 @@
   color: var(--text-secondary);
 }
 
+.settings-footer-error,
+.settings-inline-error {
+  color: var(--state-elevated);
+}
+
+.settings-inline-error {
+  margin: 0 18px 12px;
+  font-size: 12px;
+}
+
 .settings-inline-note {
   margin: 8px 18px 2px;
   font-size: 12px;
@@ -232,20 +242,26 @@
 }
 
 .settings-sheet-wrap {
+  /* Portaled to document.body so the left sidebar cannot cover the drawer. */
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.24);
+  background: rgba(0, 0, 0, 0.34);
   display: flex;
   align-items: flex-end;
-  z-index: 120;
+  justify-content: center;
+  z-index: 9999;
+  padding: 0;
 }
 
 .settings-sheet {
-  width: 100%;
-  border-radius: 14px 14px 0 0;
+  width: min(100%, 520px);
+  max-height: min(72vh, 560px);
+  overflow: auto;
+  border-radius: 16px 16px 0 0;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-surface);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
+  margin-left: 0;
 }
 
 .settings-sheet-handle {
