@@ -393,7 +393,11 @@ def _posture_quality_flags(
 
 def log_session(result: dict, db_path: Path) -> int:
     init_db(db_path)
-    result = _normalize_session_result(result)
+    # Normalize in-place so callers (and the JSON returned to the app) receive
+    # computed fields like stress_index / baseline metrics — not just the DB row.
+    normalized = _normalize_session_result(result)
+    result.clear()
+    result.update(normalized)
     with connect_db(db_path) as conn:
         mode = str(result.get("mode", "passive"))
         is_focus_mode = is_focus_session(mode=mode, focus_mode=result.get("focus_mode"))
