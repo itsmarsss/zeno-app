@@ -24,9 +24,16 @@ pub struct AppSettings {
     pub monitoring_paused: bool,
     pub focus_mode_active: bool,
     pub session_frequency_minutes: u32,
-    pub daily_report_hour: u32,
+    /// Hour of day for the daily report (0-23). Use -1 to disable.
+    pub daily_report_hour: i32,
     pub daily_report_minute: u32,
     pub onboarding_completed: bool,
+    #[serde(default = "default_launch_at_login")]
+    pub launch_at_login: bool,
+}
+
+fn default_launch_at_login() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -38,6 +45,7 @@ impl Default for AppSettings {
             daily_report_hour: 21,
             daily_report_minute: 0,
             onboarding_completed: false,
+            launch_at_login: true,
         }
     }
 }

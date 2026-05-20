@@ -85,6 +85,10 @@ export function MainWindowShell({
   clearAllData,
   onRunCheckIn,
   isCheckInRunning,
+  checkInMessage,
+  showOnboarding,
+  onDismissOnboarding,
+  onCompleteOnboarding,
   currentResult,
 }: {
   history: SessionHistoryItem[]
@@ -96,6 +100,10 @@ export function MainWindowShell({
   clearAllData: () => Promise<void>
   onRunCheckIn: () => Promise<void>
   isCheckInRunning: boolean
+  checkInMessage: string | null
+  showOnboarding: boolean
+  onDismissOnboarding: () => void
+  onCompleteOnboarding: () => void
   currentResult: SessionResult | null
 }) {
   const { settings, updateSettings } = useAppSettings()
@@ -1134,6 +1142,44 @@ export function MainWindowShell({
 
   return (
     <div className="main-window-shell">
+      <AnimatePresence>
+        {showOnboarding && (
+          <motion.div
+            className="main-onboarding-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.section
+              className="main-onboarding-card"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+            >
+              <h2>Welcome to Zeno</h2>
+              <p>Zeno runs quietly in your menubar and checks your posture and stress privately on-device.</p>
+              <ol>
+                <li>
+                  Use <strong>Check in</strong> for an immediate snapshot.
+                </li>
+                <li>First 3 sessions establish your personal baseline.</li>
+                <li>
+                  Open the menubar popover anytime for a quick status read.
+                </li>
+              </ol>
+              <div className="main-onboarding-actions">
+                <button type="button" className="btn-ghost" onClick={onDismissOnboarding}>
+                  Later
+                </button>
+                <button type="button" className="btn-solid" onClick={onCompleteOnboarding}>
+                  Got it
+                </button>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="desktop-chrome">
         <div className="desktop-chrome-drag" data-tauri-drag-region>
           <div className="desktop-topbar-title">
@@ -1157,11 +1203,21 @@ export function MainWindowShell({
             </button>
           </div>
         </div>
-        <div className="desktop-topbar-actions">
+        <div className="desktop-topbar-actions desktop-topbar-actions--checkin">
+          {(isCheckInRunning || checkInMessage) && (
+            <p
+              className={`desktop-checkin-toast ${
+                isCheckInRunning ? 'is-running' : error ? 'is-error' : 'is-done'
+              }`}
+            >
+              {checkInMessage ?? (isCheckInRunning ? 'Checking in…' : null)}
+            </p>
+          )}
           <button
-            className="desktop-action-btn desktop-action-btn--primary"
+            className={`desktop-action-btn desktop-action-btn--primary ${isCheckInRunning ? 'is-running' : ''}`}
             onClick={() => void onRunCheckIn()}
             disabled={isCheckInRunning}
+            aria-busy={isCheckInRunning}
           >
             <Zap size={14} />
             {isCheckInRunning ? 'Checking…' : 'Check in'}

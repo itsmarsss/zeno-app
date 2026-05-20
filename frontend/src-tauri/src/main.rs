@@ -7,13 +7,13 @@ mod schedulers;
 mod state;
 
 use commands::{
-    hide_window, open_main_window, run_activity_stats, run_calibration_status, run_clear_data,
-    run_daily_report, run_exercise_history, run_export_sessions_csv, run_get_settings,
-    run_log_break_session, run_log_breathing_session, run_log_exercise_session,
-    run_monitor_timeline, run_overview_aggregates, run_posture_insights, run_presence_check,
-    run_python_session, run_recalibrate_baseline, run_session_days, run_session_history,
-    run_update_settings, start_focus_stream, start_hr_stream, start_posture_stream,
-    stop_focus_stream, stop_hr_stream, stop_posture_stream,
+    get_launch_at_login, hide_window, open_main_window, run_activity_stats,
+    run_calibration_status, run_clear_data, run_daily_report, run_exercise_history,
+    run_export_sessions_csv, run_get_settings, run_log_break_session, run_log_breathing_session,
+    run_log_exercise_session, run_monitor_timeline, run_overview_aggregates, run_posture_insights,
+    run_presence_check, run_python_session, run_recalibrate_baseline, run_session_days,
+    run_session_history, run_update_settings, set_launch_at_login, start_focus_stream,
+    start_hr_stream, start_posture_stream, stop_focus_stream, stop_hr_stream, stop_posture_stream,
 };
 use python_sidecar::run_settings_blocking;
 use schedulers::{
@@ -212,6 +212,8 @@ fn main() {
             run_export_sessions_csv,
             run_monitor_timeline,
             hide_window,
+            get_launch_at_login,
+            set_launch_at_login,
             open_main_window,
             start_posture_stream,
             stop_posture_stream,
@@ -273,8 +275,18 @@ fn main() {
                 }
             }
 
-            // Enable launch at login; silently ignore unsupported/error cases.
-            let _ = app.autolaunch().enable();
+            // Honor saved launch-at-login preference (default on for fresh installs).
+            let launch_at_login = app
+                .state::<SettingsState>()
+                .inner
+                .lock()
+                .map(|g| g.launch_at_login)
+                .unwrap_or(true);
+            if launch_at_login {
+                let _ = app.autolaunch().enable();
+            } else {
+                let _ = app.autolaunch().disable();
+            }
 
             let open_item = MenuItemBuilder::with_id("open", "Open Zeno").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;

@@ -144,6 +144,10 @@ class PresenceDetector:
         with self._lock:
             self._latest_result = bool(presence)
 
+    def ensure_backend(self) -> None:
+        """Load face-detection models before the presence gate timer starts."""
+        self._ensure_backend()
+
     def _ensure_backend(self) -> None:
         if self._backend is not None:
             return

@@ -12,6 +12,7 @@ DEFAULT_SETTINGS = {
     "daily_report_hour": 21,
     "daily_report_minute": 0,
     "onboarding_completed": False,
+    "launch_at_login": True,
 }
 
 
@@ -24,8 +25,9 @@ def _sanitize(settings: dict) -> dict:
     cleaned["session_frequency_minutes"] = int(cleaned.get("session_frequency_minutes", 10))
     cleaned["session_frequency_minutes"] = min(30, max(5, cleaned["session_frequency_minutes"]))
 
-    cleaned["daily_report_hour"] = int(cleaned.get("daily_report_hour", 21))
-    cleaned["daily_report_hour"] = min(23, max(0, cleaned["daily_report_hour"]))
+    # -1 means daily report is off.
+    hour = int(cleaned.get("daily_report_hour", 21))
+    cleaned["daily_report_hour"] = -1 if hour < 0 else min(23, max(0, hour))
 
     cleaned["daily_report_minute"] = int(cleaned.get("daily_report_minute", 0))
     cleaned["daily_report_minute"] = min(59, max(0, cleaned["daily_report_minute"]))
@@ -35,6 +37,7 @@ def _sanitize(settings: dict) -> dict:
     cleaned.pop("plan_tier", None)
     cleaned.pop("license_key", None)
     cleaned["onboarding_completed"] = bool(cleaned.get("onboarding_completed", False))
+    cleaned["launch_at_login"] = bool(cleaned.get("launch_at_login", True))
     # Keep only known keys so legacy pro/cloud fields cannot reappear.
     return {key: cleaned[key] for key in DEFAULT_SETTINGS}
 

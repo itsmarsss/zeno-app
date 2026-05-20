@@ -780,18 +780,18 @@ function App() {
     try {
       setStatus('Running')
       setError(null)
-      setCheckInMessage('Freeing camera…')
+      setCheckInMessage('Opening camera…')
       setShowQuickActions(false)
       setQuickActionStep('menu')
 
-      // Progressive status so the 15–20s capture doesn't feel frozen.
+      // Progressive status so capture doesn't feel frozen (presence waits for frames first).
       const startedAt = Date.now()
       checkInProgressTimerRef.current = window.setInterval(() => {
         const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-        if (elapsed < 2) setCheckInMessage('Opening camera…')
-        else if (elapsed < 5) setCheckInMessage('Looking for your face…')
-        else if (elapsed < 12) setCheckInMessage(`Capturing posture & vitals… ${elapsed}s`)
-        else setCheckInMessage(`Almost done… ${elapsed}s`)
+        if (elapsed < 3) setCheckInMessage('Opening camera…')
+        else if (elapsed < 8) setCheckInMessage('Looking for your face…')
+        else if (elapsed < 15) setCheckInMessage(`Capturing posture & vitals… ${elapsed}s`)
+        else setCheckInMessage(`Wrapping up… ${elapsed}s`)
       }, 400)
 
       // Best-effort: stop live streams from this window too (Rust also does this).
@@ -963,6 +963,10 @@ function App() {
           clearAllData={clearAllData}
           onRunCheckIn={runSession}
           isCheckInRunning={status === 'Running'}
+          checkInMessage={checkInMessage}
+          showOnboarding={showOnboarding}
+          onDismissOnboarding={() => setShowOnboarding(false)}
+          onCompleteOnboarding={() => void completeOnboarding()}
           currentResult={result}
         />
       ) : (
