@@ -23,7 +23,8 @@ def _sanitize(settings: dict) -> dict:
     cleaned["monitoring_paused"] = bool(cleaned.get("monitoring_paused", False))
     cleaned["focus_mode_active"] = bool(cleaned.get("focus_mode_active", False))
     cleaned["session_frequency_minutes"] = int(cleaned.get("session_frequency_minutes", 10))
-    cleaned["session_frequency_minutes"] = min(30, max(5, cleaned["session_frequency_minutes"]))
+    # Allow a wide range so the settings wheel can pick any practical interval.
+    cleaned["session_frequency_minutes"] = min(120, max(5, cleaned["session_frequency_minutes"]))
 
     # -1 means daily report is off.
     hour = int(cleaned.get("daily_report_hour", 21))

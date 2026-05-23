@@ -1,0 +1,107 @@
+.wheel-picker {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.wheel-picker-band {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-subtle));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.wheel-picker-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 56px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.wheel-picker-fade--top {
+  top: 0;
+  background: linear-gradient(180deg, var(--bg-surface) 10%, transparent);
+}
+
+.wheel-picker-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(0deg, var(--bg-surface) 10%, transparent);
+}
+
+.wheel-picker-cols {
+  position: relative;
+  z-index: 3;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.wheel-picker-col-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wheel-col {
+  position: relative;
+  height: 100%;
+  min-width: 56px;
+  flex: 0 0 auto;
+}
+
+.wheel-col-scroller {
+  height: 100%;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.wheel-col-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-col-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  cursor: pointer;
+  padding: 0 6px;
+  transition: color 80ms ease, font-weight 80ms ease, transform 80ms ease;
+}
+
+.wheel-col-item.is-selected {
+  color: var(--text-primary);
+  font-weight: 600;
+  transform: scale(1.04);
+}
+
+.wheel-picker-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding-right: 4px;
+  min-width: 28px;
+}
