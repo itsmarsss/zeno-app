@@ -757,14 +757,23 @@ function App() {
       }, 3200)
       return
     }
-    setResult(payload)
-    latestResultRef.current = payload
-    updateNudgeFromResult(payload)
+    // Ensure stress_index is populated for display even if the sidecar omitted it.
+    const stressValue = stressIndex(payload)
+    const enriched: SessionResult = {
+      ...payload,
+      stress_index: stressValue,
+    }
+    setResult(enriched)
+    latestResultRef.current = enriched
+    updateNudgeFromResult(enriched)
     setLastRunSource(source)
     setStatus('Done')
-    const stressValue = stressIndex(payload)
+    const hrText =
+      typeof enriched.heart_rate_bpm === 'number' && enriched.heart_rate_bpm > 0
+        ? ` · HR ${Math.round(enriched.heart_rate_bpm)}`
+        : ''
     setCheckInMessage(
-      `Check-in complete · stress ${stressValue} · posture ${friendlyPosture(payload.posture_score)}`,
+      `Check-in complete · stress ${stressValue} · posture ${friendlyPosture(enriched.posture_score)}${hrText}`,
     )
     void loadHistory()
     void loadDailyReport()

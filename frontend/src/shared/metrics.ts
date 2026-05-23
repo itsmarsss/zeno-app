@@ -8,8 +8,33 @@ export function prettyTime(timestamp: string): string {
 
 export function stressIndex(result: SessionResult | null): number {
   if (!result) return 0
-  if (typeof result.stress_index !== 'number' || !Number.isFinite(result.stress_index)) return 0
-  return Math.max(0, Math.min(100, Math.round(result.stress_index)))
+  if (typeof result.stress_index === 'number' && Number.isFinite(result.stress_index)) {
+    return Math.max(0, Math.min(100, Math.round(result.stress_index)))
+  }
+  // Fallback if backend omitted stress_index (should be rare after logger fix).
+  const emotion = (result.dominant_emotion || 'unknown').toLowerCase()
+  const emotionBase: Record<string, number> = {
+    happy: 20,
+    happiness: 20,
+    neutral: 35,
+    surprise: 45,
+    sad: 55,
+    sadness: 55,
+    disgust: 70,
+    contempt: 70,
+    angry: 85,
+    anger: 85,
+    fear: 85,
+  }
+  const conf = Math.max(0.25, Math.min(1, Number(result.emotion_score) || 0))
+  let points = (emotionBase[emotion] ?? 50) * conf
+  const hr = result.heart_rate_bpm
+  if (typeof hr === 'number' && hr >= 35 && hr <= 200) {
+    const resting = typeof result.resting_hr === 'number' ? result.resting_hr : 75
+    const hrPoints = Math.max(0, Math.min(100, (hr - resting) * 3.2))
+    points = hrPoints * 0.5 + points * 0.5
+  }
+  return Math.max(0, Math.min(100, Math.round(points)))
 }
 
 export function stressState(score: number): 'calm' | 'mild' | 'elevated' | 'high' {
