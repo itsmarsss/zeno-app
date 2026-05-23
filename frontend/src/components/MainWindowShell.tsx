@@ -24,7 +24,6 @@ import type {
   SessionResult,
 } from '../shared/types'
 import {
-  buildPath,
   clamp,
   formatHourLabel,
   formatMinutes,
@@ -540,11 +539,12 @@ export function MainWindowShell({
           return at >= dayStart && at <= dayEnd
         })
         const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
-        const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
+        const stressValues = items.map((item) => stressIndexFromHistory(item))
+        const avgStress = items.length === 0 ? null : Math.round(mean(stressValues))
         points.push({
           label: dayStart.toLocaleDateString([], { weekday: 'short' }),
           focusedMinutes,
-          avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+          avgStress: avgStress != null && Number.isFinite(avgStress) ? avgStress : null,
         })
       }
       return points
@@ -564,11 +564,12 @@ export function MainWindowShell({
           return at >= bucketStart && at <= bucketEnd
         })
         const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
-        const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
+        const stressValues = items.map((item) => stressIndexFromHistory(item))
+        const avgStress = items.length === 0 ? null : Math.round(mean(stressValues))
         points.push({
           label: `W${i + 1}`,
           focusedMinutes,
-          avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+          avgStress: avgStress != null && Number.isFinite(avgStress) ? avgStress : null,
         })
       }
       return points
@@ -587,17 +588,18 @@ export function MainWindowShell({
         return at >= monthStart && at <= monthEnd
       })
       const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
-      const avgStress = Math.round(mean(items.map((item) => stressIndexFromHistory(item))))
+      const stressValues = items.map((item) => stressIndexFromHistory(item))
+      const avgStress = items.length === 0 ? null : Math.round(mean(stressValues))
       monthPoints.push({
         label: monthStart.toLocaleDateString([], { month: 'short' }),
         focusedMinutes,
-        avgStress: Number.isFinite(avgStress) && avgStress > 0 ? avgStress : null,
+        avgStress: avgStress != null && Number.isFinite(avgStress) ? avgStress : null,
       })
     }
     return monthPoints
   }, [currentPeriodFocus, focusPeriod, periodStart])
 
-  const rhythmMaxMinutes = Math.max(60, ...rhythmData.map((item) => item.focusedMinutes))
+  const rhythmMaxMinutes = Math.max(30, ...rhythmData.map((item) => item.focusedMinutes), 1)
   const rhythmStressValues = rhythmData.map((item) => item.avgStress).filter((value): value is number => value != null)
   let rhythmStressMin = 0
   let rhythmStressMax = 100
@@ -605,21 +607,14 @@ export function MainWindowShell({
     const observedMin = Math.min(...rhythmStressValues)
     const observedMax = Math.max(...rhythmStressValues)
     const center = (observedMin + observedMax) / 2
-    const halfRange = Math.max(10, (observedMax - observedMin) / 2 + 8)
+    const halfRange = Math.max(12, (observedMax - observedMin) / 2 + 6)
     rhythmStressMin = clamp(Math.round(center - halfRange), 0, 100)
     rhythmStressMax = clamp(Math.round(center + halfRange), 0, 100)
-    if (rhythmStressMax - rhythmStressMin < 20) {
-      rhythmStressMin = clamp(Math.round(center - 10), 0, 100)
-      rhythmStressMax = clamp(Math.round(center + 10), 0, 100)
+    if (rhythmStressMax - rhythmStressMin < 16) {
+      rhythmStressMin = clamp(Math.round(center - 8), 0, 100)
+      rhythmStressMax = clamp(Math.round(center + 8), 0, 100)
     }
   }
-  const rhythmStressPath = buildPath(
-    rhythmData.map((item) => item.avgStress),
-    rhythmStressMin,
-    rhythmStressMax,
-    100,
-    64,
-  )
   const rhythmBestIndex = rhythmData.reduce(
     (best, item, index, arr) => (item.focusedMinutes > arr[best].focusedMinutes ? index : best),
     0,
@@ -1296,7 +1291,6 @@ export function MainWindowShell({
                   focusPatternCallout={focusPatternCallout}
                   rhythmData={rhythmData}
                   rhythmMaxMinutes={rhythmMaxMinutes}
-                  rhythmStressPath={rhythmStressPath}
                   rhythmStressMin={rhythmStressMin}
                   rhythmStressMax={rhythmStressMax}
                   rhythmBestIndex={rhythmBestIndex}
