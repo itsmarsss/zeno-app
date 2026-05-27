@@ -4,44 +4,17 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronRight, Download, Loader2, Trash2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, CalibrationStatus } from '../../shared/types'
+import {
+  WheelPicker,
+  formatClockLabel,
+  formatDurationLabel,
+  formatMinutesLabel,
+  rangeItems,
+} from '../common/WheelPicker'
 import './SettingsTab.css'
 import { easeOut } from '../../shared/motion'
 
 type SelectKey = 'frequency' | 'focus_warning' | 'nudge_gap' | 'report_time' | 'start_mode'
-
-type Option = { label: string; value: string }
-
-const SELECT_OPTIONS: Record<SelectKey, Option[]> = {
-  frequency: [
-    { label: 'Every 5 minutes', value: '5' },
-    { label: 'Every 10 minutes', value: '10' },
-    { label: 'Every 15 minutes', value: '15' },
-    { label: 'Every 30 minutes', value: '30' },
-  ],
-  focus_warning: [
-    { label: 'After 60 minutes', value: '60' },
-    { label: 'After 90 minutes', value: '90' },
-    { label: 'After 2 hours', value: '120' },
-    { label: 'Never', value: 'never' },
-  ],
-  nudge_gap: [
-    { label: '10 minutes', value: '10' },
-    { label: '20 minutes', value: '20' },
-    { label: '30 minutes', value: '30' },
-    { label: '1 hour', value: '60' },
-  ],
-  report_time: [
-    { label: '7:00 pm', value: '19:00' },
-    { label: '8:00 pm', value: '20:00' },
-    { label: '9:00 pm', value: '21:00' },
-    { label: '10:00 pm', value: '22:00' },
-    { label: 'Off', value: 'off' },
-  ],
-  start_mode: [
-    { label: 'At login', value: 'login' },
-    { label: 'Manually', value: 'manual' },
-  ],
-}
 
 const SHEET_LABELS: Record<SelectKey, string> = {
   frequency: 'Check-in frequency',
@@ -49,6 +22,22 @@ const SHEET_LABELS: Record<SelectKey, string> = {
   nudge_gap: 'Minimum time between nudges',
   report_time: 'Daily report time',
   start_mode: 'Start Zeno',
+}
+
+const START_MODE_OPTIONS = [
+  { label: 'At login', value: 'login', hint: 'Launches automatically when you log in' },
+  { label: 'Manually', value: 'manual', hint: 'Only starts when you open it' },
+]
+
+function to12h(hour24: number): { hour12: number; period: 'AM' | 'PM' } {
+  const period: 'AM' | 'PM' = hour24 >= 12 ? 'PM' : 'AM'
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12
+  return { hour12, period }
+}
+
+function to24h(hour12: number, period: 'AM' | 'PM'): number {
+  if (period === 'AM') return hour12 === 12 ? 0 : hour12
+  return hour12 === 12 ? 12 : hour12 + 12
 }
 
 export function SettingsTab({
@@ -72,70 +61,152 @@ export function SettingsTab({
   onExportData: () => Promise<void>
   exportMessage: string | null
 }) {
-  const [focusWarning, setFocusWarning] = useState('90')
-  const [nudgeGap, setNudgeGap] = useState('20')
+  const [focusWarningMin, setFocusWarningMin] = useState(90)
+  const [nudgeGapMin, setNudgeGapMin] = useState(20)
   const [clearExpanded, setClearExpanded] = useState(false)
   const [checkingUpdates, setCheckingUpdates] = useState<'idle' | 'loading' | 'updated'>('idle')
   const [activeSheet, setActiveSheet] = useState<SelectKey | null>(null)
   const [startModeBusy, setStartModeBusy] = useState(false)
   const [startModeError, setStartModeError] = useState<string | null>(null)
   const [onboardingFlash, setOnboardingFlash] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Draft values while a wheel sheet is open
+  const [draftMinutes, setDraftMinutes] = useState(10)
+  const [draftHoursPart, setDraftHoursPart] = useState(0)
+  const [draftMinsPart, setDraftMinsPart] = useState(30)
+  const [draftHour12, setDraftHour12] = useState(9)
+  const [draftMinute, setDraftMinute] = useState(0)
+  const [draftPeriod, setDraftPeriod] = useState<'AM' | 'PM'>('PM')
+  const [draftReportOff, setDraftReportOff] = useState(false)
+  const [draftFocusNever, setDraftFocusNever] = useState(false)
 
   const passiveMonitoring = !(settings?.monitoring_paused ?? false)
-  const frequencyValue = String(settings?.session_frequency_minutes ?? 10)
+  const frequencyMinutes = settings?.session_frequency_minutes ?? 10
   const startMode = settings?.launch_at_login === false ? 'manual' : 'login'
-  const reportValue = useMemo(() => {
-    const hour = settings?.daily_report_hour ?? 21
-    if (hour < 0) return 'off'
-    const minute = settings?.daily_report_minute ?? 0
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-  }, [settings?.daily_report_hour, settings?.daily_report_minute])
 
-  const selectValues: Record<SelectKey, string> = {
-    frequency: frequencyValue,
-    focus_warning: focusWarning,
-    nudge_gap: nudgeGap,
-    report_time: reportValue,
-    start_mode: startMode,
-  }
+  const reportHour = settings?.daily_report_hour ?? 21
+  const reportMinute = settings?.daily_report_minute ?? 0
+  const reportOff = reportHour < 0
 
-  function selectLabel(key: SelectKey): string {
-    const options = SELECT_OPTIONS[key]
-    return options.find((option) => option.value === selectValues[key])?.label ?? options[0]?.label ?? ''
-  }
+  const frequencyItems = useMemo(() => rangeItems(5, 120, 1), [])
+  const hourPartItems = useMemo(() => rangeItems(0, 4, 1), [])
+  const minPartItems = useMemo(() => rangeItems(0, 55, 5), [])
+  const hour12Items = useMemo(() => rangeItems(1, 12, 1), [])
+  const minuteItems = useMemo(() => rangeItems(0, 55, 5, 2), [])
+  const periodItems = useMemo(
+    () => [
+      { value: 'AM', label: 'AM' },
+      { value: 'PM', label: 'PM' },
+    ],
+    [],
+  )
 
-  async function applySelect(key: SelectKey, value: string) {
+  function openSheet(key: SelectKey) {
     if (key === 'frequency') {
-      await updateSettings({ session_frequency_minutes: Number(value) })
+      setDraftMinutes(Math.min(120, Math.max(5, frequencyMinutes)))
     }
-
-    if (key === 'report_time') {
-      if (value === 'off') {
-        await updateSettings({ daily_report_hour: -1, daily_report_minute: 0 })
+    if (key === 'focus_warning') {
+      if (focusWarningMin <= 0) {
+        setDraftFocusNever(true)
+        setDraftHoursPart(1)
+        setDraftMinsPart(30)
       } else {
-        const [hour, minute] = value.split(':').map(Number)
-        await updateSettings({ daily_report_hour: hour, daily_report_minute: minute })
+        setDraftFocusNever(false)
+        setDraftHoursPart(Math.min(4, Math.floor(focusWarningMin / 60)))
+        setDraftMinsPart(focusWarningMin % 60 - ((focusWarningMin % 60) % 5))
       }
     }
-
-    if (key === 'focus_warning') setFocusWarning(value)
-    if (key === 'nudge_gap') setNudgeGap(value)
-
-    if (key === 'start_mode') {
-      setStartModeBusy(true)
-      setStartModeError(null)
-      const enabled = value === 'login'
-      try {
-        await invoke<boolean>('set_launch_at_login', { enabled })
-        await updateSettings({ launch_at_login: enabled })
-      } catch (e) {
-        setStartModeError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setStartModeBusy(false)
+    if (key === 'nudge_gap') {
+      const total = Math.min(240, Math.max(5, nudgeGapMin))
+      const h = Math.min(4, Math.floor(total / 60))
+      let m = total % 60
+      m = m - (m % 5)
+      if (h === 0 && m < 5) m = 5
+      setDraftHoursPart(h)
+      setDraftMinsPart(m)
+    }
+    if (key === 'report_time') {
+      if (reportOff) {
+        setDraftReportOff(true)
+        setDraftHour12(9)
+        setDraftMinute(0)
+        setDraftPeriod('PM')
+      } else {
+        setDraftReportOff(false)
+        const { hour12, period } = to12h(reportHour)
+        setDraftHour12(hour12)
+        setDraftMinute(reportMinute - (reportMinute % 5))
+        setDraftPeriod(period)
       }
     }
+    setActiveSheet(key)
+  }
 
-    setActiveSheet(null)
+  function rowLabel(key: SelectKey): string {
+    if (key === 'frequency') return formatMinutesLabel(frequencyMinutes).replace(/^Every /, '')
+    if (key === 'focus_warning') return formatDurationLabel(focusWarningMin)
+    if (key === 'nudge_gap') {
+      if (nudgeGapMin < 60) return `${nudgeGapMin} minutes`
+      const h = Math.floor(nudgeGapMin / 60)
+      const m = nudgeGapMin % 60
+      return m === 0 ? (h === 1 ? '1 hour' : `${h} hours`) : `${h}h ${m}m`
+    }
+    if (key === 'report_time') {
+      if (reportOff) return 'Off'
+      return formatClockLabel(reportHour, reportMinute)
+    }
+    if (key === 'start_mode') return startMode === 'login' ? 'At login' : 'Manually'
+    return ''
+  }
+
+  async function confirmSheet() {
+    if (!activeSheet) return
+    setSaving(true)
+    try {
+      if (activeSheet === 'frequency') {
+        await updateSettings({ session_frequency_minutes: draftMinutes })
+      }
+      if (activeSheet === 'focus_warning') {
+        const total = draftFocusNever ? 0 : draftHoursPart * 60 + draftMinsPart
+        setFocusWarningMin(total)
+      }
+      if (activeSheet === 'nudge_gap') {
+        const total = Math.max(5, draftHoursPart * 60 + draftMinsPart)
+        setNudgeGapMin(total)
+      }
+      if (activeSheet === 'report_time') {
+        if (draftReportOff) {
+          await updateSettings({ daily_report_hour: -1, daily_report_minute: 0 })
+        } else {
+          await updateSettings({
+            daily_report_hour: to24h(draftHour12, draftPeriod),
+            daily_report_minute: draftMinute,
+          })
+        }
+      }
+      if (activeSheet === 'start_mode') {
+        // handled by list selection
+      }
+      setActiveSheet(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function applyStartMode(value: 'login' | 'manual') {
+    setStartModeBusy(true)
+    setStartModeError(null)
+    const enabled = value === 'login'
+    try {
+      await invoke<boolean>('set_launch_at_login', { enabled })
+      await updateSettings({ launch_at_login: enabled })
+      setActiveSheet(null)
+    } catch (e) {
+      setStartModeError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setStartModeBusy(false)
+    }
   }
 
   async function checkUpdates() {
@@ -148,6 +219,194 @@ export function SettingsTab({
     replayOnboarding()
     window.setTimeout(() => setOnboardingFlash(false), 1600)
   }
+
+  const durationTotal = draftHoursPart * 60 + draftMinsPart
+
+  const sheetBody = (() => {
+    if (!activeSheet) return null
+
+    if (activeSheet === 'start_mode') {
+      return (
+        <div className="settings-sheet-list">
+          {START_MODE_OPTIONS.map((option) => {
+            const selected = option.value === startMode
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => void applyStartMode(option.value as 'login' | 'manual')}
+                disabled={startModeBusy}
+              >
+                <span className={selected ? 'is-selected' : ''}>
+                  <strong style={{ display: 'block' }}>{option.label}</strong>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 400 }}>{option.hint}</span>
+                </span>
+                {selected ? <Check size={14} /> : null}
+              </button>
+            )
+          })}
+        </div>
+      )
+    }
+
+    if (activeSheet === 'frequency') {
+      return (
+        <div className="settings-wheel-body">
+          <p className="settings-wheel-preview">{formatMinutesLabel(draftMinutes)}</p>
+          <WheelPicker
+            columns={[
+              {
+                items: frequencyItems,
+                value: draftMinutes,
+                onChange: (v) => setDraftMinutes(Number(v)),
+                ariaLabel: 'Minutes',
+                width: 88,
+                unit: 'min',
+              },
+            ]}
+          />
+          <p className="settings-wheel-hint">Scroll to choose any interval from 5 to 120 minutes.</p>
+        </div>
+      )
+    }
+
+    if (activeSheet === 'focus_warning') {
+      return (
+        <div className="settings-wheel-body">
+          <div className="settings-wheel-toggle-row">
+            <button
+              type="button"
+              className={`settings-chip ${!draftFocusNever ? 'is-active' : ''}`}
+              onClick={() => setDraftFocusNever(false)}
+            >
+              After duration
+            </button>
+            <button
+              type="button"
+              className={`settings-chip ${draftFocusNever ? 'is-active' : ''}`}
+              onClick={() => setDraftFocusNever(true)}
+            >
+              Never
+            </button>
+          </div>
+          <p className="settings-wheel-preview">
+            {draftFocusNever ? 'Never' : formatDurationLabel(Math.max(5, durationTotal || 5))}
+          </p>
+          {!draftFocusNever && (
+            <WheelPicker
+              columns={[
+                {
+                  items: hourPartItems,
+                  value: draftHoursPart,
+                  onChange: (v) => setDraftHoursPart(Number(v)),
+                  ariaLabel: 'Hours',
+                  width: 64,
+                  unit: 'hr',
+                },
+                {
+                  items: minPartItems,
+                  value: draftMinsPart,
+                  onChange: (v) => setDraftMinsPart(Number(v)),
+                  ariaLabel: 'Minutes',
+                  width: 72,
+                  unit: 'min',
+                },
+              ]}
+            />
+          )}
+          <p className="settings-wheel-hint">Warn when a focus session runs longer than this.</p>
+        </div>
+      )
+    }
+
+    if (activeSheet === 'nudge_gap') {
+      return (
+        <div className="settings-wheel-body">
+          <p className="settings-wheel-preview">
+            {durationTotal < 60
+              ? `${Math.max(5, durationTotal || 5)} minutes`
+              : formatDurationLabel(Math.max(5, durationTotal)).replace(/^After /, '')}
+          </p>
+          <WheelPicker
+            columns={[
+              {
+                items: hourPartItems,
+                value: draftHoursPart,
+                onChange: (v) => setDraftHoursPart(Number(v)),
+                ariaLabel: 'Hours',
+                width: 64,
+                unit: 'hr',
+              },
+              {
+                items: minPartItems.filter((i) => draftHoursPart > 0 || Number(i.value) >= 5),
+                value: draftMinsPart,
+                onChange: (v) => setDraftMinsPart(Number(v)),
+                ariaLabel: 'Minutes',
+                width: 72,
+                unit: 'min',
+              },
+            ]}
+          />
+          <p className="settings-wheel-hint">Minimum quiet time between posture / stress nudges.</p>
+        </div>
+      )
+    }
+
+    // report_time
+    return (
+      <div className="settings-wheel-body">
+        <div className="settings-wheel-toggle-row">
+          <button
+            type="button"
+            className={`settings-chip ${!draftReportOff ? 'is-active' : ''}`}
+            onClick={() => setDraftReportOff(false)}
+          >
+            Time of day
+          </button>
+          <button
+            type="button"
+            className={`settings-chip ${draftReportOff ? 'is-active' : ''}`}
+            onClick={() => setDraftReportOff(true)}
+          >
+            Off
+          </button>
+        </div>
+        <p className="settings-wheel-preview">
+          {draftReportOff
+            ? 'Off'
+            : formatClockLabel(to24h(draftHour12, draftPeriod), draftMinute)}
+        </p>
+        {!draftReportOff && (
+          <WheelPicker
+            columns={[
+              {
+                items: hour12Items,
+                value: draftHour12,
+                onChange: (v) => setDraftHour12(Number(v)),
+                ariaLabel: 'Hour',
+                width: 56,
+              },
+              {
+                items: minuteItems,
+                value: draftMinute,
+                onChange: (v) => setDraftMinute(Number(v)),
+                ariaLabel: 'Minute',
+                width: 64,
+              },
+              {
+                items: periodItems,
+                value: draftPeriod,
+                onChange: (v) => setDraftPeriod(v as 'AM' | 'PM'),
+                ariaLabel: 'AM or PM',
+                width: 56,
+              },
+            ]}
+          />
+        )}
+        <p className="settings-wheel-hint">When Zeno surfaces your daily summary notification.</p>
+      </div>
+    )
+  })()
 
   const sheet =
     activeSheet == null
@@ -172,21 +431,25 @@ export function SettingsTab({
                 transition={easeOut}
               >
                 <div className="settings-sheet-handle" />
-                <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
-                <div className="settings-sheet-list">
-                  {SELECT_OPTIONS[activeSheet].map((option) => {
-                    const selected = option.value === selectValues[activeSheet]
-                    return (
-                      <button key={option.value} type="button" onClick={() => void applySelect(activeSheet, option.value)}>
-                        <span className={selected ? 'is-selected' : ''}>{option.label}</span>
-                        {selected ? <Check size={14} /> : null}
-                      </button>
-                    )
-                  })}
+                <div className="settings-sheet-toolbar">
+                  <button type="button" className="settings-sheet-tool" onClick={() => setActiveSheet(null)}>
+                    Cancel
+                  </button>
+                  <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
+                  {activeSheet === 'start_mode' ? (
+                    <span className="settings-sheet-tool settings-sheet-tool--spacer" />
+                  ) : (
+                    <button
+                      type="button"
+                      className="settings-sheet-tool settings-sheet-tool--done"
+                      disabled={saving}
+                      onClick={() => void confirmSheet()}
+                    >
+                      {saving ? '…' : 'Done'}
+                    </button>
+                  )}
                 </div>
-                <button type="button" className="settings-sheet-cancel" onClick={() => setActiveSheet(null)}>
-                  Cancel
-                </button>
+                {sheetBody}
               </motion.div>
             </motion.div>
           </AnimatePresence>,
@@ -222,31 +485,31 @@ export function SettingsTab({
             type="button"
             className={`settings-row settings-row--select ${!passiveMonitoring ? 'is-disabled' : ''}`}
             disabled={!passiveMonitoring}
-            onClick={() => setActiveSheet('frequency')}
+            onClick={() => openSheet('frequency')}
           >
             <div>
               <strong>Check-in frequency</strong>
               <p>How often passive check-ins run</p>
             </div>
             <span>
-              {selectLabel('frequency')} <ChevronRight size={14} />
+              {rowLabel('frequency')} <ChevronRight size={14} />
             </span>
           </button>
 
-          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('focus_warning')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('focus_warning')}>
             <div>
               <strong>Focus session warning</strong>
               <p>Alert me when a session runs long</p>
             </div>
             <span>
-              {selectLabel('focus_warning')} <ChevronRight size={14} />
+              {rowLabel('focus_warning')} <ChevronRight size={14} />
             </span>
           </button>
 
           <button
             type="button"
             className="settings-row settings-row--select"
-            onClick={() => setActiveSheet('start_mode')}
+            onClick={() => openSheet('start_mode')}
             disabled={startModeBusy}
           >
             <div>
@@ -255,7 +518,7 @@ export function SettingsTab({
             </div>
             <span>
               {startModeBusy ? <Loader2 size={14} className="spin" /> : null}
-              {selectLabel('start_mode')} <ChevronRight size={14} />
+              {rowLabel('start_mode')} <ChevronRight size={14} />
             </span>
           </button>
           {startModeError ? <p className="settings-inline-error">{startModeError}</p> : null}
@@ -265,23 +528,23 @@ export function SettingsTab({
       <section className="settings-section">
         <p className="settings-section-title">When Zeno speaks up</p>
         <div className="settings-card">
-          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('nudge_gap')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('nudge_gap')}>
             <div>
               <strong>Minimum time between nudges</strong>
               <p>Avoid being interrupted too often</p>
             </div>
             <span>
-              {selectLabel('nudge_gap')} <ChevronRight size={14} />
+              {rowLabel('nudge_gap')} <ChevronRight size={14} />
             </span>
           </button>
 
-          <button type="button" className="settings-row settings-row--select" onClick={() => setActiveSheet('report_time')}>
+          <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('report_time')}>
             <div>
               <strong>Daily report time</strong>
-              <p>{reportValue === 'off' ? 'Daily report notifications are off' : 'When to surface your daily summary'}</p>
+              <p>{reportOff ? 'Daily report notifications are off' : 'When to surface your daily summary'}</p>
             </div>
             <span>
-              {selectLabel('report_time')} <ChevronRight size={14} />
+              {rowLabel('report_time')} <ChevronRight size={14} />
             </span>
           </button>
         </div>
@@ -376,9 +639,7 @@ export function SettingsTab({
               <strong>Replay onboarding</strong>
               <p>Show the welcome tips again</p>
             </div>
-            <span>
-              {onboardingFlash ? <Check size={14} className="ok" /> : <ChevronRight size={14} />}
-            </span>
+            <span>{onboardingFlash ? <Check size={14} className="ok" /> : <ChevronRight size={14} />}</span>
           </button>
 
           <div className="settings-row settings-row--info">
