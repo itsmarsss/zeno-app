@@ -36,7 +36,6 @@ export function FocusHistoryTab({
   focusPatternCallout,
   rhythmData,
   rhythmMaxMinutes,
-  rhythmStressPath,
   rhythmStressMin,
   rhythmStressMax,
   rhythmBestIndex,
@@ -65,7 +64,6 @@ export function FocusHistoryTab({
   focusPatternCallout: string | null
   rhythmData: Array<{ label: string; focusedMinutes: number; avgStress: number | null }>
   rhythmMaxMinutes: number
-  rhythmStressPath: string
   rhythmStressMin: number
   rhythmStressMax: number
   rhythmBestIndex: number
@@ -156,11 +154,60 @@ export function FocusHistoryTab({
     return `${dayName}: ${totalSessions} sessions · avg stress ${avgStress} · best hour ${bestHour}`
   }, [heatmapData, hoveredHeatmapDay])
 
+  // Shared plot band so bars, stress line, and dots stay aligned.
+  const PLOT_TOP = 12
+  const PLOT_BOTTOM = 86
+  const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP
+
+  function rhythmBarGeometry(focusedMinutes: number) {
+    const maxH = PLOT_HEIGHT * 0.92
+    const h =
+      rhythmMaxMinutes <= 0
+        ? 0
+        : Math.max(focusedMinutes > 0 ? 4 : 0, (focusedMinutes / rhythmMaxMinutes) * maxH)
+    return { h, y: PLOT_BOTTOM - h }
+  }
+
   function rhythmStressY(value: number): number {
     const range = Math.max(1, rhythmStressMax - rhythmStressMin)
     const normalized = Math.max(0, Math.min(1, (value - rhythmStressMin) / range))
-    return 18 + (1 - normalized) * 64
+    return PLOT_TOP + (1 - normalized) * PLOT_HEIGHT
   }
+
+  function rhythmCenterX(index: number): number {
+    const n = Math.max(1, rhythmData.length)
+    return ((index + 0.5) / n) * 100
+  }
+
+  const rhythmStressPathLocal = useMemo(() => {
+    const points: Array<{ x: number; y: number }> = []
+    rhythmData.forEach((item, index) => {
+      if (item.avgStress == null || Number.isNaN(item.avgStress)) return
+      points.push({ x: rhythmCenterX(index), y: rhythmStressY(item.avgStress) })
+    })
+    if (points.length === 0) return ''
+    if (points.length === 1) {
+      const p = points[0]
+      return `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
+    }
+    let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const p0 = points[i - 1] ?? points[i]
+      const p1 = points[i]
+      const p2 = points[i + 1]
+      const p3 = points[i + 2] ?? p2
+      const cp1x = p1.x + (p2.x - p0.x) / 6
+      let cp1y = p1.y + (p2.y - p0.y) / 6
+      const cp2x = p2.x - (p3.x - p1.x) / 6
+      let cp2y = p2.y - (p3.y - p1.y) / 6
+      const segMinY = Math.min(p1.y, p2.y)
+      const segMaxY = Math.max(p1.y, p2.y)
+      cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y))
+      cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y))
+      d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+    }
+    return d
+  }, [rhythmData, rhythmStressMin, rhythmStressMax])
 
   return (
     <>
@@ -501,8 +548,8 @@ export function FocusHistoryTab({
                   const canvasRect = event.currentTarget.parentElement?.getBoundingClientRect() ?? svgRect
                   const localLeft = Math.max(0, svgRect.left - canvasRect.left)
                   const localWidth = Math.max(1, svgRect.width)
-                  const ratio = Math.max(0, Math.min(1, (event.clientX - svgRect.left) / localWidth))
-                  const index = Math.round(ratio * (rhythmData.length - 1))
+                  const ratio = Math.max(0, Math.min(0.999, (event.clientX - svgRect.left) / localWidth))
+                  const index = Math.min(rhythmData.length - 1, Math.floor(ratio * rhythmData.length))
                   const prev = previousRhythmHoverIndexRef.current
                   if (prev != null && index !== prev) {
                     setRhythmHoverDirection(index > prev ? 1 : -1)
@@ -513,31 +560,41 @@ export function FocusHistoryTab({
                   setRhythmHoverIndex(index)
                 }}
               >
+                {/* subtle baseline */}
+                <line x1="0" y1={PLOT_BOTTOM} x2="100" y2={PLOT_BOTTOM} className="rhythm-baseline" />
                 {rhythmData.map((item, index) => {
-                  const barWidth = 100 / rhythmData.length
-                  const x = index * barWidth + barWidth * 0.2
-                  const width = barWidth * 0.6
-                  const h = (item.focusedMinutes / rhythmMaxMinutes) * 75
-                  const y = 90 - h
+                  const n = Math.max(1, rhythmData.length)
+                  const barWidth = 100 / n
+                  const width = barWidth * 0.55
+                  const x = index * barWidth + (barWidth - width) / 2
+                  const { h, y } = rhythmBarGeometry(item.focusedMinutes)
                   return (
                     <rect
                       key={`${item.label}-bar`}
                       x={x}
                       y={y}
                       width={width}
-                      height={h}
-                      rx="2"
-                      className="rhythm-bar"
+                      height={Math.max(0, h)}
+                      rx="2.2"
+                      className={`rhythm-bar ${index === rhythmBestIndex ? 'is-best' : ''} ${item.focusedMinutes <= 0 ? 'is-empty' : ''}`}
                     />
                   )
                 })}
-                <path d={rhythmStressPath} className="rhythm-line" transform="translate(0, 18)" />
+                {rhythmStressPathLocal ? <path d={rhythmStressPathLocal} className="rhythm-line" /> : null}
                 {rhythmData.map((item, index) => {
                   if (item.avgStress == null) return null
-                  const bucketWidth = 100 / Math.max(rhythmData.length, 1)
-                  const cx = index * bucketWidth + bucketWidth * 0.5
+                  const cx = rhythmCenterX(index)
                   const cy = rhythmStressY(item.avgStress)
-                  return <circle key={`${item.label}-stress`} cx={cx} cy={cy} r="1.6" className="rhythm-point" />
+                  return (
+                    <circle
+                      key={`${item.label}-stress`}
+                      cx={cx}
+                      cy={cy}
+                      r="2.1"
+                      className="rhythm-point"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )
                 })}
               </svg>
               <AnimatePresence initial={false}>
@@ -572,7 +629,7 @@ export function FocusHistoryTab({
                       <div>
                         <strong>
                           <AnimatedTickerText
-                            value={`${hoveredRhythm.avgStress ?? '--'}`}
+                            value={hoveredRhythm.avgStress == null ? '—' : String(hoveredRhythm.avgStress)}
                             direction={rhythmHoverDirection}
                           />
                         </strong>
@@ -584,7 +641,7 @@ export function FocusHistoryTab({
               </AnimatePresence>
               <div
                 className="rhythm-labels"
-                style={{ gridTemplateColumns: `repeat(${rhythmData.length}, minmax(0, 1fr))` }}
+                style={{ gridTemplateColumns: `repeat(${Math.max(1, rhythmData.length)}, minmax(0, 1fr))` }}
               >
                 {rhythmData.map((item, index) => (
                   <span key={item.label} className={index === rhythmBestIndex ? 'is-best' : ''}>

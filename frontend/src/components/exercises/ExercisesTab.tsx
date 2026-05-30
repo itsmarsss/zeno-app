@@ -142,82 +142,90 @@ export function ExercisesTab({
       ? Math.max(0, Math.ceil(holdTarget - repHold))
       : Math.max(0, 10 - Math.min(10, exerciseMetrics?.hold_seconds ?? 0))
 
-  // Completion screen
-  if (sessionSummary) {
-    const formPct =
-      sessionSummary.formScore == null ? null : Math.round(Math.max(0, Math.min(1, sessionSummary.formScore)) * 100)
-    return (
-      <motion.section
-        className="exercise-complete"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={easeOut}
-      >
-        <div className="exercise-complete-card">
-          <div className={`exercise-complete-mark ${sessionSummary.completed ? 'is-done' : 'is-partial'}`}>
-            <svg viewBox="0 0 52 52" className="exercise-check-svg" aria-hidden>
-              <circle cx="26" cy="26" r="24" className="exercise-check-ring" />
-              {sessionSummary.completed ? (
-                <path className="exercise-check-path" d="M14 27 L22 35 L38 17" />
-              ) : (
-                <path className="exercise-check-path" d="M18 26 L34 26" />
-              )}
-            </svg>
-          </div>
-          <h2>{sessionSummary.completed ? 'Nice work' : 'Session saved'}</h2>
-          <p className="exercise-complete-sub">{sessionSummary.exerciseName}</p>
+  const formPct =
+    sessionSummary?.formScore == null
+      ? null
+      : Math.round(Math.max(0, Math.min(1, sessionSummary.formScore)) * 100)
 
-          <div className="exercise-complete-stats">
-            <div>
-              <strong>
-                {sessionSummary.repCount}/{sessionSummary.targetReps}
-              </strong>
-              <span>Reps</span>
-            </div>
-            <div>
-              <strong>{formPct == null ? '—' : `${formPct}%`}</strong>
-              <span>Form</span>
-            </div>
-            <div>
-              <strong>{Math.max(1, Math.round(sessionSummary.durationSeconds / 60))}m</strong>
-              <span>Time</span>
-            </div>
-          </div>
-
-          <div className="exercise-complete-actions">
-            <button className="exercise-complete-primary" onClick={onDoAgain}>
-              <RotateCcw size={14} /> Do it again
-            </button>
-            {nextSuggestion && (
-              <button
-                className="exercise-complete-secondary"
-                onClick={() => {
-                  onDismissSummary()
-                  startGuided(nextSuggestion.id)
-                }}
-              >
-                <Play size={14} /> Try {nextSuggestion.name}
-              </button>
-            )}
-            <button className="exercise-complete-ghost" onClick={onDismissSummary}>
-              Back to exercises
-            </button>
-          </div>
-        </div>
-      </motion.section>
-    )
+  const pageTransition = {
+    initial: { opacity: 0, y: 10, scale: 0.985 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: -8, scale: 0.985 },
+    transition: easeOut,
   }
 
   return (
     <AnimatePresence mode="wait" initial={false}>
-      {exerciseGuidedActive && selectedExercise ? (
+      {sessionSummary ? (
+        <motion.section
+          key="exercise-summary"
+          className="exercise-complete"
+          initial={pageTransition.initial}
+          animate={pageTransition.animate}
+          exit={pageTransition.exit}
+          transition={pageTransition.transition}
+        >
+          <div className="exercise-complete-card">
+            <div className={`exercise-complete-mark ${sessionSummary.completed ? 'is-done' : 'is-partial'}`}>
+              <svg viewBox="0 0 52 52" className="exercise-check-svg" aria-hidden>
+                <circle cx="26" cy="26" r="24" className="exercise-check-ring" />
+                {sessionSummary.completed ? (
+                  <path className="exercise-check-path" d="M14 27 L22 35 L38 17" />
+                ) : (
+                  <path className="exercise-check-path" d="M18 26 L34 26" />
+                )}
+              </svg>
+            </div>
+            <h2>{sessionSummary.completed ? 'Nice work' : 'Session saved'}</h2>
+            <p className="exercise-complete-sub">{sessionSummary.exerciseName}</p>
+
+            <div className="exercise-complete-stats">
+              <div>
+                <strong>
+                  {sessionSummary.repCount}/{sessionSummary.targetReps}
+                </strong>
+                <span>Reps</span>
+              </div>
+              <div>
+                <strong>{formPct == null ? '—' : `${formPct}%`}</strong>
+                <span>Form</span>
+              </div>
+              <div>
+                <strong>{Math.max(1, Math.round(sessionSummary.durationSeconds / 60))}m</strong>
+                <span>Time</span>
+              </div>
+            </div>
+
+            <div className="exercise-complete-actions">
+              <button type="button" className="exercise-complete-primary" onClick={onDoAgain}>
+                <RotateCcw size={14} /> Do it again
+              </button>
+              {nextSuggestion && (
+                <button
+                  type="button"
+                  className="exercise-complete-secondary"
+                  onClick={() => {
+                    onDismissSummary()
+                    startGuided(nextSuggestion.id)
+                  }}
+                >
+                  <Play size={14} /> Try {nextSuggestion.name}
+                </button>
+              )}
+              <button type="button" className="exercise-complete-ghost" onClick={onDismissSummary}>
+                Back to exercises
+              </button>
+            </div>
+          </div>
+        </motion.section>
+      ) : exerciseGuidedActive && selectedExercise ? (
         <motion.section
           key="exercise-active"
           className="exercise-active"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={easeOut}
+          initial={pageTransition.initial}
+          animate={pageTransition.animate}
+          exit={pageTransition.exit}
+          transition={pageTransition.transition}
         >
           <div className="exercise-active-feed">
             <PostureFrame
@@ -258,7 +266,7 @@ export function ExercisesTab({
           </div>
 
           <aside className="exercise-coach-panel">
-            <button className="exercise-back-link" onClick={stopGuided}>
+            <button type="button" className="exercise-back-link" onClick={stopGuided}>
               <ArrowLeft size={14} /> Back to exercises
             </button>
             <h2>{selectedExercise.name}</h2>
@@ -323,7 +331,7 @@ export function ExercisesTab({
                     : 'Waiting for camera feed...'}
             </p>
 
-            <button className="exercise-stop-btn" onClick={stopGuided}>
+            <button type="button" className="exercise-stop-btn" onClick={stopGuided}>
               <Square size={12} /> Stop exercise
             </button>
           </aside>
@@ -331,10 +339,10 @@ export function ExercisesTab({
       ) : (
         <motion.div
           key="exercise-grid"
-          initial={{ opacity: 0, scale: 0.99 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.98 }}
-          transition={easeOut}
+          initial={pageTransition.initial}
+          animate={pageTransition.animate}
+          exit={pageTransition.exit}
+          transition={pageTransition.transition}
         >
           <header className="exercise-header">
             <h1>Exercises</h1>
