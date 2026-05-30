@@ -66,10 +66,41 @@ export function SettingsTab({
   const [clearExpanded, setClearExpanded] = useState(false)
   const [checkingUpdates, setCheckingUpdates] = useState<'idle' | 'loading' | 'updated'>('idle')
   const [activeSheet, setActiveSheet] = useState<SelectKey | null>(null)
+  /** Keep sheet content mounted through exit so AnimatePresence can animate out. */
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [startModeBusy, setStartModeBusy] = useState(false)
   const [startModeError, setStartModeError] = useState<string | null>(null)
   const [onboardingFlash, setOnboardingFlash] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // iOS-like sheet motion: spring in, ease-out slide down + backdrop fade on exit.
+  const sheetEase = [0.32, 0.72, 0, 1] as const
+  const sheetVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { duration: 0.22, ease: sheetEase },
+    },
+    exit: {
+      opacity: 0,
+      transition: { duration: 0.28, ease: sheetEase, delay: 0.02 },
+    },
+  }
+  const panelVariants = {
+    hidden: { y: '110%' },
+    visible: {
+      y: 0,
+      transition: { type: 'spring' as const, stiffness: 420, damping: 36, mass: 0.85 },
+    },
+    exit: {
+      y: '110%',
+      transition: { duration: 0.34, ease: sheetEase },
+    },
+  }
+
+  function closeSheet() {
+    setSheetOpen(false)
+  }
 
   // Draft values while a wheel sheet is open
   const [draftMinutes, setDraftMinutes] = useState(10)
@@ -141,6 +172,7 @@ export function SettingsTab({
       }
     }
     setActiveSheet(key)
+    setSheetOpen(true)
   }
 
   function rowLabel(key: SelectKey): string {
@@ -188,7 +220,7 @@ export function SettingsTab({
       if (activeSheet === 'start_mode') {
         // handled by list selection
       }
-      setActiveSheet(null)
+      closeSheet()
     } finally {
       setSaving(false)
     }
@@ -201,7 +233,7 @@ export function SettingsTab({
     try {
       await invoke<boolean>('set_launch_at_login', { enabled })
       await updateSettings({ launch_at_login: enabled })
-      setActiveSheet(null)
+      closeSheet()
     } catch (e) {
       setStartModeError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -408,53 +440,54 @@ export function SettingsTab({
     )
   })()
 
-  const sheet =
-    activeSheet == null
-      ? null
-      : createPortal(
-          <AnimatePresence>
-            <motion.div
-              key="settings-sheet"
-              className="settings-sheet-wrap"
-              onClick={() => setActiveSheet(null)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <motion.div
-                className="settings-sheet"
-                onClick={(event) => event.stopPropagation()}
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={easeOut}
-              >
-                <div className="settings-sheet-handle" />
-                <div className="settings-sheet-toolbar">
-                  <button type="button" className="settings-sheet-tool" onClick={() => setActiveSheet(null)}>
-                    Cancel
-                  </button>
-                  <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
-                  {activeSheet === 'start_mode' ? (
-                    <span className="settings-sheet-tool settings-sheet-tool--spacer" />
-                  ) : (
-                    <button
-                      type="button"
-                      className="settings-sheet-tool settings-sheet-tool--done"
-                      disabled={saving}
-                      onClick={() => void confirmSheet()}
-                    >
-                      {saving ? '…' : 'Done'}
-                    </button>
-                  )}
-                </div>
-                {sheetBody}
-              </motion.div>
-            </motion.div>
-          </AnimatePresence>,
-          document.body,
-        )
+  // Portal stays mounted; only the sheet node toggles so exit animations can run.
+  const sheet = createPortal(
+    <AnimatePresence
+      onExitComplete={() => {
+        if (!sheetOpen) setActiveSheet(null)
+      }}
+    >
+      {sheetOpen && activeSheet ? (
+        <motion.div
+          key="settings-sheet"
+          className="settings-sheet-wrap"
+          onClick={closeSheet}
+          variants={sheetVariants}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+        >
+          <motion.div
+            className="settings-sheet"
+            onClick={(event) => event.stopPropagation()}
+            variants={panelVariants}
+          >
+            <div className="settings-sheet-handle" />
+            <div className="settings-sheet-toolbar">
+              <button type="button" className="settings-sheet-tool" onClick={closeSheet}>
+                Cancel
+              </button>
+              <p className="settings-sheet-title">{SHEET_LABELS[activeSheet]}</p>
+              {activeSheet === 'start_mode' ? (
+                <span className="settings-sheet-tool settings-sheet-tool--spacer" />
+              ) : (
+                <button
+                  type="button"
+                  className="settings-sheet-tool settings-sheet-tool--done"
+                  disabled={saving}
+                  onClick={() => void confirmSheet()}
+                >
+                  {saving ? '…' : 'Done'}
+                </button>
+              )}
+            </div>
+            {sheetBody}
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
+  )
 
   return (
     <section className="settings-page">
