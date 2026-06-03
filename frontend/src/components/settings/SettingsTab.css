@@ -251,6 +251,7 @@
   justify-content: center;
   z-index: 9999;
   padding: 0;
+  will-change: opacity;
 }
 
 .settings-sheet {
@@ -262,6 +263,8 @@
   background: var(--bg-surface);
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
   margin-left: 0;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .settings-sheet-handle {
