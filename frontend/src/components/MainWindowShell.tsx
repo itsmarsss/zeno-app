@@ -1177,9 +1177,9 @@ export function MainWindowShell({
 
       <header className="desktop-chrome">
         <div className="desktop-chrome-drag" data-tauri-drag-region>
-          <div className="desktop-topbar-title">
-            <h1>{tabTitle}</h1>
-            <p>{tabSubline}</p>
+          <div className="desktop-topbar-title" data-tauri-drag-region>
+            <h1 data-tauri-drag-region>{tabTitle}</h1>
+            <p data-tauri-drag-region>{tabSubline}</p>
           </div>
           <div className="desktop-topbar-status">
             <button
