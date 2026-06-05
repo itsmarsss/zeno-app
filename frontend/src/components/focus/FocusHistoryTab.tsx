@@ -1,6 +1,6 @@
 import { ChevronRight, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import './FocusHistoryTab.css'
 import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
@@ -125,6 +125,18 @@ export function FocusHistoryTab({
     ),
   )
 
+  const [hoveredScatterId, setHoveredScatterId] = useState<number | null>(null)
+
+  const heatmapMaxCount = useMemo(() => {
+    let max = 1
+    heatmapData.forEach((row) => {
+      row.forEach((cell) => {
+        if (cell.count > max) max = cell.count
+      })
+    })
+    return max
+  }, [heatmapData])
+
   const hoveredDaySummary = useMemo(() => {
     if (hoveredHeatmapDay == null) return null
     const row = heatmapData[hoveredHeatmapDay]
@@ -154,29 +166,41 @@ export function FocusHistoryTab({
     return `${dayName}: ${totalSessions} sessions · avg stress ${avgStress} · best hour ${bestHour}`
   }, [heatmapData, hoveredHeatmapDay])
 
-  // Shared plot band so bars, stress line, and dots stay aligned.
-  const PLOT_TOP = 12
-  const PLOT_BOTTOM = 86
-  const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP
+  // Rhythm chart: fixed pixel viewBox so circles stay round (not stretched).
+  const RHYTHM_W = 420
+  const RHYTHM_H = 168
+  const RHYTHM_PAD_L = 8
+  const RHYTHM_PAD_R = 8
+  const RHYTHM_TOP = 18
+  const RHYTHM_BOTTOM = 142
+  const RHYTHM_PLOT_H = RHYTHM_BOTTOM - RHYTHM_TOP
+  const RHYTHM_INNER_W = RHYTHM_W - RHYTHM_PAD_L - RHYTHM_PAD_R
 
-  function rhythmBarGeometry(focusedMinutes: number) {
-    const maxH = PLOT_HEIGHT * 0.92
+  function rhythmBarGeometry(focusedMinutes: number, index: number) {
+    const n = Math.max(1, rhythmData.length)
+    const bucket = RHYTHM_INNER_W / n
+    const width = Math.max(10, bucket * 0.48)
+    const x = RHYTHM_PAD_L + index * bucket + (bucket - width) / 2
+    const maxH = RHYTHM_PLOT_H * 0.94
     const h =
       rhythmMaxMinutes <= 0
         ? 0
-        : Math.max(focusedMinutes > 0 ? 4 : 0, (focusedMinutes / rhythmMaxMinutes) * maxH)
-    return { h, y: PLOT_BOTTOM - h }
+        : focusedMinutes <= 0
+          ? 3
+          : Math.max(8, (focusedMinutes / rhythmMaxMinutes) * maxH)
+    return { x, width, h, y: RHYTHM_BOTTOM - h }
   }
 
   function rhythmStressY(value: number): number {
     const range = Math.max(1, rhythmStressMax - rhythmStressMin)
     const normalized = Math.max(0, Math.min(1, (value - rhythmStressMin) / range))
-    return PLOT_TOP + (1 - normalized) * PLOT_HEIGHT
+    return RHYTHM_TOP + (1 - normalized) * RHYTHM_PLOT_H
   }
 
   function rhythmCenterX(index: number): number {
     const n = Math.max(1, rhythmData.length)
-    return ((index + 0.5) / n) * 100
+    const bucket = RHYTHM_INNER_W / n
+    return RHYTHM_PAD_L + index * bucket + bucket / 2
   }
 
   const rhythmStressPathLocal = useMemo(() => {
@@ -207,7 +231,136 @@ export function FocusHistoryTab({
       d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
     }
     return d
-  }, [rhythmData, rhythmStressMin, rhythmStressMax])
+  }, [rhythmData, rhythmStressMin, rhythmStressMax, rhythmMaxMinutes])
+
+  // Scatter: data-driven X domain so short sessions don't leave a huge empty right side.
+  const scatterLayout = useMemo(() => {
+    const PAD_L = 44
+    const PAD_R = 16
+    const PAD_T = 16
+    const PAD_B = 36
+    const W = 400
+    const H = 220
+    const plotW = W - PAD_L - PAD_R
+    const plotH = H - PAD_T - PAD_B
+    const points = durationAnalytics.dataPoints
+    if (points.length === 0) {
+      return {
+        W,
+        H,
+        PAD_L,
+        PAD_R,
+        PAD_T,
+        PAD_B,
+        plotW,
+        plotH,
+        xMin: 0,
+        xMax: 60,
+        xTicks: [0, 30, 60],
+        yTicks: [0, 50, 100],
+        optX: PAD_L,
+        optW: 0,
+        mapped: [] as Array<{
+          id: number
+          cx: number
+          cy: number
+          duration: number
+          quality: number
+          stress: number
+          fill: string
+        }>,
+      }
+    }
+
+    const durations = points.map((p) => p.duration)
+    const dataMin = Math.min(...durations)
+    const dataMax = Math.max(...durations)
+    const span = Math.max(10, dataMax - dataMin)
+    const pad = Math.max(4, span * 0.18)
+
+    let xMin = Math.max(0, dataMin - pad)
+    let xMax = dataMax + pad
+
+    // Keep optimal band visible when personalized, but don't let defaults blow the scale.
+    if (personalizedZones.isPersonalized) {
+      xMin = Math.min(xMin, durationAnalytics.optimalDurationMin)
+      xMax = Math.max(xMax, durationAnalytics.optimalDurationMax)
+    }
+
+    // Nice rounded bounds (5-min steps for short ranges, 10 for longer).
+    const step = xMax - xMin <= 40 ? 5 : xMax - xMin <= 90 ? 10 : 15
+    xMin = Math.floor(xMin / step) * step
+    xMax = Math.ceil(xMax / step) * step
+    if (xMax <= xMin) xMax = xMin + step * 4
+    // Minimum readable span
+    if (xMax - xMin < step * 3) {
+      const mid = (xMin + xMax) / 2
+      xMin = Math.max(0, Math.floor((mid - step * 1.5) / step) * step)
+      xMax = xMin + step * 3
+    }
+
+    const tickCount = Math.min(5, Math.round((xMax - xMin) / step) + 1)
+    const xTicks: number[] = []
+    for (let i = 0; i < tickCount; i += 1) {
+      xTicks.push(Math.round(xMin + ((xMax - xMin) * i) / Math.max(1, tickCount - 1)))
+    }
+    // Dedupe
+    const uniqueTicks = [...new Set(xTicks)]
+
+    const xScale = (d: number) => PAD_L + ((d - xMin) / Math.max(1, xMax - xMin)) * plotW
+    const yScale = (q: number) => PAD_T + (1 - Math.max(0, Math.min(100, q)) / 100) * plotH
+
+    let optX = PAD_L
+    let optW = 0
+    if (personalizedZones.isPersonalized) {
+      const optLeft = Math.max(xMin, durationAnalytics.optimalDurationMin)
+      const optRight = Math.min(xMax, durationAnalytics.optimalDurationMax)
+      if (optRight > optLeft) {
+        optX = xScale(optLeft)
+        optW = Math.max(0, xScale(optRight) - optX)
+      }
+    }
+
+    // Slight deterministic jitter when points share nearly the same duration/quality.
+    const mapped = points.map((point, index) => {
+      const neighbors = points.filter(
+        (other) =>
+          other.id !== point.id &&
+          Math.abs(other.duration - point.duration) < 1.5 &&
+          Math.abs(other.quality - point.quality) < 3,
+      )
+      const jitter = neighbors.length
+        ? ((index % 5) - 2) * 2.2 + ((index * 7) % 3) - 1
+        : 0
+      return {
+        id: point.id,
+        cx: xScale(point.duration) + jitter * 0.35,
+        cy: yScale(point.quality) + jitter * 0.25,
+        duration: point.duration,
+        quality: point.quality,
+        stress: point.stress,
+        fill: stressColor(point.stress),
+      }
+    })
+
+    return {
+      W,
+      H,
+      PAD_L,
+      PAD_R,
+      PAD_T,
+      PAD_B,
+      plotW,
+      plotH,
+      xMin,
+      xMax,
+      xTicks: uniqueTicks,
+      yTicks: [0, 50, 100],
+      optX,
+      optW,
+      mapped,
+    }
+  }, [durationAnalytics, personalizedZones.isPersonalized])
 
   return (
     <>
@@ -395,58 +548,155 @@ export function FocusHistoryTab({
         {/* Duration vs Quality Scatter Plot */}
         {durationAnalytics.dataPoints.length >= 3 && (
           <div className="duration-scatter">
-            <h4>Session Duration vs. Effectiveness</h4>
+            <div className="duration-scatter-head">
+              <h4>Session Duration vs. Effectiveness</h4>
+              <p>
+                {personalizedZones.isPersonalized
+                  ? `Sweet spot ≈ ${durationAnalytics.optimalDurationMin}–${durationAnalytics.optimalDurationMax} min`
+                  : durationAnalytics.recommendation}
+              </p>
+            </div>
             <div className="scatter-plot">
-              <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet">
-                {/* Grid lines */}
-                <line x1="40" y1="160" x2="380" y2="160" stroke="var(--border-subtle)" strokeWidth="1" />
-                <line x1="40" y1="20" x2="40" y2="160" stroke="var(--border-subtle)" strokeWidth="1" />
-
-                {/* Personalized optimal zone overlay */}
-                <rect
-                  x={40 + (durationAnalytics.optimalDurationMin / 120) * 340}
-                  y="20"
-                  width={((durationAnalytics.optimalDurationMax - durationAnalytics.optimalDurationMin) / 120) * 340}
-                  height="140"
-                  fill="var(--accent-light)"
-                  opacity="0.15"
-                />
-
-                {/* Data points */}
-                {durationAnalytics.dataPoints.map((point) => {
-                  const x = 40 + (Math.min(point.duration, 120) / 120) * 340
-                  const y = 160 - (point.quality / 100) * 140
+              <svg
+                viewBox={`0 0 ${scatterLayout.W} ${scatterLayout.H}`}
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label="Scatter plot of session duration versus quality score"
+              >
+                {/* Horizontal grid */}
+                {scatterLayout.yTicks.map((tick) => {
+                  const y =
+                    scatterLayout.PAD_T +
+                    (1 - tick / 100) * scatterLayout.plotH
                   return (
-                    <circle
-                      key={point.id}
-                      cx={x}
-                      cy={y}
-                      r="4"
-                      fill={stressColor(point.stress)}
-                      opacity="0.7"
-                    />
+                    <g key={`y-${tick}`}>
+                      <line
+                        x1={scatterLayout.PAD_L}
+                        y1={y}
+                        x2={scatterLayout.PAD_L + scatterLayout.plotW}
+                        y2={y}
+                        className="scatter-grid"
+                      />
+                      <text
+                        x={scatterLayout.PAD_L - 8}
+                        y={y + 3.5}
+                        className="scatter-tick"
+                        textAnchor="end"
+                      >
+                        {tick}
+                      </text>
+                    </g>
                   )
                 })}
 
-                {/* Axis labels */}
-                <text x="210" y="190" fontSize="11" fill="var(--text-tertiary)" textAnchor="middle">
-                  Session Duration (minutes)
-                </text>
-                <text x="15" y="95" fontSize="11" fill="var(--text-tertiary)" textAnchor="middle" transform="rotate(-90 15 95)">
-                  Quality Score
-                </text>
+                {/* Optimal duration band */}
+                {scatterLayout.optW > 2 && (
+                  <rect
+                    x={scatterLayout.optX}
+                    y={scatterLayout.PAD_T}
+                    width={scatterLayout.optW}
+                    height={scatterLayout.plotH}
+                    className="scatter-optimal-band"
+                    rx="6"
+                  />
+                )}
 
-                {/* Tick labels */}
-                <text x="40" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">0</text>
-                <text x="210" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">60</text>
-                <text x="380" y="175" fontSize="10" fill="var(--text-tertiary)" textAnchor="middle">120</text>
+                {/* Axes */}
+                <line
+                  x1={scatterLayout.PAD_L}
+                  y1={scatterLayout.PAD_T + scatterLayout.plotH}
+                  x2={scatterLayout.PAD_L + scatterLayout.plotW}
+                  y2={scatterLayout.PAD_T + scatterLayout.plotH}
+                  className="scatter-axis"
+                />
+                <line
+                  x1={scatterLayout.PAD_L}
+                  y1={scatterLayout.PAD_T}
+                  x2={scatterLayout.PAD_L}
+                  y2={scatterLayout.PAD_T + scatterLayout.plotH}
+                  className="scatter-axis"
+                />
+
+                {/* X ticks */}
+                {scatterLayout.xTicks.map((tick) => {
+                  const x =
+                    scatterLayout.PAD_L +
+                    ((tick - scatterLayout.xMin) /
+                      Math.max(1, scatterLayout.xMax - scatterLayout.xMin)) *
+                      scatterLayout.plotW
+                  return (
+                    <text
+                      key={`x-${tick}`}
+                      x={x}
+                      y={scatterLayout.PAD_T + scatterLayout.plotH + 16}
+                      className="scatter-tick"
+                      textAnchor="middle"
+                    >
+                      {tick}m
+                    </text>
+                  )
+                })}
+
+                {/* Points */}
+                {scatterLayout.mapped.map((point) => {
+                  const active = hoveredScatterId === point.id
+                  return (
+                    <circle
+                      key={point.id}
+                      cx={point.cx}
+                      cy={point.cy}
+                      r={active ? 6.5 : 5}
+                      fill={point.fill}
+                      className={`scatter-point ${active ? 'is-active' : ''}`}
+                      onMouseEnter={() => setHoveredScatterId(point.id)}
+                      onMouseLeave={() => setHoveredScatterId(null)}
+                    >
+                      <title>
+                        {point.duration} min · quality {Math.round(point.quality)} · stress{' '}
+                        {Math.round(point.stress)}
+                      </title>
+                    </circle>
+                  )
+                })}
+
+                <text
+                  x={scatterLayout.PAD_L + scatterLayout.plotW / 2}
+                  y={scatterLayout.H - 4}
+                  className="scatter-axis-label"
+                  textAnchor="middle"
+                >
+                  Session duration
+                </text>
+                <text
+                  x={12}
+                  y={scatterLayout.PAD_T + scatterLayout.plotH / 2}
+                  className="scatter-axis-label"
+                  textAnchor="middle"
+                  transform={`rotate(-90 12 ${scatterLayout.PAD_T + scatterLayout.plotH / 2})`}
+                >
+                  Quality
+                </text>
               </svg>
             </div>
             <div className="scatter-legend">
-              <span><i style={{ background: 'var(--state-calm)' }} />Low stress</span>
-              <span><i style={{ background: 'var(--state-mild)' }} />Medium stress</span>
-              <span><i style={{ background: 'var(--state-high)' }} />High stress</span>
-              <span className="scatter-note">Shaded area = your optimal duration</span>
+              <span>
+                <i style={{ background: 'var(--state-calm)' }} />
+                Low stress
+              </span>
+              <span>
+                <i style={{ background: 'var(--state-mild)' }} />
+                Medium
+              </span>
+              <span>
+                <i style={{ background: 'var(--state-high)' }} />
+                High stress
+              </span>
+              {scatterLayout.optW > 2 ? (
+                <span className="scatter-note">
+                  <i className="scatter-note-band" />
+                  Optimal duration
+                </span>
+              ) : null}
             </div>
           </div>
         )}
@@ -460,11 +710,17 @@ export function FocusHistoryTab({
         animate="visible"
       >
         <div className="main-panel-head">
-          <h3>When you focus best</h3>
-          <span className="heatmap-legend">
+          <div>
+            <h3>When you focus best</h3>
+            <p className="heatmap-sub">Weekday × hour · darker means more sessions</p>
+          </div>
+          <span className="heatmap-legend" aria-label="Stress legend">
             <i className="calm" />
-            Low stress <i className="high" />
-            High stress
+            Calm
+            <i className="mild" />
+            Mild
+            <i className="high" />
+            High
           </span>
         </div>
         {hasEnoughPatternData ? (
@@ -473,14 +729,18 @@ export function FocusHistoryTab({
               <div className="heatmap-hours">
                 {Array.from({ length: 12 }).map((_, index) => {
                   const hour = 8 + index
-                  return <span key={hour}>{index % 2 === 0 ? formatHourLabel(hour) : ''}</span>
+                  return (
+                    <span key={hour} className={index % 2 === 0 ? 'is-labeled' : ''}>
+                      {index % 2 === 0 ? formatHourLabel(hour) : ''}
+                    </span>
+                  )
                 })}
               </div>
               <div className="heatmap-body">
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, rowIndex) => (
                   <div
                     key={day}
-                    className="heatmap-row"
+                    className={`heatmap-row ${hoveredHeatmapDay === rowIndex ? 'is-hovered' : ''}`}
                     onMouseEnter={() => setHoveredHeatmapDay(rowIndex)}
                     onMouseLeave={() => setHoveredHeatmapDay(null)}
                   >
@@ -488,16 +748,28 @@ export function FocusHistoryTab({
                     <div className="heatmap-cells">
                       {heatmapData[rowIndex].map((cell, colIndex) => {
                         let toneClass = 'no-data'
-                        if (cell.avgStress != null) {
+                        if (cell.avgStress != null && cell.count > 0) {
                           if (cell.avgStress <= 30) toneClass = 'calm'
                           else if (cell.avgStress <= 60) toneClass = 'mild'
                           else toneClass = 'high'
                         }
-                        const label = `${day} ${formatHourLabel(8 + colIndex)} · Avg stress ${cell.avgStress == null ? '--' : Math.round(cell.avgStress)} · ${cell.count} sessions`
+                        const intensity =
+                          cell.count <= 0
+                            ? 0
+                            : Math.max(0.42, Math.min(1, 0.4 + (cell.count / heatmapMaxCount) * 0.6))
+                        const label = `${day} ${formatHourLabel(8 + colIndex)} · Avg stress ${
+                          cell.avgStress == null ? '—' : Math.round(cell.avgStress)
+                        } · ${cell.count} ${cell.count === 1 ? 'session' : 'sessions'}`
                         return (
                           <button
                             key={`${day}-${colIndex}`}
+                            type="button"
                             className={`heatmap-cell is-${toneClass}`}
+                            style={
+                              toneClass === 'no-data'
+                                ? undefined
+                                : ({ '--cell-intensity': String(intensity) } as CSSProperties)
+                            }
                             title={label}
                             aria-label={label}
                           />
@@ -508,7 +780,9 @@ export function FocusHistoryTab({
                 ))}
               </div>
             </div>
-            {hoveredDaySummary ? <p className="heatmap-day-summary">{hoveredDaySummary}</p> : null}
+            <p className={`heatmap-day-summary ${hoveredDaySummary ? '' : 'is-placeholder'}`}>
+              {hoveredDaySummary ?? 'Hover a day row for session details'}
+            </p>
             {focusPatternCallout && (
               <p className="heatmap-callout">
                 <Zap size={13} /> {focusPatternCallout}
@@ -529,15 +803,24 @@ export function FocusHistoryTab({
         initial="hidden"
         animate="visible"
       >
-        <h3>
-          {focusPeriod === 'week' ? 'Daily rhythm' : focusPeriod === 'month' ? 'Weekly rhythm' : 'Monthly rhythm'}
-        </h3>
+        <div className="main-panel-head">
+          <div>
+            <h3>
+              {focusPeriod === 'week'
+                ? 'Daily rhythm'
+                : focusPeriod === 'month'
+                  ? 'Weekly rhythm'
+                  : 'Monthly rhythm'}
+            </h3>
+            <p className="heatmap-sub">Bars = focused time · Line = average stress</p>
+          </div>
+        </div>
         {hasEnoughPatternData ? (
           <>
             <div className="rhythm-canvas interactive-chart-surface">
               <svg
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
+                viewBox={`0 0 ${RHYTHM_W} ${RHYTHM_H}`}
+                preserveAspectRatio="xMidYMid meet"
                 aria-hidden
                 onMouseLeave={() => {
                   setRhythmHoverIndex(null)
@@ -560,14 +843,29 @@ export function FocusHistoryTab({
                   setRhythmHoverIndex(index)
                 }}
               >
-                {/* subtle baseline */}
-                <line x1="0" y1={PLOT_BOTTOM} x2="100" y2={PLOT_BOTTOM} className="rhythm-baseline" />
+                {/* Soft guide lines */}
+                {[0.25, 0.5, 0.75].map((frac) => {
+                  const y = RHYTHM_TOP + RHYTHM_PLOT_H * (1 - frac)
+                  return (
+                    <line
+                      key={frac}
+                      x1={RHYTHM_PAD_L}
+                      y1={y}
+                      x2={RHYTHM_W - RHYTHM_PAD_R}
+                      y2={y}
+                      className="rhythm-guide"
+                    />
+                  )
+                })}
+                <line
+                  x1={RHYTHM_PAD_L}
+                  y1={RHYTHM_BOTTOM}
+                  x2={RHYTHM_W - RHYTHM_PAD_R}
+                  y2={RHYTHM_BOTTOM}
+                  className="rhythm-baseline"
+                />
                 {rhythmData.map((item, index) => {
-                  const n = Math.max(1, rhythmData.length)
-                  const barWidth = 100 / n
-                  const width = barWidth * 0.55
-                  const x = index * barWidth + (barWidth - width) / 2
-                  const { h, y } = rhythmBarGeometry(item.focusedMinutes)
+                  const { x, width, h, y } = rhythmBarGeometry(item.focusedMinutes, index)
                   return (
                     <rect
                       key={`${item.label}-bar`}
@@ -575,8 +873,10 @@ export function FocusHistoryTab({
                       y={y}
                       width={width}
                       height={Math.max(0, h)}
-                      rx="2.2"
-                      className={`rhythm-bar ${index === rhythmBestIndex ? 'is-best' : ''} ${item.focusedMinutes <= 0 ? 'is-empty' : ''}`}
+                      rx={Math.min(8, width / 2)}
+                      className={`rhythm-bar ${index === rhythmBestIndex ? 'is-best' : ''} ${
+                        item.focusedMinutes <= 0 ? 'is-empty' : ''
+                      } ${rhythmHoverIndex === index ? 'is-hover' : ''}`}
                     />
                   )
                 })}
@@ -585,14 +885,14 @@ export function FocusHistoryTab({
                   if (item.avgStress == null) return null
                   const cx = rhythmCenterX(index)
                   const cy = rhythmStressY(item.avgStress)
+                  const active = rhythmHoverIndex === index
                   return (
                     <circle
                       key={`${item.label}-stress`}
                       cx={cx}
                       cy={cy}
-                      r="2.1"
-                      className="rhythm-point"
-                      vectorEffect="non-scaling-stroke"
+                      r={active ? 5.5 : 4.5}
+                      className={`rhythm-point ${active ? 'is-active' : ''}`}
                     />
                   )
                 })}
@@ -603,7 +903,11 @@ export function FocusHistoryTab({
                     <motion.div
                       className="rhythm-hover-band"
                       initial={{ opacity: 0 }}
-                      animate={{ left: `${hoverBandLeftPx}px`, width: `${Math.max(0, bucketWidthPx)}px`, opacity: 1 }}
+                      animate={{
+                        left: `${hoverBandLeftPx}px`,
+                        width: `${Math.max(0, bucketWidthPx)}px`,
+                        opacity: 1,
+                      }}
                       exit={{ opacity: 0 }}
                       transition={{ type: 'tween', duration: 0.08, ease: 'easeOut' }}
                     />
@@ -659,6 +963,11 @@ export function FocusHistoryTab({
                 <i className="stress" />
                 Avg stress
               </span>
+              {rhythmBestIndex >= 0 && rhythmData[rhythmBestIndex]?.focusedMinutes > 0 ? (
+                <span className="rhythm-legend-best">
+                  Best: {rhythmData[rhythmBestIndex].label} ({rhythmData[rhythmBestIndex].focusedMinutes}m)
+                </span>
+              ) : null}
             </div>
           </>
         ) : (
