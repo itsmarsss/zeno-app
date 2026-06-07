@@ -16,6 +16,8 @@
   padding: 4px 12px 4px 74px;
   min-height: 35px;
   background: color-mix(in srgb, var(--bg-surface) 93%, #fff 7%);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .desktop-chrome-drag {
@@ -24,6 +26,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* Entire strip drags the window (title text included). */
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: default;
 }
 
 .main-shell {
@@ -158,6 +164,9 @@
   font-family: 'DM Serif Display', serif;
   font-size: 15px;
   line-height: 1.1;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
 }
 
 .desktop-topbar-title p {
@@ -167,6 +176,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
 }
 
 .desktop-topbar-title {
@@ -174,12 +186,20 @@
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: default;
 }
 
 .desktop-topbar-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* Buttons inside the drag strip must opt out of window drag. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .desktop-pill {
@@ -192,6 +212,9 @@
   color: var(--text-secondary);
   font-size: 10px;
   padding: 4px 8px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  user-select: none;
 }
 
 .desktop-pill--toggle {
@@ -214,6 +237,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .desktop-topbar-actions--checkin {
@@ -234,6 +259,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .desktop-checkin-toast.is-running {
@@ -264,6 +291,9 @@
   gap: 5px;
   cursor: pointer;
   white-space: nowrap;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  user-select: none;
 }
 
 .desktop-action-btn:hover {
