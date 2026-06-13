@@ -165,5 +165,7 @@ export type Exercise = {
   duration_minutes: number
   difficulty: 'easy' | 'moderate'
   space: 'desk' | 'open'
+  /** Short blurb shown on cards and detail view */
+  description?: string
   steps: string[]
 }
