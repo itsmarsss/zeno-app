@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Clock3, Play, RotateCcw, Search, Square } from 'lucide-react'
+import { ArrowLeft, Clock3, MapPin, Play, RotateCcw, Search, Square } from 'lucide-react'
 import { PostureFrame } from '../common/PostureFrame'
 import type { Exercise, PostureLandmarks, PostureStreamFrame } from '../../shared/types'
 import './ExercisesTab.css'
@@ -99,11 +99,29 @@ export function ExercisesTab({
 }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<ExerciseCategory>('all')
+  /** When set, show exercise detail/instructions before starting. */
+  const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null)
 
   const selectedExercise = useMemo(
     () => exercises.find((exercise) => exercise.id === selectedExerciseId) ?? exercises[0] ?? null,
     [exercises, selectedExerciseId],
   )
+
+  const detailExercise = useMemo(
+    () => (detailExerciseId ? exercises.find((ex) => ex.id === detailExerciseId) ?? null : null),
+    [exercises, detailExerciseId],
+  )
+
+  function openExerciseDetail(exerciseId: string) {
+    setSelectedExerciseId(exerciseId)
+    setDetailExerciseId(exerciseId)
+  }
+
+  function beginExercise(exerciseId: string) {
+    setSelectedExerciseId(exerciseId)
+    setDetailExerciseId(null)
+    startGuided(exerciseId)
+  }
 
   const suggestedIds = useMemo(() => {
     const fromInsights = recommendedIds.filter((id) => exercises.some((ex) => ex.id === id))
@@ -206,7 +224,7 @@ export function ExercisesTab({
                   className="exercise-complete-secondary"
                   onClick={() => {
                     onDismissSummary()
-                    startGuided(nextSuggestion.id)
+                    openExerciseDetail(nextSuggestion.id)
                   }}
                 >
                   <Play size={14} /> Try {nextSuggestion.name}
@@ -336,6 +354,80 @@ export function ExercisesTab({
             </button>
           </aside>
         </motion.section>
+      ) : detailExercise ? (
+        <motion.section
+          key={`exercise-detail-${detailExercise.id}`}
+          className="exercise-detail"
+          initial={pageTransition.initial}
+          animate={pageTransition.animate}
+          exit={pageTransition.exit}
+          transition={pageTransition.transition}
+        >
+          <button type="button" className="exercise-back-link" onClick={() => setDetailExerciseId(null)}>
+            <ArrowLeft size={14} /> Back to exercises
+          </button>
+
+          <div className="exercise-detail-layout">
+            <aside className="exercise-detail-sidebar">
+              <div className="exercise-detail-illustration" aria-hidden>
+                <svg viewBox="0 0 100 100">
+                  <path d={exerciseLineArt(detailExercise.id)} />
+                </svg>
+              </div>
+              <p className="exercise-v2-tag">{detailExercise.target}</p>
+              <h2>{detailExercise.name}</h2>
+              <p className="exercise-detail-blurb">
+                {detailExercise.description ?? detailExercise.steps[0]}
+              </p>
+              <div className="exercise-detail-meta">
+                <span>
+                  <Clock3 size={13} /> {detailExercise.duration_minutes} min
+                </span>
+                <span>
+                  <MapPin size={13} /> {detailExercise.space === 'desk' ? 'At your desk' : 'Needs space'}
+                </span>
+                <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(detailExercise)} of 3`}>
+                  <i className={difficultyLevel(detailExercise) >= 1 ? 'is-on' : ''} />
+                  <i className={difficultyLevel(detailExercise) >= 2 ? 'is-on' : ''} />
+                  <i className={difficultyLevel(detailExercise) >= 3 ? 'is-on' : ''} />
+                  <em>{detailExercise.difficulty === 'easy' ? 'Easy' : 'Moderate'}</em>
+                </span>
+              </div>
+
+              <div className="exercise-detail-actions">
+                <button
+                  type="button"
+                  className="exercise-detail-begin"
+                  onClick={() => beginExercise(detailExercise.id)}
+                >
+                  <Play size={15} /> Begin exercise
+                </button>
+                <button type="button" className="exercise-detail-cancel" onClick={() => setDetailExerciseId(null)}>
+                  Not now
+                </button>
+              </div>
+            </aside>
+
+            <div className="exercise-detail-body">
+              <h3>How to do it</h3>
+              <ol className="exercise-detail-steps">
+                {detailExercise.steps.map((step, index) => (
+                  <li key={`${detailExercise.id}-step-${index}`}>
+                    <span className="exercise-detail-step-num">{index + 1}</span>
+                    <p>{step}</p>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="exercise-detail-tips">
+                <p>
+                  Zeno uses your camera for live form coaching once you begin. Sit or stand where your upper body is
+                  visible, and move slowly.
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.section>
       ) : (
         <motion.div
           key="exercise-grid"
@@ -360,11 +452,9 @@ export function ExercisesTab({
 
           {softSuggestionId && (
             <button
+              type="button"
               className="exercise-soft-suggest"
-              onClick={() => {
-                setSelectedExerciseId(softSuggestionId)
-                startGuided(softSuggestionId)
-              }}
+              onClick={() => openExerciseDetail(softSuggestionId)}
             >
               <span>Posture drift earlier</span>
               <strong>
@@ -377,6 +467,7 @@ export function ExercisesTab({
             {CATEGORIES.map((pill) => (
               <button
                 key={pill.key}
+                type="button"
                 className={category === pill.key ? 'is-active' : ''}
                 onClick={() => setCategory(pill.key)}
               >
@@ -392,7 +483,16 @@ export function ExercisesTab({
               return (
                 <article
                   key={exercise.id}
-                  className={`exercise-v2-card ${isSelected ? 'is-selected' : ''}`}
+                  className={`exercise-v2-card is-clickable ${isSelected ? 'is-selected' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openExerciseDetail(exercise.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openExerciseDetail(exercise.id)
+                    }
+                  }}
                 >
                   <div className="exercise-v2-illustration">
                     <svg viewBox="0 0 100 100">
@@ -416,13 +516,16 @@ export function ExercisesTab({
                       </span>
                     </div>
 
-                    <p className="exercise-v2-description">{exercise.steps[0]}</p>
+                    <p className="exercise-v2-description">
+                      {exercise.description ?? exercise.steps[0]}
+                    </p>
 
                     <button
+                      type="button"
                       className="exercise-v2-start"
-                      onClick={() => {
-                        setSelectedExerciseId(exercise.id)
-                        startGuided(exercise.id)
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        beginExercise(exercise.id)
                       }}
                     >
                       <Play size={12} /> Begin exercise
