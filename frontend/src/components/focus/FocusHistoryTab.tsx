@@ -6,7 +6,6 @@ import { friendlyPosture, stressIndexFromHistory } from '../../shared/metrics'
 import type { SessionHistoryItem } from '../../shared/types'
 import { staggerItem } from '../../shared/motion'
 import { AnimatedTickerText } from '../common/AnimatedTickerText'
-import { InteractiveLineChart } from '../common/InteractiveLineChart'
 import {
   type FocusPeriod,
   classifySession,
@@ -54,9 +53,9 @@ export function FocusHistoryTab({
   periodSessionCount: number
   periodFocusedMinutes: number
   periodAvgStress: number
-  focusHeroDeltaTime: number
-  focusHeroDeltaStress: number
-  focusHeroDeltaSessions: number
+  focusHeroDeltaTime: number | null
+  focusHeroDeltaStress: number | null
+  focusHeroDeltaSessions: number | null
   periodRangeLabel: string
   hasEnoughPatternData: boolean
   patternSessionsNeeded: number
@@ -332,10 +331,18 @@ export function FocusHistoryTab({
       const jitter = neighbors.length
         ? ((index % 5) - 2) * 2.2 + ((index * 7) % 3) - 1
         : 0
+      const cx = Math.min(
+        PAD_L + plotW - 4,
+        Math.max(PAD_L + 4, xScale(point.duration) + jitter * 0.35),
+      )
+      const cy = Math.min(
+        PAD_T + plotH - 4,
+        Math.max(PAD_T + 4, yScale(point.quality) + jitter * 0.25),
+      )
       return {
         id: point.id,
-        cx: xScale(point.duration) + jitter * 0.35,
-        cy: yScale(point.quality) + jitter * 0.25,
+        cx,
+        cy,
         duration: point.duration,
         quality: point.quality,
         stress: point.stress,
@@ -397,25 +404,37 @@ export function FocusHistoryTab({
           <p>Total focused time</p>
           <strong>{formatMinutes(periodFocusedMinutes)}</strong>
           <span>Total this period</span>
-          <em className={focusHeroDeltaTime >= 0 ? 'delta-positive' : 'delta-negative'}>
-            {focusHeroDeltaTime >= 0 ? '↑' : '↓'} {Math.abs(focusHeroDeltaTime)}% from previous period
-          </em>
+          {focusHeroDeltaTime == null ? (
+            <em className="delta-neutral">No prior period</em>
+          ) : (
+            <em className={focusHeroDeltaTime >= 0 ? 'delta-positive' : 'delta-negative'}>
+              {focusHeroDeltaTime >= 0 ? '↑' : '↓'} {Math.abs(focusHeroDeltaTime)}% from previous period
+            </em>
+          )}
         </article>
         <article>
           <p>Avg session stress</p>
-          <strong>{periodAvgStress || 0}</strong>
+          <strong>{periodSessionCount === 0 ? '--' : periodAvgStress}</strong>
           <span>Lower is better</span>
-          <em className={focusHeroDeltaStress <= 0 ? 'delta-positive' : 'delta-negative'}>
-            {focusHeroDeltaStress <= 0 ? '↓' : '↑'} {Math.abs(focusHeroDeltaStress)}% from previous period
-          </em>
+          {focusHeroDeltaStress == null ? (
+            <em className="delta-neutral">No prior period</em>
+          ) : (
+            <em className={focusHeroDeltaStress <= 0 ? 'delta-positive' : 'delta-negative'}>
+              {focusHeroDeltaStress <= 0 ? '↓' : '↑'} {Math.abs(focusHeroDeltaStress)}% from previous period
+            </em>
+          )}
         </article>
         <article>
           <p>Sessions completed</p>
           <strong>{periodSessionCount}</strong>
           <span>Focus sessions</span>
-          <em className={focusHeroDeltaSessions >= 0 ? 'delta-positive' : 'delta-negative'}>
-            {focusHeroDeltaSessions >= 0 ? '↑' : '↓'} {Math.abs(focusHeroDeltaSessions)}% from previous period
-          </em>
+          {focusHeroDeltaSessions == null ? (
+            <em className="delta-neutral">No prior period</em>
+          ) : (
+            <em className={focusHeroDeltaSessions >= 0 ? 'delta-positive' : 'delta-negative'}>
+              {focusHeroDeltaSessions >= 0 ? '↑' : '↓'} {Math.abs(focusHeroDeltaSessions)}% from previous period
+            </em>
+          )}
         </article>
       </motion.section>
 
@@ -541,7 +560,7 @@ export function FocusHistoryTab({
                 </strong>
               </div>
             </div>
-            <p className="analytics-recommendation">💡 {performanceAnalytics.recommendation}</p>
+            <p className="analytics-recommendation">{performanceAnalytics.recommendation}</p>
           </article>
         </div>
 
@@ -552,7 +571,7 @@ export function FocusHistoryTab({
               <h4>Session Duration vs. Effectiveness</h4>
               <p>
                 {personalizedZones.isPersonalized
-                  ? `Sweet spot ≈ ${durationAnalytics.optimalDurationMin}–${durationAnalytics.optimalDurationMax} min`
+                  ? `Sweet spot about ${durationAnalytics.optimalDurationMin}-${durationAnalytics.optimalDurationMax} min`
                   : durationAnalytics.recommendation}
               </p>
             </div>
@@ -712,7 +731,7 @@ export function FocusHistoryTab({
         <div className="main-panel-head">
           <div>
             <h3>When you focus best</h3>
-            <p className="heatmap-sub">Weekday × hour · darker means more sessions</p>
+            <p className="heatmap-sub">Weekday × hour · color is stress, density is volume</p>
           </div>
           <span className="heatmap-legend" aria-label="Stress legend">
             <i className="calm" />
@@ -758,7 +777,7 @@ export function FocusHistoryTab({
                             ? 0
                             : Math.max(0.42, Math.min(1, 0.4 + (cell.count / heatmapMaxCount) * 0.6))
                         const label = `${day} ${formatHourLabel(8 + colIndex)} · Avg stress ${
-                          cell.avgStress == null ? '—' : Math.round(cell.avgStress)
+                          cell.avgStress == null ? '--' : Math.round(cell.avgStress)
                         } · ${cell.count} ${cell.count === 1 ? 'session' : 'sessions'}`
                         return (
                           <button
@@ -809,10 +828,10 @@ export function FocusHistoryTab({
               {focusPeriod === 'week'
                 ? 'Daily rhythm'
                 : focusPeriod === 'month'
-                  ? 'Weekly rhythm'
+                  ? '5-day rhythm'
                   : 'Monthly rhythm'}
             </h3>
-            <p className="heatmap-sub">Bars = focused time · Line = average stress</p>
+            <p className="heatmap-sub">Bars = focused time · line = average stress</p>
           </div>
         </div>
         {hasEnoughPatternData ? (
@@ -829,17 +848,20 @@ export function FocusHistoryTab({
                 onPointerMove={(event) => {
                   const svgRect = event.currentTarget.getBoundingClientRect()
                   const canvasRect = event.currentTarget.parentElement?.getBoundingClientRect() ?? svgRect
-                  const localLeft = Math.max(0, svgRect.left - canvasRect.left)
-                  const localWidth = Math.max(1, svgRect.width)
-                  const ratio = Math.max(0, Math.min(0.999, (event.clientX - svgRect.left) / localWidth))
+                  const scaleX = svgRect.width / RHYTHM_W
+                  // Align hover buckets with padded plot geometry (not full SVG width).
+                  const plotLeftPx = Math.max(0, svgRect.left - canvasRect.left) + RHYTHM_PAD_L * scaleX
+                  const plotWidthPx = Math.max(1, RHYTHM_INNER_W * scaleX)
+                  const xInPlot = event.clientX - (canvasRect.left + plotLeftPx)
+                  const ratio = Math.max(0, Math.min(0.999, xInPlot / plotWidthPx))
                   const index = Math.min(rhythmData.length - 1, Math.floor(ratio * rhythmData.length))
                   const prev = previousRhythmHoverIndexRef.current
                   if (prev != null && index !== prev) {
                     setRhythmHoverDirection(index > prev ? 1 : -1)
                   }
                   previousRhythmHoverIndexRef.current = index
-                  setRhythmPlotLeftPx(localLeft)
-                  setRhythmPlotWidthPx(localWidth)
+                  setRhythmPlotLeftPx(plotLeftPx)
+                  setRhythmPlotWidthPx(plotWidthPx)
                   setRhythmHoverIndex(index)
                 }}
               >
@@ -933,7 +955,7 @@ export function FocusHistoryTab({
                       <div>
                         <strong>
                           <AnimatedTickerText
-                            value={hoveredRhythm.avgStress == null ? '—' : String(hoveredRhythm.avgStress)}
+                            value={hoveredRhythm.avgStress == null ? '--' : String(hoveredRhythm.avgStress)}
                             direction={rhythmHoverDirection}
                           />
                         </strong>
@@ -1035,30 +1057,14 @@ export function FocusHistoryTab({
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                       >
-                        <div className="focus-mini-chart">
-                          <InteractiveLineChart
-                            points={[
-                              { id: '1', label: '', value: stress - 8 },
-                              { id: '2', label: '', value: stress - 3 },
-                              { id: '3', label: '', value: stress + 6 },
-                              { id: '4', label: '', value: stress - 2 },
-                              { id: '5', label: '', value: stress },
-                            ]}
-                            yMin={0}
-                            yMax={100}
-                            showAxis={false}
-                            chartHeight={32}
-                            tooltipWidth={0}
-                            lineClassName="focus-mini-line"
-                            areaClassName="focus-mini-area"
-                            areaGradientId={`focusMiniGradient-${item.id}`}
-                            areaGradientColor={stressColor(stress)}
-                          />
-                        </div>
                         <div className="focus-stats-list">
                           <p>
                             <span>Duration</span>
                             <strong>{formatDurationSeconds(item.session_duration_seconds)}</strong>
+                          </p>
+                          <p>
+                            <span>Stress index</span>
+                            <strong style={{ color: stressColor(stress) }}>{stress}</strong>
                           </p>
                           <p>
                             <span>Avg heart rate</span>
