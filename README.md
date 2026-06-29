@@ -180,4 +180,4 @@ App identifier: `com.zeno.app` · product version in `frontend/src-tauri/tauri.c
 
 ## License
 
-Proprietary / unlicensed unless a license file is added to this repository. All rights reserved by the project authors.
+Licensed under the [Apache License, Version 2.0](LICENSE).
