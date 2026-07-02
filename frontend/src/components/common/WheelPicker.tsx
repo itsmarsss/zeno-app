@@ -24,7 +24,7 @@ function nearestIndex(scrollTop: number, count: number): number {
   return Math.max(0, Math.min(count - 1, raw))
 }
 
-/** Single snap-scrolling column — Apple-style wheel. */
+/** Single snap-scrolling column - Apple-style wheel. */
 export function WheelColumn({ items, value, onChange, ariaLabel, width }: WheelColumnProps) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const lockRef = useRef(false)

@@ -36,7 +36,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     description:
       'Resets forward head posture from screen time. A small, controlled move that strengthens deep neck flexors without straining.',
     steps: [
-      'Sit tall and look straight ahead — imagine a string lifting the crown of your head.',
+      'Sit tall and look straight ahead. Imagine a string lifting the crown of your head.',
       'Gently pull your chin straight back (like making a double chin), not down toward your chest.',
       'Hold for about 3 seconds, release to neutral, and repeat for 10 controlled reps.',
     ],
@@ -51,9 +51,9 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     description:
       'Opens the chest and mobilizes the upper back. Great after long laptop sessions when shoulders roll forward.',
     steps: [
-      'Stand with your back, head, and arms against a wall; elbows bent about 90° (goalpost position).',
+      'Stand with your back, head, and arms against a wall; elbows bent about 90 degrees (goalpost position).',
       'Slowly slide your arms upward while keeping elbows and wrists in light contact with the wall.',
-      'Return down with control for 8–10 smooth reps. Stop if you feel sharp pain.',
+      'Return down with control for 8-10 smooth reps. Stop if you feel sharp pain.',
     ],
   },
   {
@@ -83,7 +83,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     steps: [
       'Sit upright near the edge of your chair with both feet flat; place hands lightly behind your head.',
       'Lift your chest and gently extend through the upper back while keeping your ribs from flaring hard.',
-      'Return to neutral with control and repeat for 8–10 slow reps.',
+      'Return to neutral with control and repeat for 8-10 slow reps.',
     ],
   },
   {

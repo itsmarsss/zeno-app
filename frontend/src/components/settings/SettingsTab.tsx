@@ -493,7 +493,7 @@ export function SettingsTab({
     <section className="settings-page">
       <header className="settings-header">
         <h1>Settings</h1>
-        <p>How Zeno works for you — everything stays on this device</p>
+        <p>How Zeno works for you. Everything stays on this device.</p>
       </header>
 
       <section className="settings-section">
@@ -529,16 +529,6 @@ export function SettingsTab({
             </span>
           </button>
 
-          <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('focus_warning')}>
-            <div>
-              <strong>Focus session warning</strong>
-              <p>Alert me when a session runs long</p>
-            </div>
-            <span>
-              {rowLabel('focus_warning')} <ChevronRight size={14} />
-            </span>
-          </button>
-
           <button
             type="button"
             className="settings-row settings-row--select"
@@ -561,16 +551,6 @@ export function SettingsTab({
       <section className="settings-section">
         <p className="settings-section-title">When Zeno speaks up</p>
         <div className="settings-card">
-          <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('nudge_gap')}>
-            <div>
-              <strong>Minimum time between nudges</strong>
-              <p>Avoid being interrupted too often</p>
-            </div>
-            <span>
-              {rowLabel('nudge_gap')} <ChevronRight size={14} />
-            </span>
-          </button>
-
           <button type="button" className="settings-row settings-row--select" onClick={() => openSheet('report_time')}>
             <div>
               <strong>Daily report time</strong>
