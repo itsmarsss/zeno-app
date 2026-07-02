@@ -2,7 +2,7 @@
 
 **Local-first wellness and focus companion for desk work.**
 
-Zeno runs on your Mac as a desktop app: a compact menubar panel for quick status, plus a full main window for overview, live monitoring, posture, exercises, and focus history. Camera-based signals (posture, stress proxies, presence) are processed **on device** by a Python sidecar. Session data lives in a local SQLite database — no cloud account required for core use.
+Zeno runs on your Mac as a desktop app: a compact menubar panel for quick status, plus a full main window for overview, live monitoring, posture, exercises, and focus history. Camera-based signals (posture, stress proxies, presence) are processed **on device** by a Python sidecar. Session data lives in a local SQLite database - no cloud account required for core use.
 
 ---
 
@@ -40,7 +40,7 @@ Optional `api/` folder contains a separate serverless/auth stack used for experi
 
 - **macOS** (primary target; camera + menubar UX)
 - **Node.js** + **[pnpm](https://pnpm.io/)**
-- **Rust** (`rustc` / `cargo`) — [rustup](https://rustup.rs/)
+- **Rust** (`rustc` / `cargo`) - [rustup](https://rustup.rs/)
 - **Python 3.11+**
 - Camera permission when macOS prompts (required for check-ins, Focus Mode, posture, exercises)
 
@@ -114,16 +114,16 @@ zeno-app/
 
 ### Frontend entry points
 
-- **Menubar / compact window** — `frontend/src/App.tsx`  
-- **Main app window** — `frontend/src/components/MainWindowShell.tsx`  
+- **Menubar / compact window** - `frontend/src/App.tsx`  
+- **Main app window** - `frontend/src/components/MainWindowShell.tsx`  
 - Tabs live under `frontend/src/components/{overview,monitor,posture,exercises,focus,settings}/`
 
 ### Backend highlights
 
-- **`zeno_backend/core/`** — camera manager, stress index helpers  
-- **`zeno_backend/analyzers/`** — posture, presence, rPPG, emotion, respiration  
-- **`zeno_backend/pipelines/`** — focus stream, passive check-in, session runner  
-- **`zeno_backend/data/`** — SQLite logging, aggregates, settings, export  
+- **`zeno_backend/core/`** - camera manager, stress index helpers  
+- **`zeno_backend/analyzers/`** - posture, presence, rPPG, emotion, respiration  
+- **`zeno_backend/pipelines/`** - focus stream, passive check-in, session runner  
+- **`zeno_backend/data/`** - SQLite logging, aggregates, settings, export  
 
 Rust commands in `frontend/src-tauri/src/` invoke Python modules as short-lived or streaming sidecars.
 
@@ -150,7 +150,7 @@ python -m zeno_backend.data.seed_dummy_sessions
 
 ## Development notes
 
-- Prefer **`./scripts/dev.sh --skip-install`** once the venv and `node_modules` exist — faster iteration.  
+- Prefer **`./scripts/dev.sh --skip-install`** once the venv and `node_modules` exist - faster iteration.  
 - If camera features fail, confirm:
   - macOS **Camera** permission for the Zeno / Terminal host process  
   - `.venv` exists and `import zeno_backend` works  
