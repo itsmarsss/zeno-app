@@ -67,7 +67,7 @@ const monitorItemVariants = {
     y: 0,
     transition: {
       duration: 0.22,
-      ease: [0.22, 1, 0.36, 1],
+      ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
     },
   },
 }
@@ -529,7 +529,11 @@ export function MonitorTab({
           respiratoryRate: item.respiratory_rate > 0 ? item.respiratory_rate : null,
           postureScore: Math.round(item.posture_score * 100),
           rrConfidence: item.rr_confidence,
-          pointType: item.mode === 'focus' ? 'focus' : item.mode === 'passive' ? 'passive' : 'unknown',
+          pointType: (item.mode === 'focus'
+            ? 'focus'
+            : item.mode === 'passive'
+              ? 'passive'
+              : 'unknown') as FocusPoint['pointType'],
         }
       })
       .filter((point) => Number.isFinite(point.at))

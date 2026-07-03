@@ -360,7 +360,6 @@ export function OverviewTab({
   timelineData,
   timelineBucketMinutes,
   setTimelineBucketMinutes,
-  timelineStartLabel,
   onShiftOverviewDay,
   onSetOverviewDay,
   selectedDayIso,
@@ -387,7 +386,6 @@ export function OverviewTab({
   timelineData: TimelinePoint[]
   timelineBucketMinutes: number
   setTimelineBucketMinutes: (value: number) => void
-  timelineStartLabel: string
   onShiftOverviewDay: (delta: number) => void
   onSetOverviewDay: (isoDate: string) => void
   selectedDayIso: string

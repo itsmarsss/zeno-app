@@ -1,8 +1,8 @@
 [package]
 name = "zeno"
-version = "0.1.0"
-description = "Zeno menubar app"
-authors = ["you"]
+version = "1.0.0"
+description = "Zeno local focus and wellness companion"
+authors = ["Zeno contributors"]
 edition = "2021"
 
 [build-dependencies]
