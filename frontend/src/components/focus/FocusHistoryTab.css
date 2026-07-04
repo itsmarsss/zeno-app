@@ -99,6 +99,11 @@
   background: color-mix(in srgb, var(--state-elevated) 12%, transparent);
 }
 
+.delta-neutral {
+  color: var(--text-tertiary);
+  background: var(--bg-subtle);
+}
+
 .heatmap {
   margin-bottom: 18px;
 }

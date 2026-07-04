@@ -177,15 +177,29 @@ export function MainWindowShell({
   const overviewKey = localDateKey(overviewDate)
   const historyRevision = `${history.length}:${history[0]?.id ?? 0}:${history[history.length - 1]?.id ?? 0}`
 
-  const sessionsSortedAsc = [...history].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  const sessionsSortedAsc = useMemo(
+    () =>
+      [...history].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [history, historyRevision],
   )
-  const todaySessions = sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === todayKey)
-  const overviewSessions = [...overviewDaySessions].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  const todaySessions = useMemo(
+    () => sessionsSortedAsc.filter((item) => localDateKey(new Date(item.created_at)) === todayKey),
+    [sessionsSortedAsc, todayKey],
+  )
+  const overviewSessions = useMemo(
+    () =>
+      [...overviewDaySessions].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [overviewDaySessions],
   )
 
-  const focusSessions = history.filter((item) => Boolean(item.focus_mode))
+  const focusSessions = useMemo(
+    () => history.filter((item) => Boolean(item.focus_mode)),
+    [history, historyRevision],
+  )
   const avgStressToday = overviewAggregates ? overviewAggregates.average_stress_index : null
   const stressDeltaVsYesterday = overviewAggregates ? overviewAggregates.stress_delta_vs_yesterday : null
   const todayFocusedMinutes = overviewAggregates?.focused_minutes ?? 0
@@ -436,7 +450,7 @@ export function MainWindowShell({
     const end = new Date()
     end.setHours(23, 59, 59, 999)
     return end
-  }, [])
+  }, [todayKey])
   const periodRangeLabel = useMemo(
     () =>
       `${periodStart.toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString([], { month: 'short', day: 'numeric' })}`,
@@ -474,13 +488,15 @@ export function MainWindowShell({
 
   const focusHeroDeltaTime =
     previousFocusedMinutes === 0
-      ? 0
+      ? null
       : Math.round(((periodFocusedMinutes - previousFocusedMinutes) / previousFocusedMinutes) * 100)
   const focusHeroDeltaStress =
-    previousAvgStress === 0 ? 0 : Math.round(((periodAvgStress - previousAvgStress) / previousAvgStress) * 100)
+    previousSessionCount === 0 || previousAvgStress === 0
+      ? null
+      : Math.round(((periodAvgStress - previousAvgStress) / previousAvgStress) * 100)
   const focusHeroDeltaSessions =
     previousSessionCount === 0
-      ? 0
+      ? null
       : Math.round(((periodSessionCount - previousSessionCount) / previousSessionCount) * 100)
 
   const heatmapData = useMemo(() => {
@@ -566,8 +582,9 @@ export function MainWindowShell({
         const focusedMinutes = Math.round(items.reduce((sum, item) => sum + item.session_duration_seconds, 0) / 60)
         const stressValues = items.map((item) => stressIndexFromHistory(item))
         const avgStress = items.length === 0 ? null : Math.round(mean(stressValues))
+        const startLabel = bucketStart.toLocaleDateString([], { month: 'short', day: 'numeric' })
         points.push({
-          label: `W${i + 1}`,
+          label: startLabel,
           focusedMinutes,
           avgStress: avgStress != null && Number.isFinite(avgStress) ? avgStress : null,
         })
@@ -629,63 +646,52 @@ export function MainWindowShell({
 
   // Analytics: Study Streak & Consistency
   const studyAnalytics = useMemo(() => {
-    const allFocus = [...focusSessions].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    )
-
-    // Calculate current streak
-    let currentStreak = 0
-    let longestStreak = 0
-    let tempStreak = 0
     const uniqueDays = new Set<string>()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    allFocus.forEach((session) => {
-      const sessionDate = new Date(session.created_at)
-      sessionDate.setHours(0, 0, 0, 0)
-      const dayKey = sessionDate.toISOString().split('T')[0]
-      uniqueDays.add(dayKey)
+    focusSessions.forEach((session) => {
+      uniqueDays.add(localDateKey(new Date(session.created_at)))
     })
 
     const sortedDays = Array.from(uniqueDays).sort()
-    for (let i = sortedDays.length - 1; i >= 0; i--) {
-      const dayDate = new Date(sortedDays[i])
-      const expectedDate = new Date(today)
-      expectedDate.setDate(today.getDate() - (sortedDays.length - 1 - i))
 
-      if (dayDate.toISOString().split('T')[0] === expectedDate.toISOString().split('T')[0]) {
-        tempStreak++
-      } else {
-        break
-      }
-    }
-    currentStreak = tempStreak
-
-    // Calculate longest streak
-    let streak = 1
-    for (let i = 1; i < sortedDays.length; i++) {
-      const prev = new Date(sortedDays[i - 1])
-      const curr = new Date(sortedDays[i])
+    // Longest run of consecutive local calendar days
+    let longestStreak = sortedDays.length > 0 ? 1 : 0
+    let run = 1
+    for (let i = 1; i < sortedDays.length; i += 1) {
+      const prev = new Date(`${sortedDays[i - 1]}T12:00:00`)
+      const curr = new Date(`${sortedDays[i]}T12:00:00`)
       const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
       if (diffDays === 1) {
-        streak++
-        longestStreak = Math.max(longestStreak, streak)
+        run += 1
+        longestStreak = Math.max(longestStreak, run)
       } else {
-        streak = 1
+        run = 1
       }
     }
 
-    // Calculate spacing score (0-100)
+    // Current streak: consecutive days ending today, or yesterday if nothing today yet
+    let currentStreak = 0
+    const cursor = new Date()
+    cursor.setHours(12, 0, 0, 0)
+    if (!uniqueDays.has(localDateKey(cursor))) {
+      cursor.setDate(cursor.getDate() - 1)
+    }
+    while (uniqueDays.has(localDateKey(cursor))) {
+      currentStreak += 1
+      cursor.setDate(cursor.getDate() - 1)
+    }
+
+    // Spacing score (0-100): how close average gap is to ~48h
     let spacingScore = 0
     if (currentPeriodFocus.length > 1) {
-      const sessionDates = currentPeriodFocus.map((s) => new Date(s.created_at).getTime())
+      const sessionDates = [...currentPeriodFocus]
+        .map((s) => new Date(s.created_at).getTime())
+        .sort((a, b) => a - b)
       const intervals: number[] = []
-      for (let i = 1; i < sessionDates.length; i++) {
-        intervals.push((sessionDates[i] - sessionDates[i - 1]) / (1000 * 60 * 60)) // hours
+      for (let i = 1; i < sessionDates.length; i += 1) {
+        intervals.push(Math.abs(sessionDates[i] - sessionDates[i - 1]) / (1000 * 60 * 60))
       }
       const avgInterval = mean(intervals)
-      const optimalInterval = 48 // hours (from research)
+      const optimalInterval = 48
       const deviation = Math.abs(avgInterval - optimalInterval) / optimalInterval
       spacingScore = Math.round(Math.max(0, Math.min(100, 100 - deviation * 50)))
     }
@@ -1336,7 +1342,6 @@ export function MainWindowShell({
                   selectedExerciseId={selectedExerciseId}
                   setSelectedExerciseId={setSelectedExerciseId}
                   exerciseGuidedActive={exerciseGuidedActive}
-                  toggleGuided={toggleGuidedExercise}
                   startGuided={(id) => startGuidedExercise(id)}
                   stopGuided={() => void stopGuidedExercise(true)}
                   postureStreamState={postureStreamState}

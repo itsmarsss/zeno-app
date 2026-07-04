@@ -51,7 +51,7 @@ export function trendTone(delta: number): DeltaTone {
 }
 
 export function formatDelta(delta: number): string {
-  if (Math.abs(delta) < 1) return '\u2014'
+  if (Math.abs(delta) < 1) return '--'
   return `${delta > 0 ? '+' : ''}${Math.round(delta)} pts`
 }
 
