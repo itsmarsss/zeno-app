@@ -235,7 +235,7 @@
   color: var(--accent-dim);
 }
 
-/* Exercise detail / instructions — full-width two-column */
+/* Exercise detail / instructions - full-width two-column */
 .exercise-detail {
   width: 100%;
   display: flex;

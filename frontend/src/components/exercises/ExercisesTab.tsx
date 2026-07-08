@@ -27,8 +27,14 @@ function categoryForExercise(exercise: Exercise): ExerciseCategory {
   return 'all'
 }
 
-function difficultyLevel(exercise: Exercise): 1 | 2 | 3 {
+function difficultyLevel(exercise: Exercise): 1 | 2 {
   return exercise.difficulty === 'easy' ? 1 : 2
+}
+
+function formatExerciseDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`
+  const mins = Math.round(seconds / 60)
+  return mins < 1 ? '<1m' : `${mins}m`
 }
 
 function exerciseLineArt(exerciseId: string): string {
@@ -56,7 +62,6 @@ export function ExercisesTab({
   selectedExerciseId,
   setSelectedExerciseId,
   exerciseGuidedActive,
-  toggleGuided,
   startGuided,
   stopGuided,
   postureStreamState,
@@ -75,7 +80,6 @@ export function ExercisesTab({
   selectedExerciseId: string
   setSelectedExerciseId: (value: string) => void
   exerciseGuidedActive: boolean
-  toggleGuided: (exerciseId?: string) => void
   startGuided: (exerciseId: string) => void
   stopGuided: () => void
   postureStreamState: 'stopped' | 'connecting' | 'running' | 'no-pose' | 'error'
@@ -205,11 +209,11 @@ export function ExercisesTab({
                 <span>Reps</span>
               </div>
               <div>
-                <strong>{formPct == null ? '—' : `${formPct}%`}</strong>
+                <strong>{formPct == null ? '--' : `${formPct}%`}</strong>
                 <span>Form</span>
               </div>
               <div>
-                <strong>{Math.max(1, Math.round(sessionSummary.durationSeconds / 60))}m</strong>
+                <strong>{formatExerciseDuration(sessionSummary.durationSeconds)}</strong>
                 <span>Time</span>
               </div>
             </div>
@@ -386,10 +390,9 @@ export function ExercisesTab({
                 <span>
                   <MapPin size={13} /> {detailExercise.space === 'desk' ? 'At your desk' : 'Needs space'}
                 </span>
-                <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(detailExercise)} of 3`}>
+                <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(detailExercise)} of 2`}>
                   <i className={difficultyLevel(detailExercise) >= 1 ? 'is-on' : ''} />
                   <i className={difficultyLevel(detailExercise) >= 2 ? 'is-on' : ''} />
-                  <i className={difficultyLevel(detailExercise) >= 3 ? 'is-on' : ''} />
                   <em>{detailExercise.difficulty === 'easy' ? 'Easy' : 'Moderate'}</em>
                 </span>
               </div>
@@ -484,15 +487,7 @@ export function ExercisesTab({
                 <article
                   key={exercise.id}
                   className={`exercise-v2-card is-clickable ${isSelected ? 'is-selected' : ''}`}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => openExerciseDetail(exercise.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      openExerciseDetail(exercise.id)
-                    }
-                  }}
                 >
                   <div className="exercise-v2-illustration">
                     <svg viewBox="0 0 100 100">
@@ -509,10 +504,9 @@ export function ExercisesTab({
                       <span>
                         <Clock3 size={12} /> {exercise.duration_minutes}m
                       </span>
-                      <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(exercise)} of 3`}>
+                      <span className="exercise-dots" aria-label={`Difficulty ${difficultyLevel(exercise)} of 2`}>
                         <i className={difficultyLevel(exercise) >= 1 ? 'is-on' : ''} />
                         <i className={difficultyLevel(exercise) >= 2 ? 'is-on' : ''} />
-                        <i className={difficultyLevel(exercise) >= 3 ? 'is-on' : ''} />
                       </span>
                     </div>
 
@@ -561,7 +555,7 @@ export function ExercisesTab({
                         hour: 'numeric',
                         minute: '2-digit',
                       })
-                    : '—'
+                    : '--'
                   return (
                     <li key={item.id}>
                       <div>
@@ -572,8 +566,8 @@ export function ExercisesTab({
                         <span className={item.completed ? 'is-done' : ''}>
                           {item.completed ? 'Done' : 'Partial'}
                         </span>
-                        <span>{formPct == null ? '—' : `${formPct}% form`}</span>
-                        <span>{Math.max(1, Math.round(item.duration_seconds / 60))}m</span>
+                        <span>{formPct == null ? '--' : `${formPct}% form`}</span>
+                        <span>{formatExerciseDuration(item.duration_seconds)}</span>
                       </div>
                     </li>
                   )

@@ -727,7 +727,7 @@ function App() {
     event?.preventDefault?.()
     event?.stopPropagation?.()
     try {
-      // Prefer a dedicated Rust command — more reliable than the JS window plugin ACL alone.
+      // Prefer a dedicated Rust command - more reliable than the JS window plugin ACL alone.
       await invoke('hide_window')
       return
     } catch {
@@ -750,7 +750,7 @@ function App() {
   function applyCheckInResult(payload: SessionResult, source: 'manual' | 'scheduler' | 'focus-mode' = 'manual') {
     if (payload.session_skipped || !payload.presence_detected) {
       setLastNudge('No face detected, skipped this check-in.')
-      setCheckInMessage('No face detected — try again when you are in frame.')
+      setCheckInMessage('No face detected. Try again when you are in frame.')
       setStatus('Done')
       window.setTimeout(() => {
         if (statusRef.current === 'Done') setCheckInMessage(null)
