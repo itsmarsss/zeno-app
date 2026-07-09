@@ -93,6 +93,39 @@ cd frontend
 pnpm build:tauri
 ```
 
+Artifacts land under `frontend/src-tauri/target/release/bundle/` (`.app`, DMG when bundling succeeds).
+
+---
+
+## Releases (macOS)
+
+Prebuilt packages are on the [GitHub Releases](https://github.com/itsmarsss/zeno-app/releases) page (Apple Silicon / `aarch64`).
+
+| Artifact | What you get |
+| --- | --- |
+| **`.dmg` / `.zip`** | Packaged **Zeno.app** UI shell with brand icons |
+| **This repo + `./scripts/dev.sh`** | Full camera pipelines, models, and local SQLite |
+
+**Unsigned build.** macOS Gatekeeper may block first launch. Use **right-click → Open** (or System Settings → Privacy & Security) to allow it.
+
+**What the DMG includes vs full setup.** The download is the Tauri desktop shell. Live check-ins, posture, and exercise coaching need the Python backend, on-device models, and camera permission. For the complete experience today, clone the repo and run `./scripts/dev.sh` (or run the app from a machine where the project venv and `backend/models/` are already set up).
+
+---
+
+## On-device models
+
+Vision assets live in `backend/models/` (gitignored; large binary weights). A typical local tree:
+
+```
+backend/models/
+  blaze_face_short_range.tflite
+  pose_landmarker_lite.task
+  hand_landmarker.task
+  enet_b0_8_best_afew.pt
+```
+
+Place compatible MediaPipe / emotion weights there before relying on camera features. Without them, the UI still runs; check-ins and coaching will degrade or fail until models are present.
+
 ---
 
 ## Project layout
@@ -174,7 +207,9 @@ python -m zeno_backend.data.seed_dummy_sessions
 
 ## Version
 
-App identifier: `com.zeno.app` · product version in `frontend/src-tauri/tauri.conf.json` (currently `0.1.0`).
+- App identifier: `com.zeno.desktop`
+- Product version: **1.0.0** (`frontend/src-tauri/tauri.conf.json`, `Cargo.toml`, `frontend/package.json`)
+- Latest release tag: [v1.0.0](https://github.com/itsmarsss/zeno-app/releases/tag/v1.0.0)
 
 ---
 
