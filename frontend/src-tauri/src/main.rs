@@ -40,19 +40,29 @@ fn icons_dir() -> PathBuf {
 }
 
 fn load_app_icon() -> Option<Image<'static>> {
+    // Prefer menu-bar friendly sizes first. Huge 1024px sources can fail or look wrong in the tray.
     let candidates = [
-        icons_dir().join("icon.png"),
-        icons_dir().join("app-icon-source.png"),
+        icons_dir().join("32x32.png"),
+        icons_dir().join("64x64.png"),
         icons_dir().join("128x128.png"),
         icons_dir().join("henry.w@example.net"),
+        icons_dir().join("icon.png"),
+        icons_dir().join("app-icon-source.png"),
     ];
     for path in candidates {
         if path.is_file() {
-            if let Ok(image) = Image::from_path(&path) {
-                return Some(image);
+            match Image::from_path(&path) {
+                Ok(image) => {
+                    println!("[icon] loaded {}", path.display());
+                    return Some(image);
+                }
+                Err(err) => {
+                    println!("[icon] failed {}: {}", path.display(), err);
+                }
             }
         }
     }
+    println!("[icon] no custom icon loaded");
     None
 }
 
@@ -295,17 +305,28 @@ fn main() {
                 .item(&quit_item)
                 .build()?;
 
-            let tray_icon = load_app_icon().unwrap_or_else(|| {
+            let app_icon = load_app_icon().unwrap_or_else(|| {
+                println!("[icon] falling back to default window icon");
                 app.default_window_icon()
                     .expect("default window icon")
                     .clone()
             });
 
-            // Icon only by default — tray title is reserved for live focus timer text.
+            // Stamp window icons (helps Dock identity when not running as a full .app bundle).
+            for label in ["main", "main-window"] {
+                if let Some(window) = app.get_webview_window(label) {
+                    let _ = window.set_icon(app_icon.clone());
+                }
+            }
+
+            // Icon only by default; tray title is reserved for live focus timer text.
+            // Keep color (not template) so the green Zeno mark shows in the menu bar.
             let _tray = TrayIconBuilder::with_id("zeno-tray")
                 .menu(&tray_menu)
+                .tooltip("Zeno")
+                .icon_as_template(false)
                 .show_menu_on_left_click(false)
-                .icon(tray_icon)
+                .icon(app_icon)
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,

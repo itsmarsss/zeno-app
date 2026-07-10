@@ -266,7 +266,6 @@ export function MainWindowShell({
     }
   })
 
-  const timelineStartLabel = formatHourLabel(timelineStart.getHours())
 
 
   const minOverviewDate = useMemo(() => {
@@ -963,16 +962,6 @@ export function MainWindowShell({
     }
   }
 
-  function toggleGuidedExercise(exerciseId?: string) {
-    if (exerciseGuidedActive) {
-      void stopGuidedExercise(true)
-      return
-    }
-    const targetId = exerciseId ?? selectedExercise?.id
-    if (!targetId) return
-    startGuidedExercise(targetId)
-  }
-
   function openExercisesTab() {
     setTab('exercises')
   }
@@ -1264,7 +1253,7 @@ export function MainWindowShell({
                   timelineData={timelineData}
                   timelineBucketMinutes={timelineBucketMinutes}
                   setTimelineBucketMinutes={handleTimelineBucketMinutesChange}
-                  timelineStartLabel={timelineStartLabel}
+
                   onShiftOverviewDay={shiftOverviewDay}
                   onSetOverviewDay={setOverviewDayFromIso}
                   selectedDayIso={overviewKey}

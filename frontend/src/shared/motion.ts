@@ -6,9 +6,11 @@ export const springToggle: Transition = {
   damping: 28,
 }
 
+const easeCurve = [0.16, 1, 0.3, 1] as [number, number, number, number]
+
 export const easeOut: Transition = {
   duration: 0.28,
-  ease: [0.16, 1, 0.3, 1],
+  ease: easeCurve,
 }
 
 export const fadeSlide: Variants = {
@@ -23,7 +25,7 @@ export function staggerItem(delay = 0): Variants {
     visible: {
       opacity: 1,
       y: 0,
-      transition: { ...easeOut, delay },
+      transition: { duration: 0.28, ease: easeCurve, delay },
     },
   }
 }
