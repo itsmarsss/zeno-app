@@ -1,6 +1,0 @@
-node_modules
-dist
-.env
-.serverless
-.esbuild
-.DS_Store

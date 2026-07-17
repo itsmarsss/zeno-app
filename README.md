@@ -8,15 +8,15 @@ Zeno runs on your Mac as a desktop app: a compact menubar panel for quick status
 
 ## What it does
 
-| Area | Features |
-| --- | --- |
-| **Menubar** | Always-available status, focus timer (when active), quick actions, check-in feedback |
-| **Overview** | Today’s sessions, focused time, stress/posture signals, shortcuts into deeper tabs |
-| **Monitor** | Live camera + signal stack (idle / passive check-in / Focus Mode) |
-| **Posture** | Baseline calibration, posture insights, exercise recommendations |
-| **Exercises** | Guided desk exercises with camera coaching, instructions, session logging |
-| **Focus History** | Period summaries, study patterns, heatmap, daily rhythm, duration vs. effectiveness |
-| **Settings** | Notifications, daily report timing, launch at login, privacy-minded local preferences |
+| Area              | Features                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| **Menubar**       | Always-available status, focus timer (when active), quick actions, check-in feedback  |
+| **Overview**      | Today’s sessions, focused time, stress/posture signals, shortcuts into deeper tabs    |
+| **Monitor**       | Live camera + signal stack (idle / passive check-in / Focus Mode)                     |
+| **Posture**       | Baseline calibration, posture insights, exercise recommendations                      |
+| **Exercises**     | Guided desk exercises with camera coaching, instructions, session logging             |
+| **Focus History** | Period summaries, study patterns, heatmap, daily rhythm, duration vs. effectiveness   |
+| **Settings**      | Notifications, daily report timing, launch at login, privacy-minded local preferences |
 
 **Focus Mode** keeps the camera on for a continuous work session. **Passive check-ins** briefly sample presence and stress so you get a lightweight pulse without a full focus block.
 
@@ -24,15 +24,13 @@ Zeno runs on your Mac as a desktop app: a compact menubar panel for quick status
 
 ## Stack
 
-| Layer | Tech |
-| --- | --- |
-| Desktop shell | [Tauri 2](https://tauri.app/) (Rust) |
-| UI | React 19, TypeScript, Vite, Framer Motion, Lucide |
+| Layer                     | Tech                                                               |
+| ------------------------- | ------------------------------------------------------------------ |
+| Desktop shell             | [Tauri 2](https://tauri.app/) (Rust)                               |
+| UI                        | React 19, TypeScript, Vite, Framer Motion, Lucide                  |
 | Computer vision / signals | Python 3.11+, OpenCV, MediaPipe, rPPG / stress / posture pipelines |
-| Storage | Local SQLite (`backend/data/zeno_sessions.db`) + JSON settings |
-| Package managers | `pnpm` (frontend), `pip` + project `.venv` (backend) |
-
-Optional `api/` folder contains a separate serverless/auth stack used for experimental or future cloud features. **Day-to-day Zeno runs fully offline** for capture and history.
+| Storage                   | Local SQLite (`backend/data/zeno_sessions.db`) + JSON settings     |
+| Package managers          | `pnpm` (frontend), `pip` + project `.venv` (backend)               |
 
 ---
 
@@ -56,9 +54,9 @@ From the repo root:
 
 This will:
 
-1. Create `.venv` if missing  
-2. Install Python deps from `backend/requirements.txt`  
-3. Install frontend deps with `pnpm`  
+1. Create `.venv` if missing
+2. Install Python deps from `backend/requirements.txt`
+3. Install frontend deps with `pnpm`
 4. Launch **Tauri dev** (desktop app + Vite on `http://127.0.0.1:1420` + Python sidecars)
 
 ### Useful flags
@@ -101,9 +99,9 @@ Artifacts land under `frontend/src-tauri/target/release/bundle/` (`.app`, DMG wh
 
 Prebuilt packages are on the [GitHub Releases](https://github.com/itsmarsss/zeno-app/releases) page (Apple Silicon / `aarch64`).
 
-| Artifact | What you get |
-| --- | --- |
-| **`.dmg` / `.zip`** | Packaged **Zeno.app** UI shell with brand icons |
+| Artifact                           | What you get                                    |
+| ---------------------------------- | ----------------------------------------------- |
+| **`.dmg` / `.zip`**                | Packaged **Zeno.app** UI shell with brand icons |
 | **This repo + `./scripts/dev.sh`** | Full camera pipelines, models, and local SQLite |
 
 **Unsigned build.** macOS Gatekeeper may block first launch. Use **right-click → Open** (or System Settings → Privacy & Security) to allow it.
@@ -141,22 +139,21 @@ zeno-app/
 │   ├── models/             # On-device model assets (gitignored if large)
 │   ├── data/               # Local DB + settings (gitignored)
 │   └── requirements.txt
-├── api/                    # Optional cloud/auth (not required for local app)
 └── README.md
 ```
 
 ### Frontend entry points
 
-- **Menubar / compact window** - `frontend/src/App.tsx`  
-- **Main app window** - `frontend/src/components/MainWindowShell.tsx`  
+- **Menubar / compact window** - `frontend/src/App.tsx`
+- **Main app window** - `frontend/src/components/MainWindowShell.tsx`
 - Tabs live under `frontend/src/components/{overview,monitor,posture,exercises,focus,settings}/`
 
 ### Backend highlights
 
-- **`zeno_backend/core/`** - camera manager, stress index helpers  
-- **`zeno_backend/analyzers/`** - posture, presence, rPPG, emotion, respiration  
-- **`zeno_backend/pipelines/`** - focus stream, passive check-in, session runner  
-- **`zeno_backend/data/`** - SQLite logging, aggregates, settings, export  
+- **`zeno_backend/core/`** - camera manager, stress index helpers
+- **`zeno_backend/analyzers/`** - posture, presence, rPPG, emotion, respiration
+- **`zeno_backend/pipelines/`** - focus stream, passive check-in, session runner
+- **`zeno_backend/data/`** - SQLite logging, aggregates, settings, export
 
 Rust commands in `frontend/src-tauri/src/` invoke Python modules as short-lived or streaming sidecars.
 
@@ -164,9 +161,9 @@ Rust commands in `frontend/src-tauri/src/` invoke Python modules as short-lived 
 
 ## Data & privacy
 
-- Session history, exercises, and aggregates are stored **locally** under `backend/data/`.  
-- That directory is **gitignored** so personal telemetry never lands in commits.  
-- Camera frames are used for live analysis and coaching; they are not uploaded by the local app path.  
+- Session history, exercises, and aggregates are stored **locally** under `backend/data/`.
+- That directory is **gitignored** so personal telemetry never lands in commits.
+- Camera frames are used for live analysis and coaching; they are not uploaded by the local app path.
 - Clear or reset data via in-app settings / backend clear utilities when available.
 
 To seed demo history for UI work (optional):
@@ -183,25 +180,25 @@ python -m zeno_backend.data.seed_dummy_sessions
 
 ## Development notes
 
-- Prefer **`./scripts/dev.sh --skip-install`** once the venv and `node_modules` exist - faster iteration.  
+- Prefer **`./scripts/dev.sh --skip-install`** once the venv and `node_modules` exist - faster iteration.
 - If camera features fail, confirm:
-  - macOS **Camera** permission for the Zeno / Terminal host process  
-  - `.venv` exists and `import zeno_backend` works  
-  - No other app is exclusively locking the camera  
+    - macOS **Camera** permission for the Zeno / Terminal host process
+    - `.venv` exists and `import zeno_backend` works
+    - No other app is exclusively locking the camera
 - Frontend lint/format:
 
-  ```bash
-  cd frontend
-  pnpm lint
-  pnpm format
-  ```
+    ```bash
+    cd frontend
+    pnpm lint
+    pnpm format
+    ```
 
 - Typecheck:
 
-  ```bash
-  cd frontend
-  npx tsc --noEmit
-  ```
+    ```bash
+    cd frontend
+    npx tsc --noEmit
+    ```
 
 ---
 
